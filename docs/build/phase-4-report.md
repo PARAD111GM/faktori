@@ -1,6 +1,6 @@
 # Phase 4 implementation report
 
-Status: complete candidate `b2925e9` awaiting Build Manager acceptance. Base was accepted Phase 3
+Status: complete candidate `c55399f` awaiting Build Manager acceptance. Base was accepted Phase 3
 revision `a6caace`; this phase made no remote publication, merge, live Jira call,
 production deployment, credential export, reset, paid-route switch, or product mutation.
 
@@ -22,16 +22,19 @@ production deployment, credential export, reset, paid-route switch, or product m
   authority and remain distinct from passes, and output is only
   `ready_for_human_merge`, never merge execution.
 - **F4-04:** `src/integrations/deployment.ts` runs approved local deployment
-  and smoke commands in the controller context, observes only configured CI,
-  records environment/revision evidence, creates exactly one durable smoke
-  follow-up, and gates recovery hooks on configuration, approval, compatibility,
-  preconditions, and current authority.
+  and smoke commands in the controller context with phase-specific credentials,
+  observes only configured CI, records environment/revision evidence, creates
+  exactly one durable smoke follow-up, and gates recovery hooks on configuration,
+  approval, compatibility, preconditions, and current authority. Its local
+  fixture starts a loopback HTTP service, verifies the exact deployed revision
+  over HTTP, persists the deployment receipt, and confirms the process exits
+  before fixture deletion.
 
 ## Observed verification
 
-- Focused integrations: 5 files, 19 tests passed, including an end-to-end
-  action-admission-to-GitHub effect/revocation test.
-- Full pinned `npm run check`: strict typecheck, 30 files / 260 tests, build,
+- Focused deployment integration: 5 tests passed under the loopback permission
+  gate, including a real HTTP smoke of the deployed `rev-7` fixture.
+- Full pinned `npm run check`: strict typecheck, 31 files / 269 tests, build,
   and clean packed-CLI verification passed under Node 24.20.0/npm 12.0.2.
 
 ## Remaining authority gate

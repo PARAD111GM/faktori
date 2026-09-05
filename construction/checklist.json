@@ -1320,6 +1320,14 @@
       "from": "in_progress",
       "to": "complete",
       "reason": "Corrected least-credential bounded local deployment, durable receipts, configured CI observation, and smoke follow-up passed focused tests."
+    },
+    {
+      "eventId": "status-1788625095158-ggd4bv",
+      "at": "2026-09-05T16:18:15.159Z",
+      "ticketId": "F4-04",
+      "from": "complete",
+      "to": "complete",
+      "reason": "Final candidate c55399f adds real loopback HTTP deployment and exact-revision smoke evidence with persisted receipt and confirmed process cleanup; focused 5-test loopback gate and full 31-file/269-test Node24 check passed."
     }
   ]
 }

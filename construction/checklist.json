@@ -87,7 +87,7 @@
         "reasoning": "medium"
       },
       "notes": [
-        "Bounded native launch/resume feasibility is met; authenticated isolated execution, native permission replies, and two provider cancellation receipts remain explicit later-phase gates."
+        "Bounded native launch/resume feasibility is met. Authenticated isolated execution remains a hard later-phase gate; unavailable native permission and cancellation receipts remain unsupported capabilities with truthful outcome classification, not universal admission requirements."
       ],
       "evidence": [
         {

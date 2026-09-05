@@ -55,8 +55,11 @@ Codex and Claude wrapper interruptions did not produce provider cancellation
 receipts; Cursor emitted no interactive permission request; and Docker Desktop
 could not share the assigned worktree. F2-02 and provider-adapter work must
 prove authenticated durable isolation, coordinator-owned environment policy,
-native denial/cancellation receipts, and process-tree termination before those
-profiles can be admitted for autonomous jobs. Credentials remain exclusively
+publication revocation, and process-tree termination/reconciliation before an
+autonomous profile is admitted. Provider-native permission and cancellation
+receipts are capabilities, not universal admission requirements: an unavailable
+interactive reply stays unsupported, and a locally terminated provider without
+a native receipt stays `interrupted_uncertain`. Credentials remain exclusively
 inside the unmodified vendor login flows.
 
 ## Verification
@@ -65,7 +68,7 @@ Observed from the assigned isolated Faktori worktree root:
 
 | Command | Observed result |
 | --- | --- |
-| Node 24/npm 12 package-lock regeneration, `npm ci`, then `npm run check` | Node `v24.20.0`, npm `12.0.2`; 4 Vitest files and 20 tests passed; TypeScript passed; npm audit reported 0 vulnerabilities. |
+| Node 24/npm 12 package-lock regeneration, `npm ci`, then `npm run check` | Node `v24.20.0`, npm `12.0.2`; 4 Vitest files and 21 tests passed; TypeScript passed; npm audit reported 0 vulnerabilities. |
 | `node fixtures/verify-fixtures.mjs` under Node 24 | Exit 0; task-board starter expected RED, due-dates base browser contract GREEN, due-dates feature expected RED, Python boundary expected RED, and checksums verified. |
 | Dashboard and usage generation under Node 24 | Exit 0; all 32 canonical tickets rendered, Phase 0 completion history rendered, and sanitized overlap-safe usage summary refreshed. |
 
@@ -80,8 +83,8 @@ The initial soft estimate was 160,000 tokens. After early observed usage and
 fixture rework, the manager revised it to 360,000 with revision history and
 allocations preserved in `construction/phase-estimates.json`.
 
-The final pre-commit sanitized summary reports a 1,032,935-token
-**overlap-safe lower bound**, 286.93% of the revised estimate. This is not a
+The final pre-commit sanitized summary reports a 1,089,917-token
+**overlap-safe lower bound**, 302.75% of the revised estimate. This is not a
 fully attributed total: the implementer cumulative sample is retained, the
 manager's latest observed 131,206-token sample is excluded from addition
 because manager/implementer coverage may overlap, and all four specialist
@@ -99,7 +102,8 @@ estimate was never used to weaken acceptance.
 - Build Manager acceptance is still required before Phase 1 begins.
 - Phase 1 should consume the provider capability matrix as constraints, not as a claim that isolated execution is solved.
 - Provider adapters must preflight model compatibility and recorded workspace identity; resume may never rely on an ambient cwd or a "last session" shortcut.
-- Unknown cancellation results must remain distinguishable from cancelled, failed, and completed terminal states.
+- Coordinator cancellation must terminate and reconcile the process tree. A provider-native receipt is recorded when available; without one, the provider outcome remains `interrupted_uncertain`, distinct from cancelled, failed, and completed.
+- Unsupported interactive approval replies stay unsupported or blocked; V1 does not require a new transport bridge solely to manufacture a missing native capability.
 - The coordinator, not a provider CLI default, must own filesystem, network, credential, publisher, and process-tree boundaries.
 - Reuse the frozen inputs without rubric changes; any fixture change requires a new explicit version and checksum manifest.
 - Keep future manager sessions phase-attributable with a phase-start baseline; otherwise exclude their lifetime cumulative telemetry from phase actuals.

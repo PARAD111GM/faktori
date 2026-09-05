@@ -51,6 +51,8 @@ test('public summary and dashboard expose sanitized overlap-safe usage without n
     }
   }
   assert.match(dashboard, /Completion history/);
-  assert.match(dashboard, /Token consumption chart/);
+  assert.match(dashboard, /Token budget consumption/);
+  assert.match(dashboard, /Overlap-safe lower bound \(incomplete coverage\)/);
+  assert.match(dashboard, /Remaining allowance: 0 tokens/);
   assert.doesNotMatch(dashboard, /\/Users\//);
 });

@@ -20,8 +20,8 @@ test('renders the complete construction dashboard from checklist history and san
   });
   tickets[0].status = 'complete';
   tickets[1].status = 'blocked';
-  await writeFile(checklist, JSON.stringify({ schemaVersion: 1, project: { currentPhase: 0, phaseBudgets: { '0': 100 } }, tickets, history: [{ at: '2026-09-04T00:00:00Z', ticketId: 'F0-01', from: 'in_progress', to: 'complete' }, { at: '2026-09-04T00:01:00Z', ticketId: 'F0-01', from: 'complete', to: 'in_progress', reason: 'reopened' }, { at: '2026-09-04T00:02:00Z', ticketId: 'F0-01', from: 'in_progress', to: 'split', reason: 'split' }] }));
-  await writeFile(summary, JSON.stringify({ schemaVersion: 1, phase: 0, actual: { input: 50, output: null, cached: 20, reasoning: null, total: 70 }, estimated: { total: 5 }, models: [{ model: 'gpt-5.6-terra', reasoning: 'high', recordCount: 1 }], unknown: [{ ticket: 'F0-03', reason: 'telemetry:unknown' }], budget: { estimate: 100, percentUsed: 70 }, notices: [{ threshold: 70 }] }));
+  await writeFile(checklist, JSON.stringify({ schemaVersion: 1, project: { currentPhase: 0, phaseBudgets: { '0': 100 } }, tickets, history: [{ at: '2026-09-04T00:00:00Z', ticketId: 'F0-01', from: 'in_progress', to: 'complete' }, { at: '2026-09-04T00:01:00Z', ticketId: 'F0-01', from: 'complete', to: 'in_progress', reason: 'reopened' }, { at: '2026-09-04T00:10:00Z', ticketId: 'F0-01', from: 'in_progress', to: 'split', reason: 'split' }] }));
+  await writeFile(summary, JSON.stringify({ schemaVersion: 1, phase: 0, actual: { input: 50, output: null, cached: 20, reasoning: null, total: 70, kind: 'overlap-safe-lower-bound' }, estimated: { total: 5 }, models: [{ model: 'gpt-5.6-terra', reasoning: 'high', recordCount: 1 }], unknown: [{ ticket: 'F0-03', reason: 'telemetry:unknown' }], budget: { estimate: 100, remaining: 30, percentUsed: 70 }, notices: [{ threshold: 70 }] }));
   const result = spawnSync(process.execPath, [command, '--checklist', checklist, '--summary', summary, '--output', output], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   const html = await readFile(output, 'utf8');
@@ -31,7 +31,10 @@ test('renders the complete construction dashboard from checklist history and san
   assert.match(html, /Current phase: 0/);
   assert.match(html, /Blockers/);
   assert.match(html, /Completion history/);
-  assert.match(html, /Token consumption chart/);
+  assert.match(html, /Token budget consumption/);
+  assert.match(html, /points="0,155 72,160 720,160"/);
+  assert.match(html, /Overlap-safe lower bound \(incomplete coverage\): 70 tokens/);
+  assert.match(html, /Remaining allowance: 30 tokens/);
   assert.match(html, /gpt-5\.6-terra\/high/);
   assert.match(html, /agent-0-2/);
   assert.match(html, /70 tokens/);
@@ -40,4 +43,31 @@ test('renders the complete construction dashboard from checklist history and san
   assert.match(html, /Cached: 20 tokens/);
   assert.match(html, /Reasoning: unknown/);
   assert.doesNotMatch(html, /\/Users\//);
+});
+
+test('renders explicit timestamp and allowance fallbacks', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'faktori-dashboard-fallback-'));
+  const checklist = join(dir, 'checklist.json');
+  const summary = join(dir, 'summary.json');
+  const output = join(dir, 'dashboard.html');
+  await writeFile(checklist, JSON.stringify({
+    project: { currentPhase: 0 },
+    tickets: [{ id: 'F0-01', phase: 0, title: 'One', status: 'complete', dependencies: [], owner: {} }],
+    history: [{ at: '2026-09-04T00:00:00Z', ticketId: 'F0-01', from: 'in_progress', to: 'complete' }]
+  }));
+  await writeFile(summary, JSON.stringify({
+    phase: 0,
+    actual: { total: null, kind: 'overlap-safe-lower-bound' },
+    estimated: { total: null },
+    unknown: [],
+    budget: { estimate: null, remaining: null, percentUsed: null },
+    notices: [],
+    models: []
+  }));
+  const result = spawnSync(process.execPath, [command, '--checklist', checklist, '--summary', summary, '--output', output], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const html = await readFile(output, 'utf8');
+  assert.match(html, /points="360,0"/);
+  assert.match(html, /Overlap-safe lower bound \(incomplete coverage\): unknown tokens/);
+  assert.match(html, /Remaining allowance: unknown/);
 });

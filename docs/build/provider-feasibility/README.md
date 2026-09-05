@@ -181,10 +181,11 @@ may isolate user configuration, but it must remain a dedicated-scratch test.
 The Phase Implementer should preserve this ticket as partial and add the
 following Phase 1 gates before enabling a live provider adapter:
 
-1. Keep Claude authentication in its vendor-owned login flow. Before admitting
-   it for autonomous work, obtain a native permission-denial receipt and a
-   provider cancellation receipt; tool suppression and wrapper SIGINT are not
-   substitutes.
+1. Keep Claude authentication in its vendor-owned login flow. Admit an
+   autonomous profile only when coordinator/OS/container policy enforces its
+   allowed writes and tools. Treat interactive permission replies as unsupported
+   when the native transport does not emit them; do not manufacture a bridge
+   solely to make the capability universal.
 2. Design a durable job workspace inside an approved Docker Desktop shared
    location, then test a bind-mounted job workspace with **no** home/auth mount.
    If a CLI needs a
@@ -194,12 +195,14 @@ following Phase 1 gates before enabling a live provider adapter:
    verifies effective sandbox behavior, persists expected workspace identity,
    `chdir`s before an explicit resume spawn, and treats process signal
    termination as `interrupted_uncertain` unless a provider cancellation receipt
-   is received.
+   is received. Coordinator cancellation must still terminate and reconcile the
+   whole process tree even when the provider cannot emit such a receipt.
 4. Cursor's disposable project policy already blocks its target write directly.
-   Find a supported configuration that produces a real ACP
-   `session/request_permission`; only then verify `reject-once` leaves the job
-   workspace unchanged. Add usage reporting only when Cursor actually exposes
-   it through the supported transport.
+   If a profile requires interactive approval, first find a supported
+   configuration that produces a real ACP `session/request_permission`; otherwise
+   expose that capability as unsupported and keep the policy-blocked profile.
+   Add usage reporting only when Cursor actually exposes it through the
+   supported transport.
 
 ## Phase 0 feasibility exit recommendation
 

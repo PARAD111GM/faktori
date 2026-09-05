@@ -1,0 +1,58 @@
+# Faktori
+
+Faktori is a self-hosted, vendor-neutral software factory for an individual
+developer or small team. It turns an approved product intent into a bounded
+Plan, Design, Build, Test, Deploy, and Maintain loop while keeping documents,
+configuration, evidence, and authority portable.
+
+This repository is the public source for the factory. Generated factory
+configuration belongs in an owner-controlled repository; product artifacts
+remain with the product. No credentials, private machine paths, or live
+integration identifiers belong here.
+
+## Status
+
+Phase 0 freezes the public foundation, construction records, provider-neutral
+guidance, and independent comparison fixtures. Runtime implementation begins
+in later phases. The fixtures are test contracts, not benchmark results.
+
+## Start here
+
+- [Project intent](docs/intent.md) — scope, boundaries, and principles.
+- [Architecture decisions](docs/architecture/README.md) — portable source of truth,
+  authority, recovery, and execution boundaries.
+- [Provider guidance](docs/providers/README.md) — neutral adapter expectations.
+- [Comparison fixtures](docs/comparison/README.md) — frozen, reproducible cases.
+- [Implementation plan](docs/implementation-plan.md) — accepted V1 specification.
+
+## Commands
+
+After the package is installed, use `npm ci`, `npm test`, `npm run build`,
+`npm run check`, `npm run build:dashboard`, `npm run build:usage`, and
+`npm run build:usage:watch`. Status updates require explicit safe arguments:
+
+```sh
+npm run build:status -- --checklist construction/checklist.json --ticket F0-02 --status in_progress --reason "..."
+```
+
+Node.js 24 LTS and npm 12 are the supported construction setup. npm 12 blocks
+unapproved dependency install scripts; review and explicitly approve the
+`better-sqlite3` native build before first runtime use. The canonical
+construction records are [checklist](construction/checklist.json)
+and [dashboard](construction/dashboard.html). Start by reading `AGENTS.md` and
+the implementation plan, then identify the product, constraints, build
+process, and first eligible task. After accepted Phase 0, that task is F1-01;
+this note does not authorize starting it during Phase 0.
+The fixture commands are independent: each fixture README gives its exact
+runtime and test command. A passing fixture test demonstrates only that the
+fixture contract is present; it says nothing about provider quality.
+
+## Contributions
+
+Changes should preserve explicit authority, bounded execution, restart
+recovery, and portable documents. Add behavior-level tests with changes and
+record observed commands. See `AGENTS.md` for construction protocol.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

@@ -63,7 +63,7 @@ Use:
 
 The implementation locks dependency versions during the first phase. [Node release schedule](https://nodejs.org/en/about/previous-releases)
 
-The standalone source checkout lives outside the Twinzy program directory, initially at `/Users/Nathan/Code/Faktori`. Twinzy-specific instructions must not become Faktori’s global rules.
+The standalone source checkout lives outside any product program directory, for example at `<workspace>/Faktori`. Product-specific instructions must not become Faktori’s global rules.
 
 | Repository area | Responsibility |
 |---|---|

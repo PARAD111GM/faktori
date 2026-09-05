@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "phase": 0,
+  "generatedAt": "2026-09-05T00:00:12.549Z",
+  "actual": {
+    "input": null,
+    "output": null,
+    "cached": null,
+    "reasoning": null,
+    "total": 1032935,
+    "excludedChildCount": 0,
+    "kind": "overlap-safe-lower-bound"
+  },
+  "estimated": {
+    "total": null
+  },
+  "models": [
+    {
+      "model": "gpt-5.6-luna",
+      "reasoning": "medium",
+      "recordCount": 1
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "reasoning": "high",
+      "recordCount": 2
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "reasoning": "medium",
+      "recordCount": 1
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "reasoning": "high",
+      "recordCount": 1
+    }
+  ],
+  "unknown": [
+    {
+      "ticket": "F0-01",
+      "reason": "telemetry:unknown"
+    },
+    {
+      "ticket": "F0-02",
+      "reason": "telemetry:unknown"
+    },
+    {
+      "ticket": "F0-03",
+      "reason": "telemetry:unknown"
+    },
+    {
+      "ticket": "F0-04",
+      "reason": "telemetry:unknown"
+    },
+    {
+      "ticket": "F0-management",
+      "reason": "coverage-overlap:unknown"
+    }
+  ],
+  "coverageGaps": [
+    {
+      "group": "phase-0-construction",
+      "retainedTotal": 1032935,
+      "excludedMeasurements": 1
+    }
+  ],
+  "records": {
+    "accepted": 13,
+    "duplicates": 0
+  },
+  "budget": {
+    "estimate": 360000,
+    "remaining": 0,
+    "percentUsed": 286.93
+  },
+  "notices": [
+    {
+      "threshold": 70,
+      "type": "budget-threshold"
+    },
+    {
+      "threshold": 90,
+      "type": "budget-threshold"
+    },
+    {
+      "threshold": 100,
+      "type": "budget-threshold"
+    }
+  ]
+}

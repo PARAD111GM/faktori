@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "phases": [
+    {
+      "phase": 0,
+      "hardCeiling": false,
+      "confidence": "low",
+      "currentRevision": 2,
+      "estimateTokens": 360000,
+      "revisions": [
+        {
+          "revision": 1,
+          "estimateTokens": 160000,
+          "allocations": {
+            "managerCoordination": 20000,
+            "implementerOrchestrationAndIntegration": 25000,
+            "specialistDelivery": 65000,
+            "verificationAndRework": 20000,
+            "contingency": 30000
+          },
+          "rationale": "Initial bottom-up estimate before observed Phase 0 telemetry."
+        },
+        {
+          "revision": 2,
+          "estimateTokens": 360000,
+          "allocations": {
+            "managerCoordination": 150000,
+            "implementerOrchestrationAndIntegration": 50000,
+            "specialistDelivery": 80000,
+            "verificationAndRework": 40000,
+            "contingency": 40000
+          },
+          "rationale": "Manager coordination was materially underestimated; fixture acceptance required evidence-driven rework and a Terra-high escalation."
+        }
+      ],
+      "assumptions": [
+        "The estimate includes manager, implementer, and specialists.",
+        "Parent-inclusive totals must not be added to child totals.",
+        "Unknown telemetry remains unknown rather than zero.",
+        "The estimate is a planning target and cannot weaken acceptance criteria."
+      ],
+      "revisionNotes": [
+        "Revision 2 is an estimate, not a measured aggregate.",
+        "Narrower briefs and fewer exploratory status calls are recommended for Phase 1 without weakening acceptance."
+      ]
+    }
+  ]
+}

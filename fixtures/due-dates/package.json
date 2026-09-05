@@ -1,0 +1,1 @@
+{"name":"faktori-fixture-due-dates","private":true,"type":"module","scripts":{"test:base":"node --test test/base-contract.test.mjs","test:acceptance":"node --test test/acceptance.test.mjs","test":"npm run test:base && npm run test:acceptance"}}

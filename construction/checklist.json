@@ -1,0 +1,647 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": "Faktori V1",
+    "currentPhase": 0,
+    "source": "docs/implementation-plan.md"
+  },
+  "tickets": [
+    {
+      "id": "F0-01",
+      "phase": 0,
+      "title": "Establish the standalone project",
+      "status": "complete",
+      "dependencies": [],
+      "owner": {
+        "role": "foundation and fixtures specialist",
+        "agentId": "foundation_fixtures",
+        "model": "gpt-5.6-luna",
+        "reasoning": "medium"
+      },
+      "notes": [
+        "Public foundation, provider-neutral architecture, pinned Node 24/npm 12 toolchain, and complete Apache-2.0 license verified."
+      ],
+      "evidence": [
+        {
+          "label": "Project foundation",
+          "url": "README.md"
+        },
+        {
+          "label": "Product intent",
+          "url": "docs/intent.md"
+        },
+        {
+          "label": "Architecture decisions",
+          "url": "docs/architecture/README.md"
+        },
+        {
+          "label": "Apache-2.0 license",
+          "url": "LICENSE"
+        }
+      ]
+    },
+    {
+      "id": "F0-02",
+      "phase": 0,
+      "title": "Implement construction tracking and token monitoring",
+      "status": "complete",
+      "dependencies": [
+        "F0-01"
+      ],
+      "owner": {
+        "role": "tracking and usage specialist",
+        "agentId": "tracking_usage",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
+      },
+      "notes": [
+        "The phase orchestrator exclusively owns this canonical checklist; raw usage stays ignored and only sanitized overlap-safe summaries are committed."
+      ],
+      "evidence": [
+        {
+          "label": "Canonical checklist",
+          "url": "construction/checklist.json"
+        },
+        {
+          "label": "Construction dashboard",
+          "url": "construction/dashboard.html"
+        },
+        {
+          "label": "Usage accounting contract",
+          "url": "docs/build/usage-monitoring.md"
+        }
+      ]
+    },
+    {
+      "id": "F0-03",
+      "phase": 0,
+      "title": "Prove required provider mechanics",
+      "status": "complete",
+      "dependencies": [
+        "F0-01"
+      ],
+      "owner": {
+        "role": "provider feasibility specialist",
+        "agentId": "provider_feasibility",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
+      },
+      "notes": [
+        "Bounded native launch/resume feasibility is met; authenticated isolated execution, native permission replies, and two provider cancellation receipts remain explicit later-phase gates."
+      ],
+      "evidence": [
+        {
+          "label": "Sanitized provider feasibility record",
+          "url": "docs/build/provider-feasibility/README.md"
+        }
+      ]
+    },
+    {
+      "id": "F0-04",
+      "phase": 0,
+      "title": "Freeze comparison fixtures",
+      "status": "complete",
+      "dependencies": [
+        "F0-01"
+      ],
+      "owner": {
+        "role": "fixture remediation specialist",
+        "agentId": "tracking_usage",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
+      },
+      "notes": [
+        "Luna-medium produced the initial fixture set; evidence-driven review escalated remediation to Terra-high. Frozen expected-RED and base-GREEN contracts now reproduce under Node 24; no benchmark runs were performed."
+      ],
+      "evidence": [
+        {
+          "label": "Comparison protocol",
+          "url": "docs/comparison/README.md"
+        },
+        {
+          "label": "Frozen fixture checksums",
+          "url": "fixtures/SHA256SUMS"
+        },
+        {
+          "label": "Executable fixture verifier",
+          "url": "fixtures/verify-fixtures.mjs"
+        }
+      ]
+    },
+    {
+      "id": "F1-01",
+      "phase": 1,
+      "title": "Build the configuration model",
+      "status": "not_started",
+      "dependencies": [
+        "F0-01",
+        "F0-02",
+        "F0-03",
+        "F0-04"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F1-02",
+      "phase": 1,
+      "title": "Implement interview and resumable provisioning",
+      "status": "not_started",
+      "dependencies": [
+        "F1-01"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F1-03",
+      "phase": 1,
+      "title": "Implement hierarchy and context assembly",
+      "status": "not_started",
+      "dependencies": [
+        "F1-01"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F1-04",
+      "phase": 1,
+      "title": "Author lifecycle skills and provider wrappers",
+      "status": "not_started",
+      "dependencies": [
+        "F1-01",
+        "F1-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F2-01",
+      "phase": 2,
+      "title": "Implement coordinator and durable run records",
+      "status": "not_started",
+      "dependencies": [
+        "F1-01",
+        "F1-02",
+        "F1-03",
+        "F1-04"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F2-02",
+      "phase": 2,
+      "title": "Implement workspaces and execution profiles",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F2-03",
+      "phase": 2,
+      "title": "Implement the Codex adapter and local delivery loop",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F2-02"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F2-04",
+      "phase": 2,
+      "title": "Implement controller-owned action admission",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F2-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F3-01",
+      "phase": 3,
+      "title": "Implement the Claude adapter",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F2-02",
+        "F2-04"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F3-02",
+      "phase": 3,
+      "title": "Implement the Cursor adapter",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F2-02",
+        "F2-04"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F3-03",
+      "phase": 3,
+      "title": "Implement team delegation and handoffs",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F2-02",
+        "F2-04",
+        "F3-01",
+        "F3-02"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F3-04",
+      "phase": 3,
+      "title": "Prove role portability and provider substitution",
+      "status": "not_started",
+      "dependencies": [
+        "F2-03",
+        "F3-01",
+        "F3-02",
+        "F3-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F4-01",
+      "phase": 4,
+      "title": "Implement GitHub integration",
+      "status": "not_started",
+      "dependencies": [
+        "F2-04",
+        "F3-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F4-02",
+      "phase": 4,
+      "title": "Implement optional Jira integration",
+      "status": "not_started",
+      "dependencies": [
+        "F2-04",
+        "F3-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F4-03",
+      "phase": 4,
+      "title": "Implement evidence-based progression",
+      "status": "not_started",
+      "dependencies": [
+        "F4-01",
+        "F4-02"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F4-04",
+      "phase": 4,
+      "title": "Implement deployment and maintenance entry",
+      "status": "not_started",
+      "dependencies": [
+        "F4-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F5-01",
+      "phase": 5,
+      "title": "Build the Console shell and read views",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F3-03",
+        "F4-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F5-02",
+      "phase": 5,
+      "title": "Add owner actions and conversation controls",
+      "status": "not_started",
+      "dependencies": [
+        "F2-04",
+        "F5-01"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F5-03",
+      "phase": 5,
+      "title": "Implement Factory GM operation",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F5-01",
+        "F5-02"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F5-04",
+      "phase": 5,
+      "title": "Add resource and attention visibility",
+      "status": "not_started",
+      "dependencies": [
+        "F5-01",
+        "F5-02",
+        "F5-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F6-01",
+      "phase": 6,
+      "title": "Exercise recovery boundaries",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F2-02",
+        "F2-04",
+        "F3-03",
+        "F4-03",
+        "F4-04"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F6-02",
+      "phase": 6,
+      "title": "Complete local service protection",
+      "status": "not_started",
+      "dependencies": [
+        "F2-02",
+        "F2-04",
+        "F5-01",
+        "F5-02"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F6-03",
+      "phase": 6,
+      "title": "Implement backup and compatible updates",
+      "status": "not_started",
+      "dependencies": [
+        "F2-01",
+        "F6-01"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F6-04",
+      "phase": 6,
+      "title": "Package the public kit",
+      "status": "not_started",
+      "dependencies": [
+        "F1-01",
+        "F1-02",
+        "F1-03",
+        "F1-04",
+        "F6-02",
+        "F6-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F7-01",
+      "phase": 7,
+      "title": "Conduct cold-start onboarding",
+      "status": "not_started",
+      "dependencies": [
+        "F6-04"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F7-02",
+      "phase": 7,
+      "title": "Verify supported host and stack paths",
+      "status": "not_started",
+      "dependencies": [
+        "F6-01",
+        "F6-02",
+        "F6-03",
+        "F6-04"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F7-03",
+      "phase": 7,
+      "title": "Run the isolated Twinzy proof",
+      "status": "not_started",
+      "dependencies": [
+        "F3-04",
+        "F4-04",
+        "F5-04",
+        "F6-01",
+        "F6-02"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "F7-04",
+      "phase": 7,
+      "title": "Run the paired comparison and finalize release evidence",
+      "status": "not_started",
+      "dependencies": [
+        "F7-01",
+        "F7-02",
+        "F7-03"
+      ],
+      "owner": {
+        "role": "unassigned"
+      },
+      "notes": [],
+      "evidence": []
+    }
+  ],
+  "history": [
+    {
+      "eventId": "phase-0-start-f0-01",
+      "at": "2026-09-04T23:11:17Z",
+      "ticketId": "F0-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Phase 0 specialist work began.",
+      "actor": "phase-0-orchestrator"
+    },
+    {
+      "eventId": "phase-0-start-f0-02",
+      "at": "2026-09-04T23:11:17Z",
+      "ticketId": "F0-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Tracking contracts and usage tests began.",
+      "actor": "phase-0-orchestrator"
+    },
+    {
+      "eventId": "phase-0-start-f0-03",
+      "at": "2026-09-04T23:11:17Z",
+      "ticketId": "F0-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Bounded provider feasibility exercises began.",
+      "actor": "phase-0-orchestrator"
+    },
+    {
+      "eventId": "phase-0-start-f0-04",
+      "at": "2026-09-04T23:11:17Z",
+      "ticketId": "F0-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Frozen fixture implementation began.",
+      "actor": "phase-0-orchestrator"
+    },
+    {
+      "eventId": "status-1788566129209-ptzbc7",
+      "at": "2026-09-04T23:55:29.210Z",
+      "ticketId": "F0-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Public project foundation, Apache-2.0 license, pinned Node 24/npm 12 package, and provider-neutral architecture verified."
+    },
+    {
+      "eventId": "status-1788566129581-k415h4",
+      "at": "2026-09-04T23:55:29.582Z",
+      "ticketId": "F0-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Canonical state/history, overlap-safe usage accounting, dashboard rendering, and behavior tests verified."
+    },
+    {
+      "eventId": "status-1788566129953-6jbnpd",
+      "at": "2026-09-04T23:55:29.954Z",
+      "ticketId": "F0-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Bounded native launch, explicit resume, and provider-specific control evidence observed; isolated authenticated execution remains a documented later-phase gate."
+    },
+    {
+      "eventId": "status-1788566130309-3oso4j",
+      "at": "2026-09-04T23:55:30.309Z",
+      "ticketId": "F0-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Frozen inputs, checksums, expected RED starters, and the due-dates base GREEN browser contract reproduced."
+    }
+  ]
+}

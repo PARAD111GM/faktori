@@ -29,7 +29,8 @@ production deployment, credential export, reset, paid-route switch, or product m
 
 ## Observed verification
 
-- Focused integrations: 4 files, 18 tests passed.
+- Focused integrations: 5 files, 19 tests passed, including an end-to-end
+  action-admission-to-GitHub effect/revocation test.
 - Full pinned `npm run check`: strict typecheck, 30 files / 260 tests, build,
   and clean packed-CLI verification passed under Node 24.20.0/npm 12.0.2.
 

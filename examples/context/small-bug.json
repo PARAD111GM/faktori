@@ -1,0 +1,71 @@
+{
+  "revision": "billing-hierarchy@r3",
+  "globalConstraints": [
+    { "id": "secret-handling", "text": "Never expose credentials in artifacts or logs.", "revision": "policy@r7" }
+  ],
+  "nodes": [
+    {
+      "id": "billing-product",
+      "kind": "planning",
+      "label": "Billing",
+      "objective": { "id": "billing-objective", "text": "Maintain reliable billing.", "revision": "intent@r2" },
+      "criteria": [{ "id": "billing-criterion", "text": "Billing changes preserve public API compatibility.", "revision": "criteria@r2" }],
+      "constraints": [{ "id": "public-api", "text": "Preserve public API compatibility.", "revision": "policy@r4" }],
+      "designReferences": [{ "id": "billing-design", "text": "Approved billing architecture.", "revision": "design@r5", "approved": true }],
+      "artifacts": [{ "id": "billing-artifact", "text": "Billing artifact revision.", "revision": "artifact@r9" }],
+      "commands": [{ "command": "npm test -- billing", "revision": "commands@r2" }],
+      "authority": [{ "id": "billing-authority", "text": "Human merge authority applies.", "revision": "authority@r3" }],
+      "evidenceRequirements": [{ "id": "billing-evidence", "text": "Record acceptance evidence.", "revision": "evidence@r2" }]
+    },
+    {
+      "id": "billing-feature",
+      "kind": "planning",
+      "label": "Billing maintenance",
+      "parentId": "billing-product",
+      "objective": { "id": "feature-objective", "text": "Maintain currency calculations.", "revision": "intent@r3" },
+      "criteria": [{ "id": "feature-criterion", "text": "Currency behavior remains deterministic.", "revision": "criteria@r3" }],
+      "constraints": [{ "id": "billing-boundary", "text": "Keep changes inside the billing module.", "revision": "feature-policy@r2" }],
+      "designReferences": [{ "id": "currency-design", "text": "Approved currency design.", "revision": "design@r6", "approved": true }],
+      "artifacts": [{ "id": "feature-artifact", "text": "Feature artifact revision.", "revision": "artifact@r10" }],
+      "commands": [{ "command": "npm test -- currency", "revision": "commands@r3" }],
+      "authority": [{ "id": "feature-authority", "text": "Independent review applies.", "revision": "authority@r4" }],
+      "evidenceRequirements": [{ "id": "feature-evidence", "text": "Record test evidence.", "revision": "evidence@r3" }]
+    },
+    {
+      "id": "rounding-bug",
+      "kind": "executable",
+      "label": "Fix invoice rounding",
+      "parentId": "billing-feature",
+      "objective": { "id": "bug-objective", "text": "Correct the invoice rounding defect.", "revision": "bug-intent@r1" },
+      "criteria": [{ "id": "bug-criterion", "text": "Half-cent invoices round consistently.", "revision": "bug-criteria@r1" }],
+      "constraints": [{ "id": "rounding-scope", "text": "Change only the rounding helper.", "revision": "bug-scope@r1", "refinesConstraintId": "billing-boundary" }],
+      "designReferences": [{ "id": "rounding-design", "text": "Approved rounding note.", "revision": "design@r7", "approved": true }],
+      "artifacts": [{ "id": "rounding-artifact", "text": "Current rounding helper revision.", "revision": "artifact@r11" }],
+      "commands": [{ "command": "npm test -- rounding", "revision": "commands@r4" }],
+      "authority": [{ "id": "bug-authority", "text": "Autonomous implementation is limited to approved scope.", "revision": "authority@r5" }],
+      "evidenceRequirements": [{ "id": "bug-evidence", "text": "Capture failing and passing rounding cases.", "revision": "evidence@r4" }]
+    },
+    {
+      "id": "currency-contract",
+      "kind": "planning",
+      "label": "Currency contract",
+      "parentId": "billing-feature",
+      "objective": { "id": "contract-objective", "text": "Define currency precision behavior.", "revision": "contract@r1" },
+      "criteria": [{ "id": "contract-criterion", "text": "Precision units are documented.", "revision": "contract-criteria@r1" }],
+      "constraints": [],
+      "designReferences": [{ "id": "contract-design", "text": "Approved currency contract design.", "revision": "design@r8", "approved": true }],
+      "artifacts": [{ "id": "contract-artifact", "text": "Currency contract revision.", "revision": "artifact@r12" }],
+      "commands": [{ "command": "npm test -- currency-contract", "revision": "commands@r5" }],
+      "authority": [{ "id": "contract-authority", "text": "Specification approval applies.", "revision": "authority@r6" }],
+      "evidenceRequirements": [{ "id": "contract-evidence", "text": "Capture contract review evidence.", "revision": "evidence@r5" }]
+    }
+  ],
+  "dependencies": [
+    {
+      "id": "rounding-needs-currency-contract",
+      "fromId": "rounding-bug",
+      "toId": "currency-contract",
+      "contract": { "id": "minor-unit-contract", "text": "Use the documented minor currency unit precision.", "revision": "contract@r1" }
+    }
+  ]
+}

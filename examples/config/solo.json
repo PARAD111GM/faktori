@@ -1,0 +1,33 @@
+{
+  "factory": {
+    "id": "solo-studio",
+    "name": "Solo Studio",
+    "defaults": {
+      "providerId": "codex",
+      "environmentId": "local",
+      "budget": {
+        "maxConcurrentRuns": 1,
+        "maxRetries": 0,
+        "maxRuntimeMinutes": 45,
+        "maxTokens": 30000,
+        "strictSpending": true
+      }
+    }
+  },
+  "providers": [
+    {
+      "id": "codex",
+      "kind": "codex",
+      "capabilities": ["isolated", "native", "subagents", "token-limit"]
+    }
+  ],
+  "environments": [
+    { "id": "local", "kind": "local" }
+  ],
+  "products": [
+    { "id": "website", "name": "Studio website" }
+  ],
+  "pods": [
+    { "id": "website-pod", "productId": "website" }
+  ]
+}

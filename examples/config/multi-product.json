@@ -1,0 +1,39 @@
+{
+  "factory": {
+    "id": "acme-products",
+    "name": "Acme Products",
+    "defaults": {
+      "providerId": "codex",
+      "environmentId": "local",
+      "budget": {
+        "maxConcurrentRuns": 1,
+        "maxRetries": 1,
+        "maxRuntimeMinutes": 60,
+        "maxTokens": 50000,
+        "strictSpending": true
+      }
+    }
+  },
+  "providers": [
+    {
+      "id": "codex",
+      "kind": "codex",
+      "capabilities": ["isolated", "native", "subagents", "token-limit"]
+    }
+  ],
+  "environments": [
+    { "id": "local", "kind": "local" },
+    { "id": "preview", "kind": "preview" }
+  ],
+  "products": [
+    { "id": "storefront", "name": "Storefront" },
+    {
+      "id": "catalog-api",
+      "name": "Catalog API",
+      "overrides": { "environmentId": "preview", "budget": { "maxRetries": 0 } }
+    }
+  ],
+  "pods": [
+    { "id": "storefront-pod", "productId": "storefront" }
+  ]
+}

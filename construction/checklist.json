@@ -447,7 +447,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Claude transport, exact prompt authorization, explicit resume, native lifecycle, outcome normalization, and common delivery integration are implemented and deterministic tests pass. A pre-remediation live start/resume succeeded; the corrected live chain remains pending explicit approval to send its bounded prompt to external providers."
+        "Claude transport, exact prompt authorization, explicit resume, native lifecycle, outcome normalization, and common delivery integration are implemented and deterministic tests pass. The corrected live start and exact-session resume completed. Complete artifact text remained in the durable provider event while the diagnostic final summary stayed bounded."
       ],
       "evidence": [
         {
@@ -484,7 +484,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Cursor ACP transport, exact prompt authorization, request and notification handling, explicit session load, and confirmed process-group exit are implemented and deterministic tests pass. Unknown or mismatched initial identities quarantine the transport without blind signaling. A corrected live chain remains pending explicit external-provider approval."
+        "Cursor ACP transport, exact prompt authorization, request and notification handling, explicit session load, and confirmed process-group exit are implemented and deterministic tests pass. Unknown or mismatched initial identities quarantine the transport without blind signaling. Corrected live implementation, executable verification, and exact-session load completed."
       ],
       "evidence": [
         {
@@ -523,7 +523,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Bounded durable delegation, ownership, per-workstream allocation, exact-schema portable result evidence, artifact transfer, restart recovery, concurrent admission, and orphaned-admission repair are implemented and deterministic tests pass. Phase completion remains gated by the corrected live chain."
+        "Bounded durable delegation, ownership, per-workstream allocation, exact-schema portable result evidence, artifact transfer, restart recovery, concurrent admission, and orphaned-admission repair are implemented and deterministic tests pass. The corrected live coordinator recovered handoffs across restart without duplication."
       ],
       "evidence": [
         {
@@ -561,7 +561,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "A historical Claude to Cursor to Codex artifact chain succeeded before consequential review remediation. Deterministic coverage now proves exact prompt binding, sanitized result handoffs, restart behavior, and fail-closed Cursor identity and exit boundaries. The one corrected live chain did not start because explicit user approval is required for external-provider transmission."
+        "The corrected Claude to Cursor to Codex chain reached independent review. Codex returned CHANGES REQUIRED because the private harness used the bounded diagnostic final summary as plan.md. The complete Claude result remained in the durable provider event, was recovered and locally verified, and the harness now uses that explicit artifact path. Fresh Codex review of the recovered plan is the remaining live gate; Claude and Cursor must not be rerun."
       ],
       "evidence": [
         {

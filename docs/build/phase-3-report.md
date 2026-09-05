@@ -1,8 +1,9 @@
 # Phase 3 implementation checkpoint
 
-Status: implementation and deterministic verification are complete. Phase 3
-acceptance is blocked on one corrected live provider-portability run and Build
-Manager exact-head acceptance.
+Status: implementation and deterministic verification are complete. The
+corrected live chain ran and preserved a `CHANGES REQUIRED` review. Phase 3
+acceptance is blocked on a fresh independent review of the recovered complete
+plan, followed by Build Manager exact-head acceptance.
 
 ## Scope and source
 
@@ -21,10 +22,10 @@ Manager exact-head acceptance.
 
 | Ticket | Current state | Evidence |
 | --- | --- | --- |
-| F3-01 | In progress | Claude streaming JSON, explicit start/resume, controlled environment, exact prompt authorization, truthful outcomes/usage, and durable native lifecycle are implemented. Direct and common-delivery tests pass. A historical live start/resume succeeded before the final prompt-binding remediation; the corrected live route is pending. |
-| F3-02 | In progress | Cursor ACP lifecycle, serialized permission/question/plan replies, notification handling, explicit session load, exact prompt authorization, cancellation, and confirmed process-group exit are implemented. Unknown or mismatched initial identities quarantine the transport without blind signaling. Tests pass; corrected live confirmation is pending. |
-| F3-03 | In progress | Durable child admission, explicit ownership, per-workstream workspace allocation, concurrent admission, artifact transfer, exact-schema sanitized result evidence, restart recovery, cancellation, and orphaned-admission repair are implemented and tested. Phase completion remains gated by the corrected live chain. |
-| F3-04 | In progress | One historical Claude → Cursor → Codex artifact chain completed, but consequential review changed prompt binding, result handoff, admission recovery, and exit confirmation afterward. Deterministic regression coverage passes; the corrected chain has not run. |
+| F3-01 | In progress | Claude streaming JSON, explicit start/resume, controlled environment, exact prompt authorization, truthful outcomes/usage, and durable native lifecycle are implemented. Direct/common-delivery tests pass, and the corrected live start plus exact-session resume completed. |
+| F3-02 | In progress | Cursor ACP lifecycle, serialized permission/question/plan replies, notification handling, explicit session load, exact prompt authorization, cancellation, and confirmed process-group exit are implemented. Unknown or mismatched initial identities quarantine the transport without blind signaling. Tests pass, and corrected live implementation plus exact-session load completed. |
+| F3-03 | In progress | Durable child admission, explicit ownership, per-workstream workspace allocation, concurrent admission, artifact transfer, exact-schema sanitized result evidence, restart recovery, cancellation, and orphaned-admission repair are implemented and tested. The corrected live chain preserved handoffs across restart without duplicates. |
+| F3-04 | In progress | The corrected Claude → Cursor → Codex chain reached independent review. Codex returned `CHANGES REQUIRED` because the private harness wrote the intentionally bounded diagnostic summary as `plan.md`. The complete Claude result was recovered from the retained durable event and locally verified; fresh independent review remains required. |
 
 Canonical status and append-only transitions are in
 `construction/checklist.json`; `construction/dashboard.html` is the generated
@@ -122,7 +123,8 @@ Observed with Node `v24.20.0` and npm `12.0.2`:
 | Gate | Result |
 | --- | --- |
 | Focused changed-boundary suite | 8 files, 113 tests passed. |
-| Full `npm run check` | Exit 0: strict TypeScript, 26 test files and 241 tests, emitted build, and packed CLI verification. |
+| Full `npm run check` | Exit 0: strict TypeScript, 26 test files and 242 tests, emitted build, and packed CLI verification. |
+| Summary/artifact separation | Claude regression confirms complete terminal result text remains in normalized events while `final.summary` stays diagnostic-sized. |
 | Prompt mutation/authorization | Exact-byte success and unapproved-prompt denial pass for Claude, Cursor, and Codex paths. |
 | Cursor identity/exit negatives | Unknown, mismatched, and failed identity probes quarantine without signals; lingering exact groups retain the slot through failed TERM/KILL confirmation. |
 | Delegation/handoff negatives | Private/session/native/nested fields, forged artifacts, cross-parent artifacts, duplicate ownership, and orphaned admission paths fail closed. |
@@ -151,18 +153,42 @@ This observation remains useful provider-feasibility evidence, but it cannot
 prove the post-review prompt-binding, sanitized-handoff, and confirmed-exit
 code. It is therefore not used to mark F3-01 through F3-04 complete.
 
-### Blocked corrected proof
+### Corrected live chain — `CHANGES REQUIRED`
 
-The Build Manager bounded one corrected native chain using existing subscription
-routes. The local execution gate rejected that run before launch because it
-would transmit the Phase 3 prompts and scratch artifacts to external Claude,
-Cursor, and Codex services without explicit user approval. The run did not
-start, no provider work was repeated, and the gate was not bypassed.
+After explicit owner approval, one corrected native chain ran through the
+normal execution gate using existing subscription routes. It observed:
 
-Completion requires the user to approve that exact bounded external-provider
-transmission. After it passes, the orchestrator must record the new evidence,
-mark the four tickets complete, regenerate construction records, commit the
-exact candidate, and obtain Build Manager exact-head acceptance.
+1. Claude planning and exact-session resume completed;
+2. Cursor created and verified the expected fixture, then loaded the exact
+   session successfully;
+3. the coordinator restarted and recovered handoffs without duplication; and
+4. Codex reran the verifier, confirmed the implementation and verifier digests,
+   and returned `CHANGES REQUIRED` because `plan.md` ended mid-requirement.
+
+The failure was a private harness defect, not provider output loss or shipped
+handoff corruption. `final.summary` is intentionally diagnostic-sized. The
+harness incorrectly treated it as an artifact channel. The complete 955-byte
+Claude result remained in the durable normalized provider event. The harness
+now derives `plan.md` from that exact retained terminal event and verifies its
+session, outcome, type, and 16,000-byte artifact bound. A regression proves
+complete provider text remains in normalized events while `final.summary`
+stays bounded.
+
+The preserved failed-chain evidence is:
+
+| Artifact | Digest |
+| --- | --- |
+| Truncated summary-derived plan | `sha256:66cda2ba9dbc9aae85e4d57e5bdce0b47ea9ceb7ebe02e8111236bc3f5436984` |
+| Recovered complete plan | `sha256:890fd47fff503da0c78ada9fadc74ffd83a21fc6d2fd310814cabebb8bcd23eb` |
+| Cursor counter | `sha256:0f20c3565209c71b9d68497ec02339b4dfeadedbdbe50fd0c75f7af181de3099` |
+| Cursor verifier | `sha256:d96481859a2058e237ff2760b801b717508efa5639a40a1aa2ea9698f94820af` |
+| `CHANGES REQUIRED` review | `sha256:8cbc7ea37dfaf489ccec2f68dbab7c607498ff4d40df4c50926503c94fecdf66` |
+
+Local recovery confirmed every required plan clause, the exact counter bytes,
+and another `verification passed` verifier exit 0. No Claude or Cursor work was
+restarted. Final live acceptance still requires a fresh independent review of
+the recovered complete plan and unchanged saved Cursor artifacts; that would
+be an additional external provider run and needs explicit owner authorization.
 
 ## Trust, usage, and routing
 
@@ -172,7 +198,7 @@ remains Codex-specific and does not widen this claim. No credentials were
 copied; authentication remained in each vendor CLI's own store.
 
 Phase 3 revision 1 estimates 2,400,000 tokens. The latest committed public
-summary records a 1,588,601-token overlap-safe lower bound; three specialist
+summary records a 1,741,225-token overlap-safe lower bound; three specialist
 measurements and parent/child coverage remain unknown, and the manager sample
 is not added because overlap is unknown. The estimate is advisory planning
 data, not a cap, invoice, spending permission, or completion criterion.
@@ -181,9 +207,10 @@ Specialist routing used Terra-high for the Claude, Cursor, and delegation
 implementation lanes; Sol-high for orchestration and the consequential boundary
 review; and Luna-medium for the public compatibility note. Ownership was
 explicit and writers were instructed to preserve concurrent work. The final
-constraint prohibited new specialist/reviewer inference; remaining work stayed
-deterministic except for the single live chain that was authorized by the
-manager but stopped by the external-transmission approval gate.
+constraint prohibited new specialist/reviewer inference. The owner authorized
+one corrected live chain; it ran once and failed closed at independent review.
+The harness fix and artifact recovery were deterministic, with no repeated
+provider work.
 
 The `agent-teams` skill shaped ownership, seam-first parallelism, and centralized
 integration. User, manager, and repository construction rules remained
@@ -192,6 +219,7 @@ authoritative.
 ## Remaining gate
 
 Phase 3 is not complete. The first exact blocking gate is explicit user approval
-for the one bounded corrected Claude → Cursor → Codex native chain. Build
-Manager exact-head review remains a separate later gate; passing tests or a
-provider final cannot substitute for it.
+for one fresh Codex independent review using the recovered complete plan and
+unchanged Cursor artifacts. Claude and Cursor must not be rerun. Build Manager
+exact-head review remains a separate later gate; passing tests or a provider
+final cannot substitute for either gate.

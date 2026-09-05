@@ -146,6 +146,22 @@ describe('bounded Claude print adapter', () => {
     expect(runner.calls).toHaveLength(1);
   });
 
+  it('keeps complete provider text in normalized events while the final summary stays diagnostic-sized', async () => {
+    const completeArtifact = `Plan start\n${'verify the accepted artifact exactly\n'.repeat(20)}Plan end`;
+    expect(completeArtifact.length).toBeGreaterThan(320);
+    const runner = fakeRunner({ exitCode: 0, stdout: jsonl(
+      { type: 'system', subtype: 'init', session_id: '22222222-2222-4222-8222-222222222222' },
+      { type: 'result', subtype: 'success', session_id: '22222222-2222-4222-8222-222222222222', result: completeArtifact },
+    ) });
+
+    const result = await adapter(runner).start(intent(), context());
+
+    expect(result.final.outcome).toBe('completed');
+    expect(result.final.summary.length).toBe(320);
+    expect(result.final.summary).not.toBe(completeArtifact);
+    expect(result.events.find((event) => event.type === 'result').raw.result).toBe(completeArtifact);
+  });
+
   it.each([
     ['factory', intent({ target: { ...intent().target, factoryId: 'other-factory' } }), binding()],
     ['product', intent({ target: { ...intent().target, productId: 'other-product' } }), binding()],

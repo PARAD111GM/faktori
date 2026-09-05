@@ -6,7 +6,7 @@
 
 **Historical live profile:** native execution with explicit host trust
 
-**Current acceptance state:** corrected live chain pending explicit user approval
+**Current acceptance state:** corrected chain reached `CHANGES REQUIRED`; fresh independent review pending
 
 This note records the Phase 3 compatibility boundary and the sanitized live
 portability evidence. It does not claim provider behavior that was not
@@ -115,12 +115,22 @@ provider-feasibility evidence, not final acceptance evidence for the later
 prompt-binding, sanitized-result, admission-recovery, and exit-confirmation
 changes. It is not a claim of deployment, publication, or merge authority.
 
-One corrected chain was prepared to exercise the exact current path. It did not
-start: the local execution gate requires explicit user approval before sending
-the bounded prompts and scratch artifacts to the external Claude, Cursor, and
-Codex services. The gate was not bypassed. Deterministic tests cover the
-negative authorization, sanitization, recovery, and process-identity cases
-while that live approval remains pending.
+After explicit owner approval, one corrected chain exercised the current path.
+Claude planning/resume, Cursor implementation/session-load, executable
+verification, and restart-safe handoffs succeeded. Codex independently reran
+the verifier and confirmed the implementation/verifier digests, but returned
+`CHANGES REQUIRED`: the private harness had persisted Claude's intentionally
+bounded `final.summary` as `plan.md`, so the plan ended mid-requirement.
+
+The complete 955-byte Claude result was not lost. It remained in the durable
+normalized provider event and was recovered locally with digest
+`sha256:890fd47fff503da0c78ada9fadc74ffd83a21fc6d2fd310814cabebb8bcd23eb`.
+The harness now obtains the artifact from that exact terminal event while
+retaining the bounded summary contract. Local checks confirmed every required
+plan clause, exact counter bytes, and verifier exit 0 with
+`verification passed`. Claude and Cursor were not rerun. A fresh Codex review
+of the recovered plan and unchanged saved artifacts remains required and needs
+explicit authorization as an additional external provider run.
 
 ## Trust and evidence boundaries
 

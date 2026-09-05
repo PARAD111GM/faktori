@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "phase": 3,
-  "generatedAt": "2026-09-05T06:22:09.153Z",
+  "generatedAt": "2026-09-05T07:07:27.407Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 1588601,
+    "total": 1741225,
     "excludedChildCount": 3,
     "kind": "overlap-safe-lower-bound"
   },
@@ -54,18 +54,23 @@
   "coverageGaps": [
     {
       "group": "phase-3-construction",
-      "retainedTotal": 1588601,
+      "retainedTotal": 1741225,
       "excludedMeasurements": 1
     }
   ],
   "records": {
-    "accepted": 9,
+    "accepted": 10,
     "duplicates": 0
   },
   "budget": {
     "estimate": 2400000,
-    "remaining": 811399,
-    "percentUsed": 66.19
+    "remaining": 658775,
+    "percentUsed": 72.55
   },
-  "notices": []
+  "notices": [
+    {
+      "threshold": 70,
+      "type": "budget-threshold"
+    }
+  ]
 }

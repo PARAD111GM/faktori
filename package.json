@@ -109,8 +109,8 @@
     "prepack": "npm run build",
     "build:status": "node scripts/update-build-status.mjs",
     "build:dashboard": "node scripts/render-build-dashboard.mjs --checklist construction/checklist.json --summary construction/phase-summary.json --output construction/dashboard.html",
-    "build:usage": "node scripts/build-usage.mjs summarize --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 700000 --phase 6",
-    "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 700000 --phase 6"
+    "build:usage": "node scripts/build-usage.mjs summarize --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 1300000 --phase 7",
+    "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 1300000 --phase 7"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

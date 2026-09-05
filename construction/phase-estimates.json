@@ -191,6 +191,21 @@
       "assumptions": ["The estimate includes manager, implementer, two bounded specialists, verification, rework and contingency.","It is a soft planning estimate and the native goal remains uncapped.","Account percentage is not token-convertible and is monitored separately.","Unknown or overlapping telemetry remains unknown and never weakens acceptance."],
       "baseline": {"manager":"Adjacent private phase-6-manager-baseline.json; raw provenance is not committed."},
       "revisionNotes": ["No reset credit or paid usage was authorized; estimates are planning data rather than hard stops."]
+    },
+    {
+      "phase": 7,
+      "hardCeiling": false,
+      "confidence": "low",
+      "currentRevision": 3,
+      "estimateTokens": 1300000,
+      "revisions": [
+        {"revision":1,"estimateTokens":600000,"allocations":{"managerCoordination":40000,"implementerOrchestrationAndIntegration":180000,"specialistDelivery":140000,"verificationAndRework":180000,"contingency":60000},"rationale":"Manager-provided advisory Phase 7 estimate for fresh cold-start, host and frozen comparison evidence, live-target eligibility, release audit, and bounded remediation."},
+        {"revision":2,"estimateTokens":850000,"allocations":{"managerCoordination":60000,"implementerOrchestrationAndIntegration":260000,"specialistDelivery":220000,"verificationAndRework":230000,"contingency":80000},"rationale":"Reforecast after the 605,153-token overlap-safe implementer measurement exceeded the initial estimate. The first public cold-start exposed a missing product-import and Console-configuration path, requiring a security-hardened repair, full-gate verification, and a second clean-room run; bounded live proofs and candid release-gate reporting remained."},
+        {"revision":3,"estimateTokens":1300000,"allocations":{"managerCoordination":80000,"implementerOrchestrationAndIntegration":500000,"specialistDelivery":300000,"verificationAndRework":320000,"contingency":100000},"rationale":"Reforecast after the one authorized bounded rerun remained scope-invalid and the manager whole-plan audit found the original executable product-new requirement missing. The increment covers the approved product-add revision chain, concurrency/resume tests, actual Console consumer proof, final deterministic gate, construction records, and candid blocker handoff; it does not fund another provider run."}
+      ],
+      "assumptions": ["The native goal remains uncapped; this estimate is planning data, not a completion criterion.","The phase uses at most two specialists on existing subscriptions and no paid route, reset, or additional service.","Account percentage is monitored separately and is not converted into tokens.","Missing Twinzy, Linux, WSL2, Docker, or incumbent resources remain explicit blockers rather than fabricated evidence.","Parent and child overlap remains unknown unless telemetry proves otherwise; overlapping counters are never summed."],
+      "baseline": {"manager":"Adjacent private phase-7 manager records; raw provenance is not committed."},
+      "revisionNotes": ["Initial account measurement was 93% used / 7% remaining. Four percentage points are an operational reassessment threshold, not a token budget or native cap.","Revisions 2 and 3 change only the planning forecast. The native goal remains uncapped, acceptance is unchanged, account percentage is not token-convertible, and no reset or paid route is authorized."]
     }
   ]
 }

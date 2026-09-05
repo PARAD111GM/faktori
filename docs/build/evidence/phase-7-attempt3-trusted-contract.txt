@@ -1,0 +1,17 @@
+Phase 7 Attempt 3 trusted browser-contract check
+Observed: 2026-09-05
+Runner: unchanged fixtures/task-board/test/browser-contract.mjs loaded from the
+Faktori repository with its genuine installed Playwright package.
+Candidate: the preserved Attempt 3 product server in its temporary proof root.
+Exit code: 1
+
+Failure:
+fixtures/task-board/test/browser-contract.mjs:100
+assert.equal(await page.getByText('Persisted task', { exact: true }).count(), 0)
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+1 !== 0
+
+The failure occurs after server restart and the completed-task delete action.
+This independent result supersedes the candidate's untrusted 1/1 report under
+its hand-written node_modules/playwright compatibility package.

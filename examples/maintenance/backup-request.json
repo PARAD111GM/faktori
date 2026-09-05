@@ -1,0 +1,11 @@
+{
+  "format": "faktori.backup-request/v1",
+  "factoryId": "my-local-factory",
+  "sourceRoot": "/absolute/path/my-factory",
+  "runtimeVersion": "0.0.0",
+  "stateFormatVersion": 1,
+  "journalPath": ".faktori/journal/events.jsonl",
+  "configurationPaths": ["factory/config.json"],
+  "artifactPaths": ["products"],
+  "operationalPaths": [".faktori/journal/events.jsonl", ".faktori/runs"]
+}

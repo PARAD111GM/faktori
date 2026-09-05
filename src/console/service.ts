@@ -1,6 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { readFile, stat } from 'node:fs/promises';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -159,6 +159,13 @@ function publicRun(coordinator: DurableCoordinator, snapshot: RunSnapshot): Reco
     createdAt: snapshot.intent.createdAt,
     reservation: snapshot.reservation,
     authority: { epoch: snapshot.authorityEpoch, revoked: snapshot.authorityRevoked },
+    recovery: snapshot.recovery.map((requirement) => ({
+      recoveryId: requirement.recoveryId,
+      reason: requirement.reason,
+      priorState: requirement.priorState,
+      unresolvedOperationIds: requirement.unresolvedOperationIds,
+      requiredAt: requirement.requiredAt,
+    })),
     messages: snapshot.messages.map((message) => ({ messageId: message.messageId, createdAt: message.createdAt, delivery: message.delivery })),
     providerRequests: publicProviderRequests(coordinator, snapshot.intent.runId),
     result: result === undefined ? undefined : {
@@ -380,13 +387,17 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   app.get('/*', async (request, reply) => {
     const params = request.params as Record<string, unknown>;
     const path = String(params['*'] ?? '');
-    const root = resolve(options.assetsDirectory ?? installedAssetsDirectory());
-    const candidate = resolve(join(root, path.length === 0 ? 'index.html' : normalize(path)));
-    if (!candidate.startsWith(`${root}/`) && candidate !== root) return reply.code(404).send();
+    const configuredRoot = resolve(options.assetsDirectory ?? installedAssetsDirectory());
+    const candidate = resolve(join(configuredRoot, path.length === 0 ? 'index.html' : normalize(path)));
+    if (!candidate.startsWith(`${configuredRoot}/`) && candidate !== configuredRoot) return reply.code(404).send();
     try {
-      if (!(await stat(candidate)).isFile()) return reply.code(404).send();
-      const body = await readFile(candidate);
-      if (extname(candidate) !== '.html') return reply.type(MIME[extname(candidate)] ?? 'application/octet-stream').send(body);
+      const root = await realpath(configuredRoot);
+      const details = await lstat(candidate);
+      if (details.isSymbolicLink() || !details.isFile()) return reply.code(404).send();
+      const resolvedCandidate = await realpath(candidate);
+      if (!resolvedCandidate.startsWith(`${root}/`)) return reply.code(404).send();
+      const body = await readFile(resolvedCandidate);
+      if (extname(resolvedCandidate) !== '.html') return reply.type(MIME[extname(resolvedCandidate)] ?? 'application/octet-stream').send(body);
       const document = body.toString('utf8').replace('</head>', `<meta name="faktori-console-token" content="${htmlAttribute(options.commandToken)}"></head>`);
       return reply.type('text/html; charset=utf-8').send(document);
     } catch { return reply.code(404).send(); }

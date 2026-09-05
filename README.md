@@ -12,14 +12,16 @@ integration identifiers belong here.
 
 ## Status
 
-Phases 0–4 are accepted. The Phase 5 candidate adds an installed loopback
+Phases 0–5 are accepted. Phase 6 adds installed backup/restore and supported
+runtime-update boundaries, plus a public maintenance kit. The Phase 5
+candidate added an installed loopback
 Console over the durable coordinator, native Codex/Claude/Cursor and isolated
 Codex runtime routes, replay-safe owner controls, explicit provider request
 responses, bounded event-driven Factory GM diagnosis, and resource/attention
 visibility. The package build emits installable JavaScript and declarations;
-its packed CLI is verified from a clean temporary install. This candidate does
-not authorize Phase 6 until Build Manager acceptance. Frozen fixtures remain
-test contracts, not benchmark results.
+its packed CLI is verified from a clean temporary install. This phase does not
+authorize Phase 7 or a comparison run. Frozen fixtures remain test contracts,
+not benchmark results.
 
 ## Start here
 
@@ -40,6 +42,8 @@ test contracts, not benchmark results.
   profiles, Codex adapter, cancellation, and action authority boundaries.
 - [Local Console and Factory GM](docs/console.md) — loopback service, live
   views, owner controls, provider routes, and bounded health diagnosis.
+- [Maintenance kit](docs/maintenance/README.md) — backup, separate restore,
+  reconciliation, update preview/apply, troubleshooting, and compatibility.
 - [Comparison fixtures](docs/comparison/README.md) — frozen, reproducible cases.
 - [Implementation plan](docs/implementation-plan.md) — accepted V1 specification.
 
@@ -60,7 +64,9 @@ Status updates require explicit safe arguments:
 npm run build:status -- --checklist construction/checklist.json --ticket F0-02 --status in_progress --reason "..."
 ```
 
-Node.js 24 LTS and npm 12 are the supported construction setup. Install with
+Node.js 24 LTS and npm 12 are the supported construction setup on macOS and
+Linux. WSL2 is not yet verified; see the [compatibility matrix](docs/maintenance/compatibility.md).
+Install with
 dependency scripts disabled, then verify the pinned `better-sqlite3` native
 artifact through a real open, write, query, and rebuild before runtime use. The canonical
 construction records are [checklist](construction/checklist.json)

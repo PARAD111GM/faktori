@@ -1,6 +1,7 @@
 {
   "name": "faktori",
   "version": "0.0.0",
+  "faktoriStateFormatVersion": 1,
   "private": false,
   "description": "A self-hosted, vendor-neutral software factory for small teams.",
   "license": "Apache-2.0",
@@ -86,6 +87,10 @@
     "./console": {
       "types": "./dist/console/index.d.ts",
       "import": "./dist/console/index.js"
+    },
+    "./maintenance": {
+      "types": "./dist/maintenance/index.d.ts",
+      "import": "./dist/maintenance/index.js"
     }
   },
   "engines": {
@@ -104,8 +109,8 @@
     "prepack": "npm run build",
     "build:status": "node scripts/update-build-status.mjs",
     "build:dashboard": "node scripts/render-build-dashboard.mjs --checklist construction/checklist.json --summary construction/phase-summary.json --output construction/dashboard.html",
-    "build:usage": "node scripts/build-usage.mjs summarize --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 2400000 --phase 3",
-    "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 2400000 --phase 3"
+    "build:usage": "node scripts/build-usage.mjs summarize --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 700000 --phase 6",
+    "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 700000 --phase 6"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

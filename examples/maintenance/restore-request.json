@@ -1,0 +1,7 @@
+{
+  "format": "faktori.restore-request/v1",
+  "destinationRoot": "/absolute/path/restored-factory",
+  "expectedFactoryId": "my-local-factory",
+  "expectedSourceRoot": "/absolute/path/my-factory",
+  "rebindConfigurationPaths": true
+}

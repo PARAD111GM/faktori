@@ -175,7 +175,19 @@ export type RunEventKind =
   | 'console.command'
   | 'gm.finding.upserted'
   | 'gm.improvement.proposed'
+  | 'recovery.required'
+  | 'recovery.resolved'
   | 'reservation.released';
+
+export interface RecoveryRequirement {
+  recoveryId: string;
+  sourceBackupId: string;
+  reason: 'restored_worker_or_effect_uncertain';
+  priorState: RunState;
+  worker?: WorkerIdentity;
+  unresolvedOperationIds: string[];
+  requiredAt: string;
+}
 
 export interface RunEvent {
   format: 'faktori.run-event/v1';
@@ -244,6 +256,7 @@ export interface RunSnapshot {
   authorityEpoch: number;
   authorityRevoked: boolean;
   unresolvedEffects: DurableEffectIntent[];
+  recovery: RecoveryRequirement[];
   messages: QueuedMessage[];
 }
 

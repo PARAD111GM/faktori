@@ -5,11 +5,17 @@ import {
   approveProvisioningProposal,
   assembleContextPacket,
   createDiscoveryRecord,
+  createFactoryBackup,
   createProvisioningProposal,
+  initializeRuntimeInstallation,
+  applyRuntimeUpdate,
+  previewRuntimeUpdate,
   previewNewProduct,
   provisionApprovedProposal,
+  reconcileRestoredFactory,
   renderProvisioningProposal,
   resolveFactoryConfig,
+  restoreFactoryBackup,
   SqliteProjection,
   startLocalConsoleFromFile,
 } from './index.ts';
@@ -22,6 +28,12 @@ const HELP = `Usage:
   faktori provision apply <bundle.json> <absolute-root>
   faktori product preview <request.json>
   faktori runtime rebuild <journal.jsonl> <projection.sqlite>
+  faktori backup create <request.json> <backup-directory>
+  faktori backup restore <backup-directory> <restore-request.json>
+  faktori backup reconcile <request.json>
+  faktori update initialize <request.json>
+  faktori update preview <request.json>
+  faktori update apply <approved-request.json>
   faktori console serve <local-console.json>
 
 Commands read explicit files and write JSON to stdout. Provision apply changes
@@ -115,6 +127,39 @@ async function run(argv: string[]): Promise<void> {
     } finally {
       projection.close();
     }
+    return;
+  }
+
+  if (group === 'backup' && action === 'create') {
+    if (!extra) throw new Error('a new backup directory is required');
+    print(await createFactoryBackup(await json(source, 'backup request'), extra));
+    return;
+  }
+
+  if (group === 'backup' && action === 'restore') {
+    if (!source) throw new Error('a backup directory is required');
+    if (!extra) throw new Error('a restore request with separate destination and path-rebinding confirmation is required');
+    print(await restoreFactoryBackup(source, await json(extra, 'restore request')));
+    return;
+  }
+
+  if (group === 'backup' && action === 'reconcile') {
+    print(await reconcileRestoredFactory(await json(source, 'restore reconciliation request')));
+    return;
+  }
+
+  if (group === 'update' && action === 'initialize') {
+    print(await initializeRuntimeInstallation(await json(source, 'update initialization request')));
+    return;
+  }
+
+  if (group === 'update' && action === 'preview') {
+    print(await previewRuntimeUpdate(await json(source, 'update request')));
+    return;
+  }
+
+  if (group === 'update' && action === 'apply') {
+    print(await applyRuntimeUpdate(await json(source, 'approved update request')));
     return;
   }
 

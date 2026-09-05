@@ -140,6 +140,7 @@ export function snapshotsFromEvents(events: readonly RunEvent[]): RunSnapshot[] 
         authorityEpoch: typedIntent.authority.epoch,
         authorityRevoked: false,
         unresolvedEffects: [],
+        recovery: [],
         messages: [],
       });
       continue;
@@ -181,6 +182,24 @@ export function snapshotsFromEvents(events: readonly RunEvent[]): RunSnapshot[] 
       if (event.kind === 'worker.termination.observed' && receiptData?.outcome === 'completed') snapshot.state = 'cancelled';
     } else if (event.kind === 'effect.unresolved') {
       snapshot.state = 'reconciling';
+    } else if (event.kind === 'recovery.required') {
+      const recovery = objectAt(event.data.recovery);
+      if (recovery !== undefined && typeof recovery.recoveryId === 'string'
+        && !snapshot.recovery.some((item) => item.recoveryId === recovery.recoveryId)) {
+        snapshot.recovery.push(recovery as unknown as RunSnapshot['recovery'][number]);
+        snapshot.state = 'reconciling';
+      }
+    } else if (event.kind === 'recovery.resolved') {
+      const resolution = objectAt(event.data.resolution);
+      if (resolution !== undefined && typeof resolution.recoveryId === 'string') {
+        snapshot.recovery = snapshot.recovery.filter((item) => item.recoveryId !== resolution.recoveryId);
+        snapshot.worker = undefined;
+        snapshot.unresolvedEffects = [];
+        if (resolution.disposition === 'authority_revoked') snapshot.authorityRevoked = true;
+        snapshot.state = resolution.disposition === 'blocked'
+          ? 'blocked'
+          : snapshot.providerResult === undefined ? 'interrupted_uncertain' : terminalState(snapshot.providerResult.outcome);
+      }
     } else if (event.kind === 'authority.revoked') {
       snapshot.authorityRevoked = true;
       snapshot.authorityEpoch = Number(event.data.epoch ?? snapshot.authorityEpoch);

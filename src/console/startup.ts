@@ -478,6 +478,10 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   let app: ReturnType<typeof createConsoleService> | undefined;
   let pollInterval: ReturnType<typeof setInterval> | undefined;
   try {
+    // Reconstruct and quarantine unresolved work before any configured runtime
+    // can admit or launch a new worker. Unknown identity is a blocker, never
+    // evidence that a worker disappeared.
+    await coordinator.recover();
     configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies);
     gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
     observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });

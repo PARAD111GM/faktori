@@ -254,6 +254,9 @@ export class DurableCoordinator {
 
   private async admitExclusive(intent: RunIntent): Promise<AdmissionResult> {
     this.assertClaimed();
+    if (this.snapshots().some((snapshot) => snapshot.recovery.length > 0)) {
+      return { accepted: false, reason: 'restore_reconciliation_required' };
+    }
     const existing = this.snapshots().find((snapshot) => snapshot.intent.admissionKey === intent.admissionKey);
     if (existing !== undefined) {
       if (stable(existing.intent) !== stable(intent)) return { accepted: false, reason: 'admission_key_conflicts_with_existing_intent' };

@@ -1,0 +1,56 @@
+{
+  "format": "faktori.interview/v1",
+  "recordRevision": "computed-by-createDiscoveryRecord",
+  "discovery": {
+    "sources": ["git:acme-web", "cli:codex --version", "host:local"],
+    "sourceRevisions": ["main@a1b2c3d", "codex-1.2.3", "host-inventory@2026-09-04"],
+    "repositories": [{"id": "acme-web", "host": "github", "path": "."}],
+    "providerCliCapabilities": [{"id": "codex", "capabilities": ["isolated", "native", "subagents", "token-limit"]}],
+    "hardware": [{"host": "local", "availableHumanHoursPerWeek": 8}],
+    "environments": [{"id": "local", "kind": "local"}],
+    "existingOwnership": [{"area": "approval-merge-release", "owner": "alex"}]
+  },
+  "interview": {
+    "productScope": "Acme customer portal",
+    "stack": "Node.js service and browser client",
+    "organizationAndOwners": {"organization": "Acme", "owner": "alex", "operator": "alex"},
+    "hierarchyTerminology": {"product": "product", "feature": "feature", "workItem": "task"},
+    "providerPreference": "codex",
+    "financialBudget": {"monthlyServices": 0, "maxTokens": 50000},
+    "humanAttention": {"hoursPerWeek": 8, "reviewWindow": "weekday afternoons"},
+    "approvalMergeReleaseAuthority": {"approver": "alex", "merge": "alex", "release": "alex"},
+    "incidentNotificationRecovery": {"notify": "alex", "channel": "email", "recovery": "rollback and investigate"}
+  },
+  "unknowns": [],
+  "configuration": {
+    "factory": {
+      "id": "acme-factory",
+      "name": "Acme Factory",
+      "defaults": {
+        "providerId": "codex",
+        "environmentId": "local",
+        "budget": {"maxTokens": 50000},
+        "authority": {
+          "requireIntentApproval": true,
+          "requireSpecificationApproval": true,
+          "requireIndependentReview": true,
+          "mergeAuthority": "human",
+          "productionReleaseAuthority": "human",
+          "allowPreviewDeployment": false,
+          "allowLocalDeployment": false,
+          "allowSeparateBilling": false
+        }
+      }
+    },
+    "providers": [{"id": "codex", "kind": "codex", "capabilities": ["isolated", "native", "subagents", "token-limit"]}],
+    "environments": [{"id": "local", "kind": "local"}],
+    "products": [{"id": "portal", "name": "Acme customer portal"}],
+    "pods": [{"id": "portal-pod", "productId": "portal"}]
+  },
+  "proposalInputs": {
+    "componentVersions": {"node": "24.20.0", "faktori": "0.0.0"},
+    "costs": {"recurring": "$0", "incrementalProducts": {"portal": "$0"}},
+    "humanWorkload": ["Owner alex has 8 hours/week and reviews during weekday afternoons."],
+    "tradeoffs": ["Incidents notify alex; recovery is rollback and investigate."]
+  }
+}

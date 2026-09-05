@@ -33,7 +33,18 @@ describe('first-party lifecycle kit', () => {
       expect(guide.toLowerCase()).toContain(dimension);
     }
     expect(Object.keys(record.answers)).toHaveLength(10);
-    for (const answer of Object.values(record.answers)) expect(answer).toMatchObject({ status: 'unresolved', mapsTo: expect.any(String) });
+    const allowedDestination = /^(factory\.defaults\.(providerId|budget|authority)|environments\[\]|discovery\.(interview\.[A-Za-z][A-Za-z0-9]*|inventory\.[A-Za-z][A-Za-z0-9]*)|proposal\.(costs|humanWorkload|tradeoffs|risks)|mappingReview\.laterPhasePending\[\])$/;
+    for (const answer of Object.values(record.answers)) {
+      expect(answer).toMatchObject({ status: 'unresolved', mapsTo: expect.any(Array) });
+      expect(answer.mapsTo.length).toBeGreaterThan(0);
+      for (const destination of answer.mapsTo) expect(destination).toMatch(allowedDestination);
+    }
+    expect(record.answers.providerPreference.mapsTo).toEqual(['discovery.interview.providerPreference', 'factory.defaults.providerId']);
+    expect(record.answers.financialBudget.mapsTo).toEqual(['discovery.interview.financialBudget', 'factory.defaults.budget']);
+    expect(record.answers.humanAttention.mapsTo).toEqual(['discovery.interview.humanAttention', 'proposal.humanWorkload']);
+    expect(record.answers.approvalMergeReleaseAuthority.mapsTo).toEqual(['discovery.interview.approvalMergeReleaseAuthority', 'factory.defaults.authority']);
+    expect(record.answers.environments.mapsTo).toEqual(['discovery.inventory.environments', 'environments[]']);
+    expect(record.answers.incidentNotificationRecovery.mapsTo).toEqual(['discovery.interview.incidentNotificationRecovery', 'mappingReview.laterPhasePending[]', 'proposal.tradeoffs']);
     expect(record.discovery).toHaveProperty('sourceRevisions');
     expect(record).toHaveProperty('unknowns');
   });

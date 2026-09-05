@@ -42,6 +42,12 @@
       "from": {"model":"gpt-5.6-terra","reasoning":"high","result":"strict config and context only; provisioning and CLI suppressions remained after repeated passes"},
       "to": {"model":"gpt-5.6-sol","reasoning":"high","scope":"provisioning and CLI strictification only"},
       "reason": "Observed repeated incomplete remediation warranted a narrow escalation without redoing accepted config or context work."
+    },
+    {
+      "ticket": "F1-02/F1-04",
+      "from": {"interviewMapping":"free-form string destinations checked only for presence"},
+      "to": {"interviewMapping":"explicit retained-destination arrays plus completed interview-to-proposal behavior proof"},
+      "reason": "Manager exact-head verification found mappings to fields absent from the actual runtime contracts; the original lifecycle specialist performed one bounded correction without schema expansion."
     }
   ]
 }

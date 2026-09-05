@@ -182,7 +182,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Discover-first onboarding, revision-bound approval, durable intended-operation identities, containment checks, reconciliation, and user-edit-safe local filesystem and Git scaffolding are verified; remote effects remain explicitly unsupported."
+        "Discover-first onboarding now maps every answer to actual retained configuration, discovery, proposal, or explicitly pending fields. A completed example proves valid resolution, answer retention, proposal creation, and stale-approval invalidation; revision-bound, resumable local provisioning remains verified and remote effects stay unsupported."
       ],
       "evidence": [
         {
@@ -196,6 +196,10 @@
         {
           "label": "Provisioning behavior tests",
           "url": "tests/provisioning/provisioning.test.mjs"
+        },
+        {
+          "label": "Completed interview flow",
+          "url": "examples/provisioning/interview-complete.json"
         }
       ]
     },
@@ -247,7 +251,7 @@
         "reasoning": "medium"
       },
       "notes": [
-        "Eleven concise first-party skills, compact/normal/high-risk lifecycle packaging, stack-neutral Node and Python examples, and deterministic provider entry maps cover the six outcomes, decomposition, design references, evidence, and escalation."
+        "Eleven concise skills, proportional lifecycle packaging, stack-neutral examples, and deterministic provider entry maps are verified. Bootstrap semantic tests now validate every interview destination against the actual retained configuration, discovery, proposal, and pending-field contract."
       ],
       "evidence": [
         {
@@ -811,6 +815,42 @@
       "from": "in_progress",
       "to": "complete",
       "reason": "All six lifecycle outcomes, proportional templates, first-party skill contracts, stack-neutral examples, and deterministic provider entry maps passed semantic and drift tests.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-reopen-f1-02-interview-mapping",
+      "at": "2026-09-05T01:12:28Z",
+      "ticketId": "F1-02",
+      "from": "complete",
+      "to": "in_progress",
+      "reason": "Manager exact-head review found interview mappings to configuration and discovery fields the runtime does not retain; a concrete interview-to-proposal proof is required.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-reopen-f1-04-interview-contract",
+      "at": "2026-09-05T01:12:29Z",
+      "ticketId": "F1-04",
+      "from": "complete",
+      "to": "in_progress",
+      "reason": "Manager exact-head review found the existing skill semantic test verified only that mapsTo was a string, not that it named retained runtime fields.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-final-complete-f1-02-interview-mapping",
+      "at": "2026-09-05T01:16:16Z",
+      "ticketId": "F1-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "All interview destinations now name retained config, discovery, proposal, or explicit pending fields; a completed example proves valid config/discovery/proposal flow and answer-change approval invalidation.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-final-complete-f1-04-interview-contract",
+      "at": "2026-09-05T01:16:17Z",
+      "ticketId": "F1-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Bootstrap semantic coverage now rejects nonexistent interview destinations and asserts the exact multi-target mappings used by configuration, discovery, proposal, and later-phase pending records.",
       "actor": "phase-1-orchestrator"
     }
   ]

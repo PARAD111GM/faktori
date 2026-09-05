@@ -1,6 +1,6 @@
 # Phase 1 completion report
 
-Status: candidate complete; Build Manager acceptance pending.
+Status: candidate complete after bounded manager remediation; Build Manager re-acceptance pending. Supersedes candidate `2ed48828e78d1ded5f53fd7f54a0e0d0f3b9ec88`.
 
 ## Scope and candidate
 
@@ -90,7 +90,7 @@ not claim the unavailable validator itself passed.
 
 ## Manager corrections and judgments
 
-The manager rejected three initially incomplete interpretations during the
+The manager rejected four initially incomplete interpretations during the
 candidate loop:
 
 1. `.mjs` runtime files with hand-maintained `.d.ts` declarations were not the
@@ -104,6 +104,12 @@ candidate loop:
    for product, stack, ownership, terminology, provider, finance, human
    availability, authority, environment, incident, notification, and recovery
    decisions.
+4. Exact-head review found that several interview-template mappings named
+   fields the actual configuration and discovery contracts do not retain. The
+   mappings now use explicit arrays of real configuration, discovery, proposal,
+   or pending-field destinations. A completed example and behavior test prove
+   valid configuration/discovery/proposal construction, owner/attention/incident
+   retention, and approval invalidation after an answer changes.
 
 The product-creation guidance was also tightened so a new product inherits
 defaults and reports incremental cost without automatically creating a pod.
@@ -115,11 +121,11 @@ Node `v24.20.0` runtime and npm `12.0.2`:
 
 | Command or exercise | Observed result |
 | --- | --- |
-| `npm run check` through cached Node 24/npm 12 | Exit 0: strict TypeScript check passed; 10 Vitest files and 63 tests passed; emitted build passed; packed CLI verification passed. |
-| Four Phase 1 core suites | Exit 0: 38 configuration, context, provisioning, and CLI tests passed. |
+| `npm run check` through cached Node 24/npm 12 | Exit 0: strict TypeScript check passed; 11 Vitest files and 64 tests passed; emitted build passed; packed CLI verification passed. |
+| Five Phase 1 core/onboarding suites | Exit 0: 39 configuration, context, provisioning, onboarding, and CLI tests passed. |
 | `node src/cli.ts config resolve examples/config/solo.json` under Node 24 | Exit 0; resolved the documented solo product and Codex provider. |
 | `npm run pack:verify` through cached Node 24/npm 12 | Exit 0; created `faktori-0.0.0.tgz`, installed it into a clean temporary prefix with scripts disabled, and ran the installed `faktori` shim under Node `v24.20.0`. |
-| `PYTHON=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12 node fixtures/verify-fixtures.mjs` under Node 24 with localhost/browser access | Exit 0; Phase 0 frozen checksum and expected RED/base GREEN contracts still reproduced unchanged. |
+| `PYTHON=<installed-python-3.12-with-pytest> node fixtures/verify-fixtures.mjs` under Node 24 with localhost/browser access | Exit 0; Phase 0 frozen checksum and expected RED/base GREEN contracts still reproduced unchanged. |
 | Usage summary and dashboard generation under Node 24 | Exit 0; all 32 tickets rendered, eight were complete, Phase 1 history rendered, and sanitized overlap-safe telemetry was refreshed. |
 | Source suppression scan | No `@ts-nocheck`, `any`, `unknown as`, or `as any` matches in `src/`. |
 
@@ -130,8 +136,8 @@ remains a Phase 2 gate before SQLite-backed coordinator behavior can be claimed.
 ## Usage and budget
 
 The Phase 1 estimate is 1,600,000 tokens and is a soft forecast, not a stopping
-condition. The final pre-commit public summary reports a 1,089,646-token
-**overlap-safe lower bound**, 68.1% of the estimate with 510,354 tokens of the
+condition. The final pre-commit public summary reports a 1,180,239-token
+**overlap-safe lower bound**, 73.76% of the estimate with 419,761 tokens of the
 forecast remaining. This is not a complete actual: it retains the implementer
 cumulative counter, while seven specialist totals are unknown and parent-child
 coverage is unknown. The manager's separately baseline-derived 146,988-token
@@ -145,11 +151,12 @@ The account-level checkpoint reported 68% of a shared weekly window used and
 included in the phase actual. No usage reset, credit redemption, billing change,
 or model switch was requested or performed.
 
-The lower bound is 510,354 below the estimate, but incomplete specialist and
+The lower bound is 419,761 below the estimate, but incomplete specialist and
 overlap telemetry prevents claiming a final under-budget total. Material rework
 included the runtime-language correction, package-install proof, interview
 coverage correction, targeted provisioning review, and narrow strictness
 escalation. Acceptance was never weakened to fit the estimate.
+The committed summary and dashboard expose the crossed 70% forecast threshold.
 
 ## Residual gates and Phase 2 lessons
 

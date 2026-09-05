@@ -20,16 +20,16 @@
     "resourceStrategy": "existing-resources"
   },
   "answers": {
-    "productScope": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "products[].scope"},
-    "stack": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "discovery.metadata.stack"},
-    "organizationAndOwners": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.owner, products[].owner"},
-    "hierarchyTerminology": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "discovery.metadata.hierarchyTerminology"},
-    "providerPreference": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.defaults.providerId"},
-    "financialBudget": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.defaults.budget"},
-    "humanAttention": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "proposal.humanWorkload"},
-    "approvalMergeReleaseAuthority": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.authority"},
-    "environments": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "environments[]"},
-    "incidentNotificationRecovery": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.incidentPreferences"}
+    "productScope": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.productScope"]},
+    "stack": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.stack"]},
+    "organizationAndOwners": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.organizationAndOwners"]},
+    "hierarchyTerminology": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.hierarchyTerminology"]},
+    "providerPreference": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.providerPreference", "factory.defaults.providerId"]},
+    "financialBudget": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.financialBudget", "factory.defaults.budget"]},
+    "humanAttention": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.humanAttention", "proposal.humanWorkload"]},
+    "approvalMergeReleaseAuthority": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.approvalMergeReleaseAuthority", "factory.defaults.authority"]},
+    "environments": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.inventory.environments", "environments[]"]},
+    "incidentNotificationRecovery": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": ["discovery.interview.incidentNotificationRecovery", "mappingReview.laterPhasePending[]", "proposal.tradeoffs"]}
   },
   "unknowns": [],
   "mappingReview": {"unmappedPreferences": [], "laterPhasePending": []},

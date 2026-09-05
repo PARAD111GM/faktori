@@ -8,7 +8,7 @@ Present this first when it fits: one owner, one product, one pod, one provider, 
 
 ## Required questions and mapping
 
-Cover product scope; stack; organization and owners; hierarchy terminology; provider preference; financial budget; human attention/availability; approval, merge, and release authority; environments; and incident, notification, and recovery preferences. For every retained answer or discovered fact, record its destination: a config field, discovery metadata, proposal cost/workload/tradeoff/risk, or a named later-phase pending field. Preserve unresolved items as `unknowns` with source/revision; never infer or silently discard a preference.
+Cover product scope; stack; organization and owners; hierarchy terminology; provider preference; financial budget; human attention/availability; approval, merge, and release authority; environments; and incident, notification, and recovery preferences. For every retained answer or discovered fact, record its destination: a real `factory.defaults` config field (`providerId`, `budget`, or `authority`), `discovery.interview`/`discovery.inventory` metadata, proposal cost/workload/tradeoff/risk, or a named later-phase pending field. Preserve unresolved items as `unknowns` with source/revision; never infer or silently discard a preference.
 
 Explain that a new product inherits factory defaults and incurs only incremental cost/workload. It does not automatically receive a new pod; pod assignment is explicit.
 
@@ -16,4 +16,4 @@ Explain that a new product inherits factory defaults and incurs only incremental
 
 Produce a revisioned discovery record, then a readable proposal that names concrete effects, costs, human workload, tradeoffs, risks, authority, and pending/unsupported remote effects. Approval must bind to the exact proposal and configuration revisions. A changed answer or proposal requires a new proposal revision and approval.
 
-Use [the interview record template](../../templates/provisioning/interview-record.json) as the starting shape; replace unresolved entries only with observed or explicitly answered values.
+Use [the interview record template](../../templates/provisioning/interview-record.json) as the starting shape; replace unresolved entries only with observed or explicitly answered values. The [completed example](../../examples/provisioning/interview-complete.json) shows the same answers retained in a valid configuration, discovery input, and concrete proposal inputs.

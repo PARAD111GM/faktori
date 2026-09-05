@@ -587,7 +587,7 @@
       "id": "F4-01",
       "phase": 4,
       "title": "Implement GitHub integration",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-04",
         "F3-03"
@@ -635,7 +635,7 @@
       "id": "F4-03",
       "phase": 4,
       "title": "Implement evidence-based progression",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F4-01",
         "F4-02"
@@ -659,7 +659,7 @@
       "id": "F4-04",
       "phase": 4,
       "title": "Implement deployment and maintenance entry",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F4-03"
       ],
@@ -1296,6 +1296,30 @@
       "from": "complete",
       "to": "in_progress",
       "reason": "Manager review found ambient credential propagation and non-durable deployment/CI receipts; remediation in progress."
+    },
+    {
+      "eventId": "status-1788624207159-puezbc",
+      "at": "2026-09-05T16:03:27.160Z",
+      "ticketId": "F4-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Corrected trusted controller Git commit transfer/push, base ref/commit separation, exact-commit check API mapping, and hostile hook isolation passed local fixtures."
+    },
+    {
+      "eventId": "status-1788624207413-glp0j1",
+      "at": "2026-09-05T16:03:27.414Z",
+      "ticketId": "F4-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Corrected required-check aggregation retains any failing exact-head check despite later passes; Jira and GitHub evidence paths are fail closed."
+    },
+    {
+      "eventId": "status-1788624207664-ohwele",
+      "at": "2026-09-05T16:03:27.665Z",
+      "ticketId": "F4-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Corrected least-credential bounded local deployment, durable receipts, configured CI observation, and smoke follow-up passed focused tests."
     }
   ]
 }

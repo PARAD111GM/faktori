@@ -26,7 +26,12 @@ describe('Phase 4 integration wiring', () => {
     };
     const admission = new ControllerActionAdmission({
       journal, grantVault: new InMemoryActionGrantVault(), authority: { current: async () => structuredClone(authority) },
-      executor: new GitHubDraftPullRequestExecutor({ ...scope, publisherRemote: 'controller-only' }, reconciledCommand, new InMemoryGitHubPublicationStore()),
+      executor: new GitHubDraftPullRequestExecutor(
+        { ...scope, baseRefName: 'main', publisherRemote: 'controller-only', publisherWorktree: '/private/controller' },
+        reconciledCommand,
+        new InMemoryGitHubPublicationStore(),
+        async (argv) => argv.includes('rev-parse') ? { exitCode: 0, stdout: 'head-1\n', stderr: '' } : { exitCode: 0, stdout: '', stderr: '' },
+      ),
       random: { id: () => `id-${journal.records().length}`, secret: () => 'long-enough-private-verifier-secret-for-test' },
     });
     const capability = await admission.mintGrant({ runId: 'run-1', scope, authorityEpoch: 1 });

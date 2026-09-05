@@ -12,9 +12,12 @@ integration identifiers belong here.
 
 ## Status
 
-Phase 0 freezes the public foundation, construction records, provider-neutral
-guidance, and independent comparison fixtures. Runtime implementation begins
-in later phases. The fixtures are test contracts, not benchmark results.
+Phase 1 adds a strict TypeScript configuration, hierarchy/context, and local
+provisioning runtime plus the public onboarding and lifecycle kit. The package
+build emits installable JavaScript and declarations; its packed CLI is exercised
+from a clean temporary install. Remote provisioning and provider execution stay
+explicitly unsupported until their later-phase control boundaries are proved.
+The frozen fixtures remain test contracts, not benchmark results.
 
 ## Start here
 
@@ -22,14 +25,30 @@ in later phases. The fixtures are test contracts, not benchmark results.
 - [Architecture decisions](docs/architecture/README.md) — portable source of truth,
   authority, recovery, and execution boundaries.
 - [Provider guidance](docs/providers/README.md) — neutral adapter expectations.
+- [Configuration contract](docs/configuration/README.md) — inheritance,
+  capabilities, budgets, authority, products, and optional pods.
+- [Onboarding interview](docs/onboarding/interview.md) and
+  [provisioning contract](docs/provisioning/README.md) — discover, propose,
+  approve, scaffold, interrupt, and reconcile.
+- [Hierarchy and context](docs/context/README.md) — stable work identities and
+  narrowly assembled context packets.
+- [Lifecycle contract](docs/lifecycle/contract.md) — proportional artifacts,
+  six lifecycle outcomes, evidence, and provider-neutral handoffs.
 - [Comparison fixtures](docs/comparison/README.md) — frozen, reproducible cases.
 - [Implementation plan](docs/implementation-plan.md) — accepted V1 specification.
 
 ## Commands
 
 After the package is installed, use `npm ci`, `npm test`, `npm run build`,
-`npm run check`, `npm run build:dashboard`, `npm run build:usage`, and
-`npm run build:usage:watch`. Status updates require explicit safe arguments:
+`npm run pack:verify`, `npm run check`, `npm run build:dashboard`,
+`npm run build:usage`, and `npm run build:usage:watch`. The source CLI runs on
+the supported Node 24 runtime, for example:
+
+```sh
+npm run faktori -- config resolve examples/config/solo.json
+```
+
+Status updates require explicit safe arguments:
 
 ```sh
 npm run build:status -- --checklist construction/checklist.json --ticket F0-02 --status in_progress --reason "..."
@@ -41,8 +60,8 @@ unapproved dependency install scripts; review and explicitly approve the
 construction records are [checklist](construction/checklist.json)
 and [dashboard](construction/dashboard.html). Start by reading `AGENTS.md` and
 the implementation plan, then identify the product, constraints, build
-process, and first eligible task. After accepted Phase 0, that task is F1-01;
-this note does not authorize starting it during Phase 0.
+process, and first eligible task. A phase candidate does not authorize the next
+phase; the Build Manager must accept it first.
 The fixture commands are independent: each fixture README gives its exact
 runtime and test command. A passing fixture test demonstrates only that the
 fixture contract is present; it says nothing about provider quality.

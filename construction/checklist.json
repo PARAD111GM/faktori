@@ -2,8 +2,12 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 0,
-    "source": "docs/implementation-plan.md"
+    "currentPhase": 1,
+    "source": "docs/implementation-plan.md",
+    "phaseBudgets": {
+      "0": 360000,
+      "1": 1600000
+    }
   },
   "tickets": [
     {
@@ -132,7 +136,7 @@
       "id": "F1-01",
       "phase": 1,
       "title": "Build the configuration model",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F0-01",
         "F0-02",
@@ -140,53 +144,129 @@
         "F0-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "configuration specialist",
+        "agentId": "config_contract",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Strict TypeScript runtime sources resolve factory, product, optional pod, provider, budget, authority, environment, capability, and sparse-override behavior; the package emits JavaScript and declarations and the packed CLI is verified from a clean install."
+      ],
+      "evidence": [
+        {
+          "label": "Configuration contract",
+          "url": "src/config/index.ts"
+        },
+        {
+          "label": "Configuration behavior tests",
+          "url": "tests/config/config.test.mjs"
+        },
+        {
+          "label": "Solo and multi-product examples",
+          "url": "examples/config"
+        }
+      ]
     },
     {
       "id": "F1-02",
       "phase": 1,
       "title": "Implement interview and resumable provisioning",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F1-01"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "bootstrap and provisioning specialist",
+        "agentId": "bootstrap_provisioning",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Discover-first onboarding, revision-bound approval, durable intended-operation identities, containment checks, reconciliation, and user-edit-safe local filesystem and Git scaffolding are verified; remote effects remain explicitly unsupported."
+      ],
+      "evidence": [
+        {
+          "label": "Onboarding interview",
+          "url": "docs/onboarding/interview.md"
+        },
+        {
+          "label": "Provisioning and recovery contract",
+          "url": "docs/provisioning/README.md"
+        },
+        {
+          "label": "Provisioning behavior tests",
+          "url": "tests/provisioning/provisioning.test.mjs"
+        }
+      ]
     },
     {
       "id": "F1-03",
       "phase": 1,
       "title": "Implement hierarchy and context assembly",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F1-01"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "configuration and context specialist",
+        "agentId": "config_contract",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Stable hierarchy identities, cycle and reference rejection, planning/executable separation, immutable ancestor constraints, dependency contracts, and source-revisioned scoped context packets are verified without unrelated sibling material."
+      ],
+      "evidence": [
+        {
+          "label": "Hierarchy and context contract",
+          "url": "docs/context/README.md"
+        },
+        {
+          "label": "Scoped-context behavior tests",
+          "url": "tests/context/context.test.mjs"
+        },
+        {
+          "label": "Small-bug example",
+          "url": "examples/context/small-bug.json"
+        }
+      ]
     },
     {
       "id": "F1-04",
       "phase": 1,
       "title": "Author lifecycle skills and provider wrappers",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F1-01",
         "F1-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "skills, entry maps, and examples specialist",
+        "agentId": "lifecycle_skills",
+        "model": "gpt-5.6-luna",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Eleven concise first-party skills, compact/normal/high-risk lifecycle packaging, stack-neutral Node and Python examples, and deterministic provider entry maps cover the six outcomes, decomposition, design references, evidence, and escalation."
+      ],
+      "evidence": [
+        {
+          "label": "Lifecycle contract",
+          "url": "docs/lifecycle/contract.md"
+        },
+        {
+          "label": "First-party skills",
+          "url": "skills"
+        },
+        {
+          "label": "Provider entry-map drift tests",
+          "url": "tests/skills/provider-entrymaps.test.mjs"
+        },
+        {
+          "label": "Node and Python examples",
+          "url": "examples/lifecycle"
+        }
+      ]
     },
     {
       "id": "F2-01",
@@ -642,6 +722,96 @@
       "from": "in_progress",
       "to": "complete",
       "reason": "Frozen inputs, checksums, expected RED starters, and the due-dates base GREEN browser contract reproduced."
+    },
+    {
+      "eventId": "phase-1-start-f1-01",
+      "at": "2026-09-05T00:14:08Z",
+      "ticketId": "F1-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Phase 1 began with the shared typed configuration contract and acceptance-sensitive sparse override validation.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-start-f1-02",
+      "at": "2026-09-05T00:16:34Z",
+      "ticketId": "F1-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "The stable configuration API contract unblocked revision-bound proposal and resumable local provisioning work.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-complete-f1-01",
+      "at": "2026-09-05T00:23:58Z",
+      "ticketId": "F1-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Typed configuration, actionable validation, and solo and multi-product behavior passed 12 focused tests under Node 24.20.0.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-start-f1-03",
+      "at": "2026-09-05T00:24:01Z",
+      "ticketId": "F1-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "The accepted configuration contract unblocked hierarchy and scoped context implementation.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-start-f1-04",
+      "at": "2026-09-05T00:25:52Z",
+      "ticketId": "F1-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "The stable config and hierarchy/context contracts unblocked bounded lifecycle skills, examples, and generated provider entry maps.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-reopen-f1-01-typescript",
+      "at": "2026-09-05T00:33:22Z",
+      "ticketId": "F1-01",
+      "from": "complete",
+      "to": "in_progress",
+      "reason": "Manager verification identified that .mjs plus hand-maintained .d.ts did not typecheck the runtime implementation; actual TypeScript sources are required.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-final-complete-f1-01",
+      "at": "2026-09-05T01:01:21Z",
+      "ticketId": "F1-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Strict TypeScript implementation, emitted declarations and JavaScript, configuration examples, and clean packed-install CLI verification passed under Node 24.20.0.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-complete-f1-02",
+      "at": "2026-09-05T01:01:22Z",
+      "ticketId": "F1-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Discover-first interview, revision-bound approval, durable journal, interruption reconciliation, root containment, and user-edit-safe local scaffolding passed behavior tests.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-complete-f1-03",
+      "at": "2026-09-05T01:01:23Z",
+      "ticketId": "F1-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Stable hierarchy validation and source-revisioned scoped context assembly passed small-bug, cycle, relationship, and sibling-isolation tests.",
+      "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "phase-1-complete-f1-04",
+      "at": "2026-09-05T01:01:24Z",
+      "ticketId": "F1-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "All six lifecycle outcomes, proportional templates, first-party skill contracts, stack-neutral examples, and deterministic provider entry maps passed semantic and drift tests.",
+      "actor": "phase-1-orchestrator"
     }
   ]
 }

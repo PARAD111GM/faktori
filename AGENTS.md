@@ -26,4 +26,7 @@ The committed specification defines the product. Construction progress and per-p
 
 ## Commands
 
-Phase 0 establishes the package scripts and documents the tested Node 24 setup. Use those commands after they exist; do not invent successful checks.
+Use the package scripts under the pinned Node 24/npm 12 toolchain. `npm run check`
+strictly typechecks the TypeScript runtime, runs behavior tests, emits the
+installable package, and verifies the packed CLI from a clean temporary install.
+Do not invent successful checks or start a later phase before manager acceptance.

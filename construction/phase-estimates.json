@@ -43,6 +43,40 @@
         "Revision 2 is an estimate, not a measured aggregate.",
         "Narrower briefs and fewer exploratory status calls are recommended for Phase 1 without weakening acceptance."
       ]
+    },
+    {
+      "phase": 1,
+      "hardCeiling": false,
+      "confidence": "low-to-medium",
+      "currentRevision": 1,
+      "estimateTokens": 1600000,
+      "revisions": [
+        {
+          "revision": 1,
+          "estimateTokens": 1600000,
+          "allocations": {
+            "managerCoordination": 200000,
+            "implementerOrchestrationAndIntegration": 350000,
+            "specialistDelivery": 650000,
+            "verificationAndRework": 200000,
+            "contingency": 200000
+          },
+          "rationale": "Calibrated from Phase 0's approximately 1.09m-token overlap-safe lower bound, allowing for more runtime work and less exploratory provider and fixture rework."
+        }
+      ],
+      "assumptions": [
+        "The estimate includes manager, implementer, specialists, verification, and contingency.",
+        "It is a soft planning estimate rather than a native hard cap or spending permission.",
+        "Parent and child inclusion remains unknown unless telemetry establishes otherwise.",
+        "Only manager usage after the recorded Phase 1 baseline belongs to this phase.",
+        "Unknown telemetry remains unknown rather than zero, and acceptance cannot weaken near the estimate."
+      ],
+      "baseline": {
+        "manager": "Adjacent private .build/phase-1-manager-baseline.json; raw provenance is not committed."
+      },
+      "revisionNotes": [
+        "Initial Phase 1 estimate supplied by the Build Manager."
+      ]
     }
   ]
 }

@@ -85,6 +85,7 @@ test('refuses to sum a child with a parent whose inclusion scope is unknown', as
   assert.equal(result.status, 0, result.stderr);
   const summary = JSON.parse(await readFile(output, 'utf8'));
   assert.equal(summary.actual.total, 100);
+  assert.equal(summary.actual.kind, 'overlap-safe-lower-bound');
   assert.deepEqual(summary.unknown, [{ ticket: 'F0-02', reason: 'parent-child-overlap:unknown' }]);
 });
 

@@ -134,7 +134,8 @@ export function summarize(records, estimate, requestedPhase) {
   const normalized = latestSnapshots(phaseRecords.filter((record) => !unattributable.includes(record)));
   const hierarchy = parentInclusive(normalized.records);
   const coverage = overlapSafe(hierarchy.included);
-  const actual = { ...counters(coverage.records), excludedChildCount: hierarchy.excludedCount, ...(coverage.coverageGaps.length ? { kind: 'overlap-safe-lower-bound' } : {}) };
+  const incompleteCoverage = coverage.coverageGaps.length > 0 || hierarchy.overlapUnknown.length > 0;
+  const actual = { ...counters(coverage.records), excludedChildCount: hierarchy.excludedCount, ...(incompleteCoverage ? { kind: 'overlap-safe-lower-bound' } : {}) };
   const estimates = coverage.records.map((record) => number(record.estimate?.tokens)).filter((value) => value !== undefined);
   const estimated = { total: estimates.length === 0 ? null : estimates.reduce((total, value) => total + value, 0) };
   const budget = number(estimate) ?? 0;

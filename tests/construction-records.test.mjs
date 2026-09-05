@@ -27,23 +27,31 @@ test('canonical construction state contains exactly F0-01 through F7-04 with val
 
 test('phase estimate revisions preserve history and each allocation sums to its estimate', async () => {
   const estimates = await json('construction/phase-estimates.json');
-  const phase = estimates.phases.find(({ phase }) => phase === 0);
-  assert.equal(phase.currentRevision, 2);
-  assert.deepEqual(phase.revisions.map(({ estimateTokens }) => estimateTokens), [160_000, 360_000]);
-  for (const revision of phase.revisions) {
-    const allocation = Object.values(revision.allocations).reduce((total, value) => total + value, 0);
-    assert.equal(allocation, revision.estimateTokens);
+  const phaseZero = estimates.phases.find(({ phase }) => phase === 0);
+  const phaseOne = estimates.phases.find(({ phase }) => phase === 1);
+  assert.equal(phaseZero.currentRevision, 2);
+  assert.deepEqual(phaseZero.revisions.map(({ estimateTokens }) => estimateTokens), [160_000, 360_000]);
+  assert.equal(phaseOne.currentRevision, 1);
+  assert.equal(phaseOne.estimateTokens, 1_600_000);
+  assert.equal(phaseOne.hardCeiling, false);
+  for (const phase of [phaseZero, phaseOne]) {
+    for (const revision of phase.revisions) {
+      const allocation = Object.values(revision.allocations).reduce((total, value) => total + value, 0);
+      assert.equal(allocation, revision.estimateTokens);
+    }
+    assert.equal(phase.estimateTokens, phase.revisions.at(-1).estimateTokens);
+    assert.equal(phase.hardCeiling, false);
   }
-  assert.equal(phase.estimateTokens, phase.revisions.at(-1).estimateTokens);
-  assert.equal(phase.hardCeiling, false);
 });
 
-test('public summary and dashboard expose sanitized overlap-safe usage without native identities', async () => {
+test('public summary and dashboard expose current sanitized usage without native identities', async () => {
   const summary = await json('construction/phase-summary.json');
+  const checklist = await json('construction/checklist.json');
   const dashboard = await readFile(new URL('construction/dashboard.html', root), 'utf8');
-  assert.equal(summary.actual.kind, 'overlap-safe-lower-bound');
-  assert.equal(summary.budget.estimate, 360_000);
-  assert.equal(summary.coverageGaps[0].group, 'phase-0-construction');
+  assert.equal(checklist.project.currentPhase, 1);
+  assert.equal(summary.phase, 1);
+  assert.equal(summary.budget.estimate, 1_600_000);
+  assert.ok(summary.actual.total === null || summary.actual.total >= 0);
   assert.doesNotMatch(JSON.stringify(summary), /sessionId|agentId|\/Users\//);
   for (let phase = 0; phase < 8; phase += 1) {
     for (let offset = 1; offset <= 4; offset += 1) {
@@ -52,7 +60,7 @@ test('public summary and dashboard expose sanitized overlap-safe usage without n
   }
   assert.match(dashboard, /Completion history/);
   assert.match(dashboard, /Token budget consumption/);
-  assert.match(dashboard, /Overlap-safe lower bound \(incomplete coverage\)/);
-  assert.match(dashboard, /Remaining allowance: 0 tokens/);
+  assert.match(dashboard, /Current phase: 1/);
+  assert.match(dashboard, /Phase budget: 1600000 tokens/);
   assert.doesNotMatch(dashboard, /\/Users\//);
 });

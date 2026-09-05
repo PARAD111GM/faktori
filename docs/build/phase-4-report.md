@@ -1,6 +1,6 @@
 # Phase 4 implementation report
 
-Status: complete candidate awaiting Build Manager acceptance. Base was accepted Phase 3
+Status: complete candidate `b2925e9` awaiting Build Manager acceptance. Base was accepted Phase 3
 revision `a6caace`; this phase made no remote publication, merge, live Jira call,
 production deployment, credential export, reset, paid-route switch, or product mutation.
 

@@ -50,6 +50,14 @@
       "types": "./dist/execution/transports.d.ts",
       "import": "./dist/execution/transports.js"
     },
+    "./execution/claude-process": {
+      "types": "./dist/execution/claude-process.d.ts",
+      "import": "./dist/execution/claude-process.js"
+    },
+    "./execution/cursor-acp-stdio": {
+      "types": "./dist/execution/cursor-acp-stdio.d.ts",
+      "import": "./dist/execution/cursor-acp-stdio.js"
+    },
     "./providers/codex": {
       "types": "./dist/providers/codex.d.ts",
       "import": "./dist/providers/codex.js"
@@ -57,6 +65,14 @@
     "./providers/contracts": {
       "types": "./dist/providers/contracts.d.ts",
       "import": "./dist/providers/contracts.js"
+    },
+    "./providers/claude": {
+      "types": "./dist/providers/claude.d.ts",
+      "import": "./dist/providers/claude.js"
+    },
+    "./providers/cursor": {
+      "types": "./dist/providers/cursor.d.ts",
+      "import": "./dist/providers/cursor.js"
     },
     "./actions": {
       "types": "./dist/actions/index.d.ts",

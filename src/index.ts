@@ -4,5 +4,7 @@ export * from './provisioning/index.ts';
 export * from './runtime/index.ts';
 export * from './execution/index.ts';
 export * from './providers/codex.ts';
+export * from './providers/claude.ts';
+export * from './providers/cursor.ts';
 export * from './providers/contracts.ts';
 export * from './actions/index.ts';

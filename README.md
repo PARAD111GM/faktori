@@ -12,12 +12,12 @@ integration identifiers belong here.
 
 ## Status
 
-Phase 1 adds a strict TypeScript configuration, hierarchy/context, and local
-provisioning runtime plus the public onboarding and lifecycle kit. The package
-build emits installable JavaScript and declarations; its packed CLI is exercised
-from a clean temporary install. Remote provisioning and provider execution stay
-explicitly unsupported until their later-phase control boundaries are proved.
-The frozen fixtures remain test contracts, not benchmark results.
+Phase 2 adds a durable coordinator journal, rebuildable SQLite projection,
+bounded native and isolated execution profiles, a Codex adapter, and
+controller-owned action admission. The package build emits installable
+JavaScript and declarations; its packed CLI rebuilds a real SQLite projection
+from a clean temporary install. Remote publication remains a later-phase
+transport. The frozen fixtures remain test contracts, not benchmark results.
 
 ## Start here
 
@@ -34,6 +34,8 @@ The frozen fixtures remain test contracts, not benchmark results.
   narrowly assembled context packets.
 - [Lifecycle contract](docs/lifecycle/contract.md) — proportional artifacts,
   six lifecycle outcomes, evidence, and provider-neutral handoffs.
+- [Recoverable runtime](docs/runtime/README.md) — journal, SQLite, execution
+  profiles, Codex adapter, cancellation, and action authority boundaries.
 - [Comparison fixtures](docs/comparison/README.md) — frozen, reproducible cases.
 - [Implementation plan](docs/implementation-plan.md) — accepted V1 specification.
 
@@ -54,9 +56,9 @@ Status updates require explicit safe arguments:
 npm run build:status -- --checklist construction/checklist.json --ticket F0-02 --status in_progress --reason "..."
 ```
 
-Node.js 24 LTS and npm 12 are the supported construction setup. npm 12 blocks
-unapproved dependency install scripts; review and explicitly approve the
-`better-sqlite3` native build before first runtime use. The canonical
+Node.js 24 LTS and npm 12 are the supported construction setup. Install with
+dependency scripts disabled, then verify the pinned `better-sqlite3` native
+artifact through a real open, write, query, and rebuild before runtime use. The canonical
 construction records are [checklist](construction/checklist.json)
 and [dashboard](construction/dashboard.html). Start by reading `AGENTS.md` and
 the implementation plan, then identify the product, constraints, build

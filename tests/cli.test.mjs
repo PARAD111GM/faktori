@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -76,5 +76,21 @@ describe('public CLI', () => {
     const result = run('product', 'preview', requestPath);
     expect(result.status).toBe(0, result.stderr);
     expect(JSON.parse(result.stdout)).toEqual(expect.objectContaining({ podsCreated: 0, incrementalCost: '$0 local' }));
+  });
+
+  it('rebuilds a real SQLite projection from the public interrupted-run journal', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'faktori-cli-runtime-'));
+    const projection = join(directory, 'projection.sqlite');
+    const result = run('runtime', 'rebuild', join(root, 'examples/runtime/interrupted-run.jsonl'), projection);
+
+    expect(result.status).toBe(0, result.stderr);
+    expect(JSON.parse(result.stdout)).toEqual({
+      eventCount: 2,
+      snapshots: [expect.objectContaining({
+        state: 'launching',
+        unresolvedEffects: [expect.objectContaining({ operationId: 'example-launch' })],
+      })],
+    });
+    expect((await stat(projection)).size).toBeGreaterThan(0);
   });
 });

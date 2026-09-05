@@ -27,6 +27,12 @@ try {
   await writeFile(join(consumer, 'package.json'), '{"name":"faktori-pack-smoke","private":true}\n');
   runNpm(['install', '--ignore-scripts', '--offline', '--no-audit', '--no-fund', '--package-lock=false', tarball], consumer);
 
+  const importResult = spawnSync(process.execPath, ['--input-type=module', '-e', "const runtime=await import('faktori/runtime'); const transports=await import('faktori/execution/transports'); if(typeof runtime.CoordinatorCodexDelivery!=='function'||typeof transports.DockerCodexProcessRunner!=='function') process.exit(2)"], {
+    cwd: consumer,
+    encoding: 'utf8',
+  });
+  if (importResult.status !== 0) throw new Error(importResult.stderr || importResult.stdout || 'installed runtime exports failed');
+
   const executable = join(consumer, 'node_modules', '.bin', 'faktori');
   const result = spawnSync(executable, ['config', 'resolve', join(root, 'examples', 'config', 'solo.json')], {
     cwd: consumer,
@@ -37,6 +43,23 @@ try {
   const resolved = JSON.parse(result.stdout);
   if (resolved.factory?.id !== 'solo-studio' || resolved.products?.length !== 1) {
     throw new Error('installed Faktori CLI returned an unexpected resolved configuration');
+  }
+
+  const projection = join(scratch, 'runtime.sqlite');
+  const runtimeResult = spawnSync(executable, [
+    'runtime',
+    'rebuild',
+    join(consumer, 'node_modules', 'faktori', 'examples', 'runtime', 'interrupted-run.jsonl'),
+    projection,
+  ], {
+    cwd: consumer,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}` },
+  });
+  if (runtimeResult.status !== 0) throw new Error(runtimeResult.stderr || runtimeResult.stdout || 'installed runtime rebuild failed');
+  const runtime = JSON.parse(runtimeResult.stdout);
+  if (runtime.eventCount !== 2 || runtime.snapshots?.[0]?.state !== 'launching' || runtime.snapshots[0].unresolvedEffects?.[0]?.operationId !== 'example-launch') {
+    throw new Error('installed runtime rebuild returned an unexpected recovery projection');
   }
   process.stdout.write(`Packed CLI verified with ${process.version}: ${packed.filename}\n`);
 } finally {

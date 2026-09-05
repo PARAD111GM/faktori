@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
 import {
+  AppendOnlyJournal,
   approveProvisioningProposal,
   assembleContextPacket,
   createDiscoveryRecord,
@@ -9,6 +10,7 @@ import {
   provisionApprovedProposal,
   renderProvisioningProposal,
   resolveFactoryConfig,
+  SqliteProjection,
 } from './index.ts';
 
 const HELP = `Usage:
@@ -18,9 +20,11 @@ const HELP = `Usage:
   faktori provision approve <request.json>
   faktori provision apply <bundle.json> <absolute-root>
   faktori product preview <request.json>
+  faktori runtime rebuild <journal.jsonl> <projection.sqlite>
 
-Commands read explicit JSON files and write JSON to stdout. Only provision apply
-changes local state, and it requires an approved bundle plus an absolute root.`;
+Commands read explicit files and write JSON to stdout. Provision apply changes
+approved local factory state. Runtime rebuild replaces only the specified
+disposable SQLite projection from its authoritative journal.`;
 
 type InputRecord = Record<string, unknown>;
 
@@ -95,6 +99,20 @@ async function run(argv: string[]): Promise<void> {
     const request = record(await json(source, 'product request'), 'product request');
     const resolvedConfig = request.resolvedConfig ?? resolveFactoryConfig(request.configuration);
     print(previewNewProduct({ ...request, resolvedConfig }));
+    return;
+  }
+
+  if (group === 'runtime' && action === 'rebuild') {
+    if (!source) throw new Error('an operational journal path is required');
+    if (!extra) throw new Error('a disposable SQLite projection path is required');
+    const journal = await AppendOnlyJournal.open(source);
+    const projection = new SqliteProjection(extra);
+    try {
+      projection.rebuild(journal.events());
+      print({ eventCount: journal.events().length, snapshots: projection.snapshots() });
+    } finally {
+      projection.close();
+    }
     return;
   }
 

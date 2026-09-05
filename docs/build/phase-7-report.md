@@ -109,12 +109,18 @@ both reset credits unused.
 
 ## Concrete next prerequisites
 
-Before another F7-01 attempt, the factory needs an approval-bound product-local
-dependency materialization path for the exact Playwright 1.55.0 package and
-required browser executable from a public/offline artifact or cache. It must
-bind package bytes to the proposal, write a real manifest/lock/install without
-links or compatibility stubs, and pass a clean-room preflight before inference.
-That behavior has not been implemented or tested in this candidate. A future
+Before another F7-01 attempt, resolve the benchmark's test-tool setup gap:
+the frozen task-board manifest declares no Playwright dependency even though
+its browser contract imports Playwright. The factory repository pins the
+genuine harness at 1.63.0 through its lockfile; 1.55.0 was the worker's choice,
+not an accepted product requirement. Preserve the frozen fixtures and failed
+results. Define and record a reproducible trusted harness installation and
+browser preflight, equally available to both comparison systems, before any
+new run. Do not let workers replace the harness or infer a successful install
+from a manifest or lockfile alone. If making the fixture self-contained changes
+its frozen inputs, version it and explicitly identify the new comparison;
+never silently amend the old rubric. This preparation has not been proved in
+a clean-room run. A future
 scope proof must also use the validated isolated profile or equivalent observed
 file-access evidence; a host-home path in the journal is an evidence gap, not by
 itself proof that the provider read that path.

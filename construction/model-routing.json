@@ -1,8 +1,13 @@
 {
   "schemaVersion": 1,
-  "phase": 2,
+  "phase": 4,
   "policy": "Use the least expensive model likely to produce accepted work; escalate only from demonstrated failure.",
   "assignments": [
+    {"role":"phase implementer-orchestrator","tickets":["F4-01","F4-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Shared action-admission seam, GitHub progression, integration, package and canonical records."},
+    {"role":"Jira REST specialist","tickets":["F4-02"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded controller-owned REST mapping and deterministic recovery negatives."},
+    {"role":"deployment specialist","tickets":["F4-04"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Separate local deploy/smoke and configured CI observation without live mutation."}
+  ],
+  "priorAssignments": [
     {"role":"phase implementer-orchestrator","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Shared contracts, integration, package and CLI, canonical records, consequential verification, and manager coordination."},
     {"role":"shared contract architect","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"One bounded read-only pass settled recovery, identity, telemetry, provider-outcome, cancellation, and caller-authentication seams before writer fan-out."},
     {"role":"durable state specialist","tickets":["F2-01"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Append-only recovery, exclusive ownership, atomic reservations, and SQLite reconstruction are concurrency and authority sensitive."},

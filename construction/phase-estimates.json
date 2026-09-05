@@ -158,6 +158,17 @@
       "revisionNotes": [
         "Initial Phase 3 estimate and allocations supplied by the Build Manager."
       ]
+    },
+    {
+      "phase": 4,
+      "hardCeiling": false,
+      "confidence": "low",
+      "currentRevision": 1,
+      "estimateTokens": 650000,
+      "revisions": [{"revision":1,"estimateTokens":650000,"allocations":{"managerCoordination":30000,"implementerOrchestrationAndIntegration":180000,"specialistDelivery":180000,"verificationAndRework":160000,"contingency":100000},"rationale":"Launch brief planning estimate; account percentage allocation is not token-convertible and the estimate is advisory only."}],
+      "assumptions": ["The native goal remains uncapped.","No parent/child counters are summed when overlap is unknown.","Acceptance is unchanged by the estimate."],
+      "baseline": {"manager":"Adjacent private .build/phase-4-manager-baseline.json; raw provenance is not committed."},
+      "revisionNotes": ["No measured token attribution is available from child specialists; current account quota was checked at dispatch."]
     }
   ]
 }

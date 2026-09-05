@@ -77,6 +77,10 @@
     "./actions": {
       "types": "./dist/actions/index.d.ts",
       "import": "./dist/actions/index.js"
+    },
+    "./integrations": {
+      "types": "./dist/integrations/index.d.ts",
+      "import": "./dist/integrations/index.js"
     }
   },
   "engines": {

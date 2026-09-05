@@ -1,76 +1,56 @@
 {
   "schemaVersion": 1,
-  "phase": 3,
+  "phase": 4,
   "generatedAt": "2026-09-05T07:07:27.407Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 1741225,
-    "excludedChildCount": 3,
-    "kind": "overlap-safe-lower-bound"
+    "total": null,
+    "excludedChildCount": 0
   },
   "estimated": {
     "total": null
   },
   "models": [
     {
-      "model": "gpt-5.6-sol",
-      "reasoning": "high",
-      "recordCount": 1
+      "model": "gpt-5.6-terra",
+      "reasoning": "medium",
+      "recordCount": 3
     }
   ],
   "unknown": [
     {
-      "ticket": "F3-01",
+      "ticket": "F4-01",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F3-02",
+      "ticket": "F4-02",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F3-03",
+      "ticket": "F4-04",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F3-01",
+      "ticket": "phase-4-manager",
       "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "F3-02",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "F3-03",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "phase-3-manager",
-      "reason": "coverage-overlap:unknown"
     }
   ],
   "coverageGaps": [
-    {
-      "group": "phase-3-construction",
-      "retainedTotal": 1741225,
-      "excludedMeasurements": 1
-    }
+
   ],
   "records": {
-    "accepted": 10,
+    "accepted": 0,
     "duplicates": 0
   },
   "budget": {
-    "estimate": 2400000,
-    "remaining": 658775,
-    "percentUsed": 72.55
+    "estimate": 650000,
+    "remaining": null,
+    "percentUsed": null
   },
   "notices": [
-    {
-      "threshold": 70,
-      "type": "budget-threshold"
-    }
+
   ]
 }

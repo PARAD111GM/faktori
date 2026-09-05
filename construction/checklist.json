@@ -2,13 +2,14 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 3,
+    "currentPhase": 4,
     "source": "docs/implementation-plan.md",
     "phaseBudgets": {
       "0": 360000,
       "1": 1600000,
       "2": 2200000,
-      "3": 2400000
+      "3": 2400000,
+      "4": 650000
     }
   },
   "tickets": [
@@ -586,60 +587,68 @@
       "id": "F4-01",
       "phase": 4,
       "title": "Implement GitHub integration",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F2-04",
         "F3-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase-4 orchestrator",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": ["Controller-owned gh operations reconcile provider effects and retain human merge authority."],
+      "evidence": [{"label":"GitHub integration tests","url":"tests/integrations/github.test.mjs"}]
     },
     {
       "id": "F4-02",
       "phase": 4,
       "title": "Implement optional Jira integration",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F2-04",
         "F3-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Jira REST specialist",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": ["Configured transitions fail visibly; explicit links preserve unsupported hierarchy."],
+      "evidence": [{"label":"Jira integration tests","url":"tests/integrations/jira.test.mjs"}]
     },
     {
       "id": "F4-03",
       "phase": 4,
       "title": "Implement evidence-based progression",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F4-01",
         "F4-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase-4 orchestrator",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": ["Review and CI evidence is exact-head-bound; human merge authority is unchanged."],
+      "evidence": [{"label":"Progression tests","url":"tests/integrations/progression.test.mjs"}]
     },
     {
       "id": "F4-04",
       "phase": 4,
       "title": "Implement deployment and maintenance entry",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F4-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "deployment specialist",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": ["Actual local deploy/smoke subprocesses and one durable smoke follow-up passed."],
+      "evidence": [{"label":"Deployment integration tests","url":"tests/integrations/deployment.test.mjs"}]
     },
     {
       "id": "F5-01",
@@ -1171,6 +1180,70 @@
       "to": "complete",
       "reason": "Fresh Codex review accepted the recovered exact Claude plan and unchanged Cursor artifacts after pre/post-review verifier passes; the earlier CHANGES REQUIRED evidence remains preserved.",
       "actor": "phase-3-orchestrator"
+    },
+    {
+      "eventId": "status-1788618994657-4zjajf",
+      "at": "2026-09-05T14:36:34.658Z",
+      "ticketId": "F4-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Controller-owned GitHub integration, reconciliation and observed gh probe implementation assembled; full candidate verification pending."
+    },
+    {
+      "eventId": "status-1788618994919-5jyq0l",
+      "at": "2026-09-05T14:36:34.920Z",
+      "ticketId": "F4-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Controller-owned Jira REST integration assembled with deterministic reconciliation and transition-negative tests; full candidate verification pending."
+    },
+    {
+      "eventId": "status-1788618995182-q0q031",
+      "at": "2026-09-05T14:36:35.183Z",
+      "ticketId": "F4-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Exact-commit review/check progression implementation assembled; full candidate verification pending."
+    },
+    {
+      "eventId": "status-1788618995444-c18oi1",
+      "at": "2026-09-05T14:36:35.445Z",
+      "ticketId": "F4-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Local deployment, existing-CI observation, smoke and approved recovery adapter assembled; full candidate verification pending."
+    },
+    {
+      "eventId": "status-1788619021962-cx4exe",
+      "at": "2026-09-05T14:37:01.963Z",
+      "ticketId": "F4-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Controller-owned gh registration, permission and merge observation, issue linkage, draft PR publication/reconciliation, exact revision check observation, and installed gh v2.89.0 probe passed focused and full checks."
+    },
+    {
+      "eventId": "status-1788619022218-rbxc51",
+      "at": "2026-09-05T14:37:02.219Z",
+      "ticketId": "F4-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Controller-owned strict Jira REST project, issue, explicit-link, assignment and configured-transition operations passed reconciliation, failure and signed-scope tests."
+    },
+    {
+      "eventId": "status-1788619022474-8eiyjm",
+      "at": "2026-09-05T14:37:02.475Z",
+      "ticketId": "F4-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Exact-commit review/check progression rejects old evidence, retains waivers distinctly, and remains human-merge-only; focused and full checks passed."
+    },
+    {
+      "eventId": "status-1788619022730-wilf8y",
+      "at": "2026-09-05T14:37:02.731Z",
+      "ticketId": "F4-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Actual local deploy and smoke subprocess evidence, configured CI observation, file-backed one-time smoke follow-up, and gated recovery hooks passed focused and full checks."
     }
   ]
 }

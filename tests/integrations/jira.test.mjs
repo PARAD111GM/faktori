@@ -29,7 +29,7 @@ describe('Jira REST controller executor', () => {
     expect(projectHttp.calls.map((call) => call.method)).toEqual(['GET', 'POST']);
     expect(projectHttp.calls[1].body).toMatchObject({ key: 'TWIN', name: 'Twinzy' });
     expect(issue.outcome).toBe('completed');
-    expect(issueHttp.calls[1].body.fields.labels).toEqual(['release', 'faktori-idempotency-idem-1']);
+    expect(issueHttp.calls[1].body.fields.labels).toEqual(['release', expect.stringMatching(/^faktori-[a-f0-9]{24}$/)]);
     expect(issueHttp.calls[1].headers).toMatchObject({ Authorization: 'Bearer private-token', 'X-Faktori-Idempotency-Key': 'idem-1' });
   });
 
@@ -39,7 +39,7 @@ describe('Jira REST controller executor', () => {
 
     expect(result.outcome).toBe('safe_noop');
     expect(http.calls).toHaveLength(1);
-    expect(http.calls[0].path).toContain('faktori-idempotency-recovered-key');
+    expect(http.calls[0].path).toContain('project%20%3D%20%22TWIN%22');
   });
 
   it('uses explicit links, assignments, and configured transitions; it never infers hierarchy', async () => {
@@ -73,5 +73,16 @@ describe('Jira REST controller executor', () => {
     const result = await executor(http, { kind: 'issue.assign', issueKey: 'TWIN-1', accountId: 'account-7' }).execute(action('mismatch', 'jira.issue.ensure'), async () => {});
     expect(result.outcome).toBe('blocked');
     expect(http.calls).toHaveLength(0);
+  });
+
+  it('fails closed on unavailable or ambiguous reconciliation and sends descriptions as Jira ADF', async () => {
+    const unavailable = client([{ status: 500 }]);
+    const result = await executor(unavailable, { kind: 'issue.ensure', projectKey: 'TWIN', issueTypeId: '10001', summary: 'No write' }).execute(action(), async () => { throw new Error('must not write'); });
+    expect(result.outcome).toBe('uncertain');
+    expect(unavailable.calls).toHaveLength(1);
+
+    const described = client([{ status: 200, body: { issues: [] } }, { status: 201 }]);
+    await executor(described, { kind: 'issue.ensure', projectKey: 'TWIN', issueTypeId: '10001', summary: 'ADF', description: 'safe text' }).execute(action('adf'), async () => {});
+    expect(described.calls[1].body.fields.description).toEqual({ type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'safe text' }] }] });
   });
 });

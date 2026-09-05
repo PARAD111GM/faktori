@@ -587,7 +587,7 @@
       "id": "F4-01",
       "phase": 4,
       "title": "Implement GitHub integration",
-      "status": "complete",
+      "status": "in_progress",
       "dependencies": [
         "F2-04",
         "F3-03"
@@ -597,8 +597,15 @@
         "model": "gpt-5.6-terra",
         "reasoning": "medium"
       },
-      "notes": ["Controller-owned gh operations reconcile provider effects and retain human merge authority."],
-      "evidence": [{"label":"GitHub integration tests","url":"tests/integrations/github.test.mjs"}]
+      "notes": [
+        "Controller-owned gh operations reconcile provider effects and retain human merge authority."
+      ],
+      "evidence": [
+        {
+          "label": "GitHub integration tests",
+          "url": "tests/integrations/github.test.mjs"
+        }
+      ]
     },
     {
       "id": "F4-02",
@@ -614,14 +621,21 @@
         "model": "gpt-5.6-terra",
         "reasoning": "medium"
       },
-      "notes": ["Configured transitions fail visibly; explicit links preserve unsupported hierarchy."],
-      "evidence": [{"label":"Jira integration tests","url":"tests/integrations/jira.test.mjs"}]
+      "notes": [
+        "Configured transitions fail visibly; explicit links preserve unsupported hierarchy."
+      ],
+      "evidence": [
+        {
+          "label": "Jira integration tests",
+          "url": "tests/integrations/jira.test.mjs"
+        }
+      ]
     },
     {
       "id": "F4-03",
       "phase": 4,
       "title": "Implement evidence-based progression",
-      "status": "complete",
+      "status": "in_progress",
       "dependencies": [
         "F4-01",
         "F4-02"
@@ -631,14 +645,21 @@
         "model": "gpt-5.6-terra",
         "reasoning": "medium"
       },
-      "notes": ["Review and CI evidence is exact-head-bound; human merge authority is unchanged."],
-      "evidence": [{"label":"Progression tests","url":"tests/integrations/progression.test.mjs"}]
+      "notes": [
+        "Review and CI evidence is exact-head-bound; human merge authority is unchanged."
+      ],
+      "evidence": [
+        {
+          "label": "Progression tests",
+          "url": "tests/integrations/progression.test.mjs"
+        }
+      ]
     },
     {
       "id": "F4-04",
       "phase": 4,
       "title": "Implement deployment and maintenance entry",
-      "status": "complete",
+      "status": "in_progress",
       "dependencies": [
         "F4-03"
       ],
@@ -647,8 +668,15 @@
         "model": "gpt-5.6-terra",
         "reasoning": "medium"
       },
-      "notes": ["Actual local deploy/smoke subprocesses and one durable smoke follow-up passed."],
-      "evidence": [{"label":"Deployment integration tests","url":"tests/integrations/deployment.test.mjs"}]
+      "notes": [
+        "Actual local deploy/smoke subprocesses and one durable smoke follow-up passed."
+      ],
+      "evidence": [
+        {
+          "label": "Deployment integration tests",
+          "url": "tests/integrations/deployment.test.mjs"
+        }
+      ]
     },
     {
       "id": "F5-01",
@@ -1244,6 +1272,30 @@
       "from": "in_progress",
       "to": "complete",
       "reason": "Actual local deploy and smoke subprocess evidence, configured CI observation, file-backed one-time smoke follow-up, and gated recovery hooks passed focused and full checks."
+    },
+    {
+      "eventId": "status-1788623852667-v6dbhs",
+      "at": "2026-09-05T15:57:32.668Z",
+      "ticketId": "F4-01",
+      "from": "complete",
+      "to": "in_progress",
+      "reason": "Manager review found publication transfer/base identity and exact-commit check observation gaps; remediation in progress."
+    },
+    {
+      "eventId": "status-1788623852957-yymu4n",
+      "at": "2026-09-05T15:57:32.958Z",
+      "ticketId": "F4-03",
+      "from": "complete",
+      "to": "in_progress",
+      "reason": "Manager review found the current GitHub exact-commit check observation insufficient; remediation in progress."
+    },
+    {
+      "eventId": "status-1788623853226-hpdecr",
+      "at": "2026-09-05T15:57:33.227Z",
+      "ticketId": "F4-04",
+      "from": "complete",
+      "to": "in_progress",
+      "reason": "Manager review found ambient credential propagation and non-durable deployment/CI receipts; remediation in progress."
     }
   ]
 }

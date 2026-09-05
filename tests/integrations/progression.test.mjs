@@ -36,4 +36,13 @@ describe('commit-bound review and check progression', () => {
     ]);
     expect(result).toEqual(expect.objectContaining({ state: 'failed', checks: 'failed' }));
   });
+
+  it('does not let a later passing build check erase a failing required security check', () => {
+    const result = evaluateCommitProgression('head-b', [
+      evidence('review', 'head-b', 'passed', '2026-09-05T00:00:00Z', { source: 'reviewer-1' }),
+      evidence('check', 'head-b', 'failed', '2026-09-05T00:01:00Z', { source: 'security' }),
+      evidence('check', 'head-b', 'passed', '2026-09-05T00:02:00Z', { source: 'build' }),
+    ]);
+    expect(result).toEqual(expect.objectContaining({ state: 'failed', checks: 'failed' }));
+  });
 });

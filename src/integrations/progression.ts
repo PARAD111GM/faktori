@@ -27,8 +27,8 @@ export interface ProgressionDecision {
  */
 export function evaluateCommitProgression(commit: string, evidence: readonly CommitEvidence[]): ProgressionDecision {
   const exact = evidence.filter((item) => item.commit === commit);
-  const review = latest(exact, 'review');
-  const checks = latest(exact, 'check');
+  const review = aggregate(exact, 'review');
+  const checks = aggregate(exact, 'check');
   const reviewVerdict = review?.verdict ?? 'pending';
   const checksVerdict = checks?.verdict ?? 'pending';
   const reasons: string[] = [];
@@ -50,8 +50,20 @@ export function evaluateCommitProgression(commit: string, evidence: readonly Com
   return decision(commit, 'ready_for_human_merge', reviewVerdict, checksVerdict, ['exact_commit_review_and_checks_passed']);
 }
 
-function latest(evidence: readonly CommitEvidence[], kind: EvidenceKind): CommitEvidence | undefined {
-  return evidence.filter((item) => item.kind === kind).sort((left, right) => left.observedAt.localeCompare(right.observedAt)).at(-1);
+function aggregate(evidence: readonly CommitEvidence[], kind: EvidenceKind): CommitEvidence | undefined {
+  const observations = evidence.filter((item) => item.kind === kind);
+  if (observations.length === 0) return undefined;
+  const latestBySource = new Map<string, CommitEvidence>();
+  for (const item of observations) {
+    const prior = latestBySource.get(item.source);
+    if (prior === undefined || prior.observedAt <= item.observedAt) latestBySource.set(item.source, item);
+  }
+  const values = [...latestBySource.values()];
+  const selected = values.find((item) => item.verdict === 'failed')
+    ?? values.find((item) => item.verdict === 'pending')
+    ?? values.find((item) => item.verdict === 'waived')
+    ?? values[0];
+  return selected;
 }
 
 function validWaiver(value: CommitEvidence | undefined): boolean { return typeof value?.waiverAuthority === 'string' && value.waiverAuthority.trim().length > 0; }

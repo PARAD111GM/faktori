@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { ActionExecutionResult, AuthorizedAction, ControllerActionExecutor } from '../actions/index.ts';
 
 export interface JiraHttpResponse {
@@ -8,6 +10,25 @@ export interface JiraHttpResponse {
 /** Controller-owned HTTP boundary. Implementations may obtain credentials privately. */
 export interface JiraHttpClient {
   request(input: { method: 'GET' | 'POST' | 'PUT'; path: string; headers: Readonly<Record<string, string>>; body?: unknown }): Promise<JiraHttpResponse>;
+}
+
+/** Concrete controller-side REST transport; callers supply only a fixed base URL and private auth callback. */
+export class FetchJiraHttpClient implements JiraHttpClient {
+  readonly #base: URL;
+  readonly #fetcher: typeof fetch;
+  constructor(baseUrl: string, fetcher: typeof fetch = fetch) {
+    this.#base = new URL(baseUrl);
+    this.#fetcher = fetcher;
+    if (this.#base.protocol !== 'https:' && this.#base.protocol !== 'http:') throw new Error('Jira base URL must be http(s)');
+  }
+  async request(input: { method: 'GET' | 'POST' | 'PUT'; path: string; headers: Readonly<Record<string, string>>; body?: unknown }): Promise<JiraHttpResponse> {
+    if (!input.path.startsWith('/rest/api/3/')) throw new Error('Jira path escaped configured API root');
+    const response = await this.#fetcher(new URL(input.path, this.#base), { method: input.method, headers: input.headers, ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }) });
+    const raw = await response.text();
+    let body: unknown = undefined;
+    if (raw.length > 0) { try { body = JSON.parse(raw); } catch { throw new Error('Jira returned invalid JSON'); } }
+    return { status: response.status, body };
+  }
 }
 
 export interface JiraTransition {
@@ -91,30 +112,40 @@ export class JiraRestActionExecutor implements ControllerActionExecutor {
 
   private async reconciled(action: AuthorizedAction, operation: JiraOperation): Promise<boolean> {
     switch (operation.kind) {
-      case 'project.ensure': return (await this.read(`/rest/api/3/project/${encoded(operation.projectKey)}`)).status === 200;
+      case 'project.ensure': {
+        const result = await this.read(`/rest/api/3/project/${encoded(operation.projectKey)}`);
+        if (result.status === 200) return true;
+        if (result.status === 404) return false;
+        throw new Error(`Jira project reconciliation unavailable: HTTP ${result.status}`);
+      }
       case 'issue.ensure': {
         const marker = this.issueMarker(action.request.idempotencyKey);
-        const result = await this.read(`/rest/api/3/search/jql?jql=${encoded(`labels = "${marker}"`)}&maxResults=2`);
+        const result = await this.read(`/rest/api/3/search/jql?jql=${encoded(`project = "${text(operation.projectKey, 'projectKey')}" AND labels = "${marker}"`)}&maxResults=2`);
         const issues = object(result.body)?.issues;
-        return result.status === 200 && Array.isArray(issues) && issues.length === 1;
+        if (result.status !== 200 || !Array.isArray(issues)) throw new Error(`Jira issue reconciliation unavailable: HTTP ${result.status}`);
+        if (issues.length > 1) throw new JiraConfigurationError('ambiguous Jira issue reconciliation');
+        return issues.length === 1;
       }
       case 'issue.link': {
         const result = await this.read(`/rest/api/3/issue/${encoded(operation.inwardIssueKey)}?fields=issuelinks`);
         const links = object(object(result.body)?.fields)?.issuelinks;
-        return result.status === 200 && Array.isArray(links) && links.some((link) => {
+        if (result.status !== 200 || !Array.isArray(links)) throw new Error(`Jira link reconciliation unavailable: HTTP ${result.status}`);
+        return links.some((link) => {
           const item = object(link);
           return stringAt(item?.type, 'name') === operation.linkType && stringAt(item?.outwardIssue, 'key') === operation.outwardIssueKey;
         });
       }
       case 'issue.assign': {
         const result = await this.read(`/rest/api/3/issue/${encoded(operation.issueKey)}?fields=assignee`);
-        return result.status === 200 && stringAt(object(result.body)?.fields && object(object(result.body)?.fields)?.assignee, 'accountId') === operation.accountId;
+        if (result.status !== 200) throw new Error(`Jira assignment reconciliation unavailable: HTTP ${result.status}`);
+        return stringAt(object(result.body)?.fields && object(object(result.body)?.fields)?.assignee, 'accountId') === operation.accountId;
       }
       case 'issue.transition': {
         const configured = this.#transitions[operation.transition];
         if (configured === undefined) throw new JiraConfigurationError(`unconfigured Jira transition: ${operation.transition}`);
         const result = await this.read(`/rest/api/3/issue/${encoded(operation.issueKey)}?fields=status`);
-        return result.status === 200 && stringAt(object(result.body)?.fields && object(object(result.body)?.fields)?.status, 'name') === configured.targetStatus;
+        if (result.status !== 200) throw new Error(`Jira transition reconciliation unavailable: HTTP ${result.status}`);
+        return stringAt(object(result.body)?.fields && object(object(result.body)?.fields)?.status, 'name') === configured.targetStatus;
       }
     }
   }
@@ -123,7 +154,7 @@ export class JiraRestActionExecutor implements ControllerActionExecutor {
     const headers = await this.headers(action);
     switch (operation.kind) {
       case 'project.ensure': return this.#client.request({ method: 'POST', path: '/rest/api/3/project', headers, body: { ...operation.payload, key: text(operation.projectKey, 'projectKey') } });
-      case 'issue.ensure': return this.#client.request({ method: 'POST', path: '/rest/api/3/issue', headers, body: { fields: { project: { key: text(operation.projectKey, 'projectKey') }, issuetype: { id: text(operation.issueTypeId, 'issueTypeId') }, summary: text(operation.summary, 'summary'), ...(operation.description === undefined ? {} : { description: operation.description }), labels: [...(operation.labels ?? []), this.issueMarker(action.request.idempotencyKey)] } } });
+      case 'issue.ensure': return this.#client.request({ method: 'POST', path: '/rest/api/3/issue', headers, body: { fields: { project: { key: text(operation.projectKey, 'projectKey') }, issuetype: { id: text(operation.issueTypeId, 'issueTypeId') }, summary: text(operation.summary, 'summary'), ...(operation.description === undefined ? {} : { description: adf(operation.description) }), labels: [...(operation.labels ?? []), this.issueMarker(action.request.idempotencyKey)] } } });
       case 'issue.link': return this.#client.request({ method: 'POST', path: '/rest/api/3/issueLink', headers, body: { type: { name: text(operation.linkType, 'linkType') }, inwardIssue: { key: text(operation.inwardIssueKey, 'inwardIssueKey') }, outwardIssue: { key: text(operation.outwardIssueKey, 'outwardIssueKey') } } });
       case 'issue.assign': return this.#client.request({ method: 'PUT', path: `/rest/api/3/issue/${encoded(operation.issueKey)}/assignee`, headers, body: { accountId: text(operation.accountId, 'accountId') } });
       case 'issue.transition': {
@@ -135,9 +166,11 @@ export class JiraRestActionExecutor implements ControllerActionExecutor {
   }
 
   private async read(path: string): Promise<JiraHttpResponse> { return this.#client.request({ method: 'GET', path, headers: await this.headers() }); }
-  private issueMarker(idempotencyKey: string): string { return `faktori-idempotency-${text(idempotencyKey, 'idempotencyKey')}`; }
+  private issueMarker(idempotencyKey: string): string { return `faktori-${createHash('sha256').update(text(idempotencyKey, 'idempotencyKey')).digest('hex').slice(0, 24)}`; }
   private async headers(action?: AuthorizedAction): Promise<Record<string, string>> {
     const authorization = await this.#authorizationHeader?.();
     return { Accept: 'application/json', 'Content-Type': 'application/json', ...(authorization === undefined ? {} : { Authorization: authorization }), ...(action === undefined ? {} : { 'X-Faktori-Idempotency-Key': action.request.idempotencyKey }) };
   }
 }
+
+function adf(description: string): Record<string, unknown> { return { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: text(description, 'description') }] }] }; }

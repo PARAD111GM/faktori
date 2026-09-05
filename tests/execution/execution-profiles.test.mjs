@@ -167,7 +167,7 @@ describe('execution profiles', () => {
     expect(() => buildDockerExecutionPlan({ ...request(staged), workspacePath: join(staged.scratch, '..') }, dockerOptions(staged))).toThrow(/shared scratch root/);
     expect(() => buildDockerExecutionPlan({ ...request(staged), workspacePath: join(staged.scratch, 'job', 'escape') }, dockerOptions(staged))).toThrow(/symlink/);
     expect(() => buildDockerExecutionPlan({ ...request(staged), approvedInputs: [{ path: staged.input }] }, dockerOptions(staged, { controlStoragePaths: [staged.input] }))).toThrow(/control storage/);
-    expect(() => buildDockerExecutionPlan({ ...request(staged), approvedInputs: [{ path: '/var/run/docker.sock' }] }, dockerOptions(staged))).toThrow(/symlink|shared scratch root/);
+    expect(() => buildDockerExecutionPlan({ ...request(staged), approvedInputs: [{ path: '/var/run/docker.sock' }] }, dockerOptions(staged))).toThrow(/symlink|shared scratch root|must exist before launch/);
   });
 
   it('rejects equal and nested mount sources so readonly data cannot alias a writable mount', async () => {

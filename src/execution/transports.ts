@@ -168,6 +168,7 @@ export class BoundedCommandRunner {
     validInvocation(input);
     const detached = input.detached !== false;
     let child: SpawnedProcess;
+    let earlySpawnError: string | undefined;
     try {
       child = this.spawnProcess(input.command, [...input.args], {
         cwd: input.cwd,
@@ -176,17 +177,16 @@ export class BoundedCommandRunner {
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+      // A failed OS spawn can report no PID and emit `error` asynchronously.
+      // Observe it before checking the PID so callers receive a bounded failed
+      // result instead of an unhandled ChildProcess event.
+      child.on('error', (error) => { earlySpawnError ??= errorMessage(error); });
     } catch (error) {
       return { pid: -1, completion: Promise.resolve({ exitCode: null, signal: null, stdout: '', stderr: '', timedOut: false, outputLimitExceeded: false, spawnError: errorMessage(error) }) };
     }
     if (child.pid === undefined || child.pid < 1) {
       return { pid: -1, completion: Promise.resolve({ exitCode: null, signal: null, stdout: '', stderr: '', timedOut: false, outputLimitExceeded: false, spawnError: 'spawn did not return a child pid' }) };
     }
-    // Attach a listener before an asynchronous launch callback. In particular,
-    // a missing host command must resolve as a bounded failed observation rather
-    // than surface as an unhandled ChildProcess error event.
-    let earlySpawnError: string | undefined;
-    child.on('error', (error) => { earlySpawnError ??= errorMessage(error); });
     const pid = child.pid;
     if (input.onLaunched !== undefined) {
       try {

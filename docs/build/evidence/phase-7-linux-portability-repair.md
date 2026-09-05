@@ -43,3 +43,22 @@ The gate confirmed the repaired portable temporary paths, Linux scratch-root
 selection, build-before-test ordering, installed `ps`/`gh` prerequisites, and
 bounded missing-process-tool handling. It does not complete F7-02 or any
 other Phase 7 ticket.
+
+## Authorized cache-primer follow-up
+
+The initial exit-1 result identified a missing test-environment prerequisite,
+not a reason to relax the updater's offline policy. In one separately recorded
+disposable preparation step, the already-built exact Faktori tarball was
+installed online into `/work/cache-primer/consumer` with
+`--ignore-scripts --no-audit --no-fund`. This populated only that container's
+npm cache with public package metadata and transitives. No provider command,
+credential, host checkout, Docker socket, or active product operation was
+exposed; the temporary container auto-removed afterwards.
+
+With that cache present, the unchanged `npm run check` (including the
+managed updater's existing `--offline` install and rebuild flags) exited 0:
+strict typecheck, 39 test files / 313 tests, Console and TypeScript builds,
+and packed-CLI verification all passed on Linux/arm64. This is Linux
+repository/package evidence only. It does not supply the independent
+all-provider product proof, Twinzy authority, paired Triforge comparison, or
+Build Manager Phase 7 acceptance required for V1 completion.

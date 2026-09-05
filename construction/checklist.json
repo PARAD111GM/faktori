@@ -315,13 +315,14 @@
         "reasoning": "high"
       },
       "notes": [
-        "Digest-pinned isolated and explicit native plans, exact-env argv transports, PID/container identity probes, preflight-safe cancellation, output/runtime bounds, and Docker --rm log capture are implemented. A real credential-free Docker run observed UID 65532, /workspace cwd, no Docker socket, no publisher environment, durable revocation-before-stop, and confirmed exit. Manager-required authenticated isolated provider proof remains pending owner device login."
+        "Digest-pinned isolated and explicit native plans, exact-env argv transports, PID/container identity probes, coalesced durable cancellation, continuous-identity native group escalation, output/runtime bounds, and Docker --rm log capture are implemented. Real Docker runs observed UID 65532, /workspace cwd, no Docker socket or publisher environment, and authenticated vendor access. Two failed authenticated attempts are retained; the required edit/test proof remains pending explicit owner approval for the Docker-only inner-sandbox override."
       ],
       "evidence": [
         {"label":"Execution profiles","url":"src/execution/index.ts"},
         {"label":"Production transports","url":"src/execution/transports.ts"},
         {"label":"Execution boundary tests","url":"tests/execution"},
-        {"label":"Codex worker image","url":"docker/codex-worker.Dockerfile"}
+        {"label":"Codex worker image","url":"docker/codex-worker.Dockerfile"},
+        {"label":"Authenticated conformance checkpoint","url":"docs/build/phase-2-authenticated-conformance.md"}
       ]
     },
     {
@@ -340,13 +341,15 @@
         "reasoning": "high"
       },
       "notes": [
-        "The adapter and coordinator-owned single-worker path bind exact environment, cwd, model, current packet, durable source session, source factory/product/repository/workspace/provider scope, worker identity, events, final result, usage, and reservation disposition. Cross-scope resume fails before launch intent or adapter invocation. Empty/nonterminal/malformed output cannot invent completion; nonzero exit and error channels remain distinct. Deterministic and packed-library checks pass; manager-required authenticated Docker edit/test/resume/cancel proof remains pending owner device login."
+        "The adapter and coordinator-owned single-worker path bind exact environment, cwd, model, current packet, durable source session, source factory/product/repository/workspace/provider scope, worker identity, events, final result, usage, and reservation disposition. Cross-scope resume fails before launch. Empty/nonterminal/malformed output cannot invent completion, and the live harness rejected a provider terminal event because the requested fixture effect was absent. Two authenticated starts are retained as failed evidence; successful Docker edit/test/resume/cancel proof remains pending the Docker-only override decision."
       ],
       "evidence": [
         {"label":"Codex adapter","url":"src/providers/codex.ts"},
         {"label":"Coordinator delivery loop","url":"src/runtime/delivery.ts"},
         {"label":"Codex outcome tests","url":"tests/providers/codex.test.mjs"},
-        {"label":"Durable delivery tests","url":"tests/runtime/delivery.test.mjs"}
+        {"label":"Durable delivery tests","url":"tests/runtime/delivery.test.mjs"},
+        {"label":"Authenticated conformance checkpoint","url":"docs/build/phase-2-authenticated-conformance.md"},
+        {"label":"Phase 2 checkpoint report","url":"docs/build/phase-2-report.md"}
       ]
     },
     {

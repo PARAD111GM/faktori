@@ -6,7 +6,7 @@
 
 **Historical live profile:** native execution with explicit host trust
 
-**Current acceptance state:** corrected chain reached `CHANGES REQUIRED`; fresh independent review pending
+**Current acceptance state:** corrected chain independently accepted
 
 This note records the Phase 3 compatibility boundary and the sanitized live
 portability evidence. It does not claim provider behavior that was not
@@ -128,9 +128,11 @@ normalized provider event and was recovered locally with digest
 The harness now obtains the artifact from that exact terminal event while
 retaining the bounded summary contract. Local checks confirmed every required
 plan clause, exact counter bytes, and verifier exit 0 with
-`verification passed`. Claude and Cursor were not rerun. A fresh Codex review
-of the recovered plan and unchanged saved artifacts remains required and needs
-explicit authorization as an additional external provider run.
+`verification passed`. Claude and Cursor were not rerun. With explicit owner
+approval, one fresh Codex session accepted the recovered plan and unchanged
+saved artifacts, named all three exact content digests, and independently
+reproduced `verification passed`. Its review digest is
+`sha256:332b5b7be0f0f5f8f64bfce9691cbdf99fa7939bd4ce0761f401c8425d9e5f31`.
 
 ## Trust and evidence boundaries
 

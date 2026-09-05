@@ -435,7 +435,7 @@
       "id": "F3-01",
       "phase": 3,
       "title": "Implement the Claude adapter",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F2-02",
@@ -447,7 +447,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Claude transport, exact prompt authorization, explicit resume, native lifecycle, outcome normalization, and common delivery integration are implemented and deterministic tests pass. The corrected live start and exact-session resume completed. Complete artifact text remained in the durable provider event while the diagnostic final summary stayed bounded."
+        "Claude transport, exact prompt authorization, explicit resume, native lifecycle, outcome normalization, and common delivery integration pass deterministic coverage. Corrected live start and exact-session resume completed; complete artifact text remained in the durable provider event while the diagnostic final summary stayed bounded."
       ],
       "evidence": [
         {
@@ -472,7 +472,7 @@
       "id": "F3-02",
       "phase": 3,
       "title": "Implement the Cursor adapter",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F2-02",
@@ -484,7 +484,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Cursor ACP transport, exact prompt authorization, request and notification handling, explicit session load, and confirmed process-group exit are implemented and deterministic tests pass. Unknown or mismatched initial identities quarantine the transport without blind signaling. Corrected live implementation, executable verification, and exact-session load completed."
+        "Cursor ACP transport, exact prompt authorization, request and notification handling, explicit session load, and confirmed process-group exit pass deterministic coverage. Unknown or mismatched initial identities quarantine without blind signaling. Corrected live implementation, executable verification, and exact-session load completed."
       ],
       "evidence": [
         {
@@ -509,7 +509,7 @@
       "id": "F3-03",
       "phase": 3,
       "title": "Implement team delegation and handoffs",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F2-02",
@@ -523,7 +523,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Bounded durable delegation, ownership, per-workstream allocation, exact-schema portable result evidence, artifact transfer, restart recovery, concurrent admission, and orphaned-admission repair are implemented and deterministic tests pass. The corrected live coordinator recovered handoffs across restart without duplication."
+        "Bounded durable delegation, ownership, per-workstream allocation, exact-schema portable result evidence, artifact transfer, restart recovery, concurrent admission, and orphaned-admission repair pass deterministic coverage. The corrected live coordinator recovered handoffs across restart without duplication."
       ],
       "evidence": [
         {
@@ -548,7 +548,7 @@
       "id": "F3-04",
       "phase": 3,
       "title": "Prove role portability and provider substitution",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-03",
         "F3-01",
@@ -561,7 +561,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "The corrected Claude to Cursor to Codex chain reached independent review. Codex returned CHANGES REQUIRED because the private harness used the bounded diagnostic final summary as plan.md. The complete Claude result remained in the durable provider event, was recovered and locally verified, and the harness now uses that explicit artifact path. Fresh Codex review of the recovered plan is the remaining live gate; Claude and Cursor must not be rerun."
+        "The corrected Claude to Cursor to Codex chain preserved the initial CHANGES REQUIRED review, recovered the complete Claude plan from the exact durable provider event, and reused the unchanged Cursor artifacts without rerunning either provider. A fresh Codex session accepted the exact plan, counter and verifier digests, and pre/post-review verification printed verification passed."
       ],
       "evidence": [
         {
@@ -1134,6 +1134,42 @@
       "from": "not_started",
       "to": "in_progress",
       "reason": "The assembled adapters and delegation path enabled bounded cross-provider artifact portability and independent-review evidence.",
+      "actor": "phase-3-orchestrator"
+    },
+    {
+      "eventId": "phase-3-complete-f3-01-claude",
+      "at": "2026-09-05T14:23:41Z",
+      "ticketId": "F3-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Exact prompt-bound Claude start and same-scope resume passed the common delivery path; full result artifacts remain durable separately from bounded summaries.",
+      "actor": "phase-3-orchestrator"
+    },
+    {
+      "eventId": "phase-3-complete-f3-02-cursor",
+      "at": "2026-09-05T14:23:41Z",
+      "ticketId": "F3-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Cursor ACP created and verified the exact fixture, loaded its explicit session, confirmed worker-group exit, and retained fail-closed request and identity boundaries.",
+      "actor": "phase-3-orchestrator"
+    },
+    {
+      "eventId": "phase-3-complete-f3-03-delegation",
+      "at": "2026-09-05T14:23:41Z",
+      "ticketId": "F3-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Durable ownership, concurrent admission, exact portable results, artifact transfer and restart recovery passed without duplicate handoffs or lost results.",
+      "actor": "phase-3-orchestrator"
+    },
+    {
+      "eventId": "phase-3-complete-f3-04-portability",
+      "at": "2026-09-05T14:23:41Z",
+      "ticketId": "F3-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Fresh Codex review accepted the recovered exact Claude plan and unchanged Cursor artifacts after pre/post-review verifier passes; the earlier CHANGES REQUIRED evidence remains preserved.",
       "actor": "phase-3-orchestrator"
     }
   ]

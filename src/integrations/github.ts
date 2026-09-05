@@ -204,11 +204,16 @@ export class GitHubDraftPullRequestExecutor implements ControllerActionExecutor 
     const push = await this.git([...invocation, 'push', this.target.publisherRemote, `${this.target.expectedRevision}:refs/heads/${this.target.branch}`]);
     if (push.exitCode !== 0) return { outcome: 'failed', detail: bounded(`git_transfer_failed:${push.stderr || push.stdout}`) };
     const head = await this.remoteRef(this.target.branch);
-    return head === this.target.expectedRevision ? undefined : { outcome: 'uncertain', detail: 'trusted_remote_head_missing_or_mismatched_after_push' };
+    if (head !== this.target.expectedRevision) return { outcome: 'uncertain', detail: 'trusted_remote_head_missing_or_mismatched_after_push' };
+    return await this.remoteRef(baseRefName(this.target)) === this.target.baseRevision
+      ? undefined
+      : { outcome: 'blocked', detail: 'trusted_remote_base_revision_changed_before_pr' };
   }
 
   private async remoteRef(ref: string): Promise<string | undefined> {
-    const result = await this.git(['ls-remote', this.target.publisherRemote, `refs/heads/${ref}`]);
+    const invocation = trustedGitInvocation(this.target);
+    if (invocation === undefined) return undefined;
+    const result = await this.git([...invocation, 'ls-remote', this.target.publisherRemote, `refs/heads/${ref}`]);
     if (result.exitCode !== 0) return undefined;
     const [revision, observedRef] = result.stdout.trim().split(/\s+/);
     return observedRef === `refs/heads/${ref}` && typeof revision === 'string' && revision.length > 0 ? revision : undefined;

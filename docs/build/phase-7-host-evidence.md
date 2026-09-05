@@ -79,3 +79,13 @@ These are bounded Linux-container observations, not a complete independent
 Linux factory installation, browser journey, provider isolation proof, or
 completed Python bug fix. Host bind-mount behavior still requires diagnosis;
 the complete F7-02 gate remains open. The frozen inputs were not changed.
+
+The manager subsequently identified the bind-mount cause: Docker Desktop's
+configured shared paths excluded `/Users`. A public-only Git archive of the
+configuration source/examples and Python fixture was placed under an already
+shared temporary path. A read-only bind from that location succeeded, and the
+same two configuration examples passed in cached Linux Node 24.20.0 with no
+network. This verifies a working mount alternative without changing Docker
+settings, restarting workloads, or sharing a home directory. Installations
+must discover and validate their configured workspace-sharing boundary before
+admitting isolated jobs. It still does not prove the full Linux factory gate.

@@ -683,64 +683,148 @@
       "id": "F5-01",
       "phase": 5,
       "title": "Build the Console shell and read views",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F3-03",
         "F4-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Console UI specialist",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "The built React/Vite Console reads the redacted live coordinator projection across Overview, Work, Run detail, and Factory views. Shared product/pod filters, a collapsible factory hierarchy, explicit dependency edges, stale-state disclosure, and accessible empty states were exercised in the local browser."
+      ],
+      "evidence": [
+        {
+          "label": "Console UI",
+          "url": "console/src/main.tsx"
+        },
+        {
+          "label": "Loopback Console service",
+          "url": "src/console/service.ts"
+        },
+        {
+          "label": "Console service tests",
+          "url": "tests/console/service.test.mjs"
+        },
+        {
+          "label": "Phase 5 checkpoint report",
+          "url": "docs/build/phase-5-report.md"
+        }
+      ]
     },
     {
       "id": "F5-02",
       "phase": 5,
       "title": "Add owner actions and conversation controls",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-04",
         "F5-01"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase implementer-orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Owner commands are origin/token checked, durable, serialized, and replay-safe. Start returns after admission while provider work continues; next-turn messages, exact-session resume, identity-checked native/container cancellation, admission pause, record links, and bounded Cursor question/permission/plan responses remain available without browser-supplied authority or provider configuration."
+      ],
+      "evidence": [
+        {
+          "label": "Owner action boundary",
+          "url": "src/console/owner-actions.ts"
+        },
+        {
+          "label": "Installed Console runtime",
+          "url": "src/console/startup.ts"
+        },
+        {
+          "label": "Provider request bridge",
+          "url": "src/console/provider-requests.ts"
+        },
+        {
+          "label": "Durable cancellation tests",
+          "url": "tests/runtime/cancellation.test.mjs"
+        }
+      ]
     },
     {
       "id": "F5-03",
       "phase": 5,
       "title": "Implement Factory GM operation",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F5-01",
         "F5-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Factory GM specialist and phase implementer-orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "The bounded event-driven GM observes durable provider outcomes, deduplicates exact source events across restart, opens repeated-handoff findings only after the second failure, and invokes one dynamic provider diagnosis through an owner-approved intent template. It rejects privileged product/merge/policy recommendations and leaves factory improvements approval-required."
+      ],
+      "evidence": [
+        {
+          "label": "Factory GM",
+          "url": "src/gm/index.ts"
+        },
+        {
+          "label": "Durable health observer",
+          "url": "src/gm/health-observer.ts"
+        },
+        {
+          "label": "Factory GM tests",
+          "url": "tests/gm/factory-gm.test.mjs"
+        },
+        {
+          "label": "Installed dynamic GM integration test",
+          "url": "tests/console/service.test.mjs"
+        }
+      ]
     },
     {
       "id": "F5-04",
       "phase": 5,
       "title": "Add resource and attention visibility",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F5-01",
         "F5-02",
         "F5-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Console UI specialist and phase implementer-orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Factory visibility keeps reported usage, reservations, unavailable telemetry, queue age, GM findings, owner-once attention, and approval-required improvements distinct. Browser QA exercised the shared scope filter, resource view, provider response, SSE refresh, and admission pause with no console errors."
+      ],
+      "evidence": [
+        {
+          "label": "Factory resource and attention view",
+          "url": "console/src/main.tsx"
+        },
+        {
+          "label": "Public Console state projection",
+          "url": "src/console/service.ts"
+        },
+        {
+          "label": "Console operations guide",
+          "url": "docs/console.md"
+        },
+        {
+          "label": "Browser verification fixture",
+          "url": "scripts/console-browser-fixture.mjs"
+        }
+      ]
     },
     {
       "id": "F6-01",
@@ -1361,6 +1445,38 @@
       "from": "not_started",
       "to": "in_progress",
       "reason": "Resource/attention API projection is implemented; visible Console integration remains."
+    },
+    {
+      "eventId": "status-1788629258198-tg28g4",
+      "at": "2026-09-05T17:27:38.199Z",
+      "ticketId": "F5-01",
+      "from": "complete",
+      "to": "complete",
+      "reason": "Console read views, hierarchy, filters, stale handling, and local browser proof completed."
+    },
+    {
+      "eventId": "status-1788629259291-w49q27",
+      "at": "2026-09-05T17:27:39.292Z",
+      "ticketId": "F5-02",
+      "from": "complete",
+      "to": "complete",
+      "reason": "Replay-safe owner controls, provider requests, installed runtime routes, durable cancellation, and explicit resume completed."
+    },
+    {
+      "eventId": "status-1788629260346-tx397s",
+      "at": "2026-09-05T17:27:40.347Z",
+      "ticketId": "F5-03",
+      "from": "complete",
+      "to": "complete",
+      "reason": "Event-driven durable GM observation and provider-backed bounded diagnosis completed without product or policy authority."
+    },
+    {
+      "eventId": "status-1788629261393-zrbfgv",
+      "at": "2026-09-05T17:27:41.394Z",
+      "ticketId": "F5-04",
+      "from": "complete",
+      "to": "complete",
+      "reason": "Resource, queue, attention, GM finding, and improvement visibility completed and browser-verified."
     }
   ]
 }

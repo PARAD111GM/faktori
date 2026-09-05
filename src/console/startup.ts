@@ -1,14 +1,23 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 
+import { resolveFactoryConfig, type FactoryConfiguration, type ResolvedFactoryConfiguration } from '../config/index.ts';
 import type { AdmissionLimits, CoordinatorIdentity, DurableCoordinator } from '../runtime/index.ts';
 import { CoordinatorProviderDelivery, DurableCoordinator as Coordinator } from '../runtime/index.ts';
 import { CodexAdapter } from '../providers/codex.ts';
 import type { CodexProcessRunner } from '../providers/codex.ts';
-import { providerContextPayloadDigest, type ProviderCurrentContext } from '../providers/contracts.ts';
-import { NativeCodexProcessRunner, NativeIdentityProbe } from '../execution/transports.ts';
-import { CoordinatorGMStore, FactoryGM, type GMHealthSignal } from '../gm/index.ts';
+import { ClaudeAdapter, type ClaudeProcessRunner } from '../providers/claude.ts';
+import { CursorAcpAdapter, type CursorAcpTransport } from '../providers/cursor.ts';
+import { providerContextPayloadDigest, type ProviderCurrentContext, type ProviderSessionBinding, type ProviderTurnAdapter, type SupportedProviderId } from '../providers/contracts.ts';
+import { buildDockerExecutionPlan, type ContainerIdentityProbe, type CredentialProfile, type NativeIdentityProbe as NativeIdentityProbeContract } from '../execution/index.ts';
+import { NativeClaudeProcessRunner } from '../execution/claude-process.ts';
+import { CursorAcpStdioTransport } from '../execution/cursor-acp-stdio.ts';
+import { BoundedCommandRunner, DockerCliIdentityProbe, DockerCliRunner, DockerCodexProcessRunner, NativeCodexProcessRunner, NativeIdentityProbe } from '../execution/transports.ts';
+import { CoordinatorGMHealthObserver, CoordinatorGMStore, FactoryGM, type GMProviderDiagnosisPort } from '../gm/index.ts';
+import { observeDurableDockerTermination, observeDurableNativeTermination, prepareDurableDockerTermination, prepareDurableNativeTermination, type DurableDockerTerminationPreparation, type DurableNativeTerminationPreparation } from '../runtime/cancellation.ts';
 import { createConsoleOwnerActions } from './owner-actions.ts';
+import { ConsoleProviderRequestBroker } from './provider-requests.ts';
 import { consoleCommandToken, createConsoleService, type ConsoleOwnerActions } from './service.ts';
 import type { RunIntent, WorkerIdentity } from '../runtime/contracts.ts';
 
@@ -21,19 +30,27 @@ export interface LocalConsoleConfiguration {
   commandToken?: string;
   allowedOrigins: string[];
   limits: AdmissionLimits;
-  runtime?: DeterministicConsoleRuntimeConfiguration;
+  factoryConfiguration?: ResolvedFactoryConfiguration;
+  runtime?: LocalConsoleRuntimeConfiguration;
 }
 
-/**
- * Explicit deterministic runtime wiring for installation conformance. It is
- * intentionally not a substitute for a vendor CLI login or live-provider proof.
- * It proves the installed Console reaches the real coordinator→delivery→adapter
- * path without creating an external provider run.
- */
-export interface DeterministicConsoleRuntimeConfiguration {
-  provider: { id: 'codex'; environment: Record<string, string>; compatibleModels: string[]; runNonce: string };
-  workItems: Array<{ workItemId: string; intent: RunIntent; context: ProviderCurrentContext }>;
-  gm?: { instructions: { revision: string; content: string }; diagnosisResponse?: unknown; configuredRoutineActions?: Array<'refresh_projection' | 'reconcile_unresolved_operations' | 'prune_expired_console_commands'> };
+export type LocalProviderRoute =
+  | { id: 'codex'; profile: 'native'; environment: Record<string, string>; compatibleModels: string[]; runNonce: string }
+  | { id: 'codex'; profile: 'isolated'; environment: Record<string, string>; compatibleModels: string[]; runNonce: string; docker: { image: string; scratchRoot: string; controlStoragePaths: string[]; allowedSharedScratchRoots?: string[]; approvedInputs: Array<{ path: string; label?: string }>; credentialProfile?: CredentialProfile; networkMode: 'none' | 'bridge'; resources: { memoryBytes: number; cpuCount: number; pids: number }; allowUnsandboxedCodexInsideValidatedContainer: boolean } }
+  | { id: 'claude'; profile: 'native'; environment: Record<string, string>; compatibleModels: string[]; allowedTools: string[]; runNonce: string }
+  | { id: 'cursor'; profile: 'native'; environment: Record<string, string>; requestTimeoutMs: number; runNonce: string };
+
+/** Owner-controlled provider routes. Browser commands can select only these IDs. */
+export interface LocalConsoleRuntimeConfiguration {
+  providers: LocalProviderRoute[];
+  workItems: Array<{ workItemId: string; intent: RunIntent; context: ProviderCurrentContext; dependsOnWorkItemIds: string[] }>;
+  resumePlans: Array<{ sourceRunId: string; targetWorkItemId: string }>;
+  gm?: {
+    instructions: { revision: string; content: string };
+    /** Owner-approved scope template; controller supplies only bounded journal-derived diagnosis context. */
+    diagnosisTemplate: { intent: RunIntent };
+    configuredRoutineActions?: Array<'refresh_projection' | 'reconcile_unresolved_operations' | 'prune_expired_console_commands'>;
+  };
 }
 
 function object(value: unknown): Record<string, unknown> | undefined {
@@ -63,23 +80,108 @@ function limits(value: unknown): AdmissionLimits {
   return input as unknown as AdmissionLimits;
 }
 
-function runtime(value: unknown, factoryId: string): DeterministicConsoleRuntimeConfiguration | undefined {
+function providerRoute(value: unknown): LocalProviderRoute {
+  const route = object(value);
+  if (route === undefined) throw new Error('runtime provider route must be an object');
+  const id = route?.id;
+  const profile = route.profile ?? 'native';
+  const environment = object(route?.environment);
+  const compatibleModels = route?.compatibleModels;
+  const runNonce = requiredText(route?.runNonce, 'runtime.providers.runNonce');
+  if ((id !== 'codex' && id !== 'claude' && id !== 'cursor') || (profile !== 'native' && profile !== 'isolated') || environment === undefined
+    || !Object.values(environment).every((item) => typeof item === 'string')) {
+    throw new Error('runtime provider route must name codex, claude, or cursor with a controlled string environment');
+  }
+  if (profile === 'isolated') {
+    if (id !== 'codex') throw new Error('only the shipped Codex transport currently supports an isolated provider route');
+    if (!Array.isArray(compatibleModels) || !compatibleModels.every((item) => typeof item === 'string' && item.trim().length > 0)) throw new Error('isolated Codex route requires explicit compatibleModels');
+    const docker = object(route.docker);
+    const resources = object(docker?.resources);
+    if (docker === undefined || !Array.isArray(docker.controlStoragePaths) || docker.controlStoragePaths.length === 0 || !docker.controlStoragePaths.every((item) => typeof item === 'string' && isAbsolute(item))
+      || !Array.isArray(docker.approvedInputs) || !['none', 'bridge'].includes(String(docker.networkMode)) || typeof docker.allowUnsandboxedCodexInsideValidatedContainer !== 'boolean'
+      || resources === undefined || !Number.isInteger(resources.memoryBytes) || Number(resources.memoryBytes) < 1 || !Number.isFinite(resources.cpuCount) || Number(resources.cpuCount) <= 0 || !Number.isInteger(resources.pids) || Number(resources.pids) < 1) {
+      throw new Error('isolated Codex route requires bounded Docker image, paths, inputs, networking, resources, and inner-sandbox policy');
+    }
+    const approvedInputs = docker.approvedInputs.map((item) => {
+      const input = object(item);
+      const path = absolutePath(input?.path, 'runtime.providers.docker.approvedInputs.path');
+      return { path, ...(input?.label === undefined ? {} : { label: requiredText(input.label, 'runtime.providers.docker.approvedInputs.label') }) };
+    });
+    const credentialInput = object(docker.credentialProfile);
+    const credentialProfile = credentialInput === undefined ? undefined : {
+      profileId: requiredText(credentialInput.profileId, 'runtime.providers.docker.credentialProfile.profileId'),
+      path: absolutePath(credentialInput.path, 'runtime.providers.docker.credentialProfile.path'),
+      environmentVariable: requiredText(credentialInput.environmentVariable, 'runtime.providers.docker.credentialProfile.environmentVariable'),
+      ...(credentialInput.writable === true ? { writable: true } : {}),
+    };
+    const allowedRoots = docker.allowedSharedScratchRoots;
+    if (allowedRoots !== undefined && (!Array.isArray(allowedRoots) || !allowedRoots.every((item) => typeof item === 'string' && isAbsolute(item)))) throw new Error('isolated Codex allowed shared scratch roots must be absolute paths');
+    return { id, profile, environment: environment as Record<string, string>, compatibleModels: compatibleModels as string[], runNonce, docker: { image: requiredText(docker.image, 'runtime.providers.docker.image'), scratchRoot: absolutePath(docker.scratchRoot, 'runtime.providers.docker.scratchRoot'), controlStoragePaths: docker.controlStoragePaths as string[], ...(allowedRoots === undefined ? {} : { allowedSharedScratchRoots: allowedRoots as string[] }), approvedInputs, ...(credentialProfile === undefined ? {} : { credentialProfile }), networkMode: docker.networkMode as 'none' | 'bridge', resources: { memoryBytes: Number(resources.memoryBytes), cpuCount: Number(resources.cpuCount), pids: Number(resources.pids) }, allowUnsandboxedCodexInsideValidatedContainer: docker.allowUnsandboxedCodexInsideValidatedContainer } };
+  }
+  if (id === 'cursor') {
+    if (!Number.isInteger(route.requestTimeoutMs) || Number(route.requestTimeoutMs) < 1) throw new Error('Cursor route requires a positive requestTimeoutMs');
+    return { id, profile, environment: environment as Record<string, string>, requestTimeoutMs: Number(route.requestTimeoutMs), runNonce };
+  }
+  if (!Array.isArray(compatibleModels) || !compatibleModels.every((item) => typeof item === 'string' && item.trim().length > 0)) throw new Error(`${id} route requires explicit compatibleModels`);
+  if (id === 'claude') {
+    if (!Array.isArray(route.allowedTools) || !route.allowedTools.every((item) => typeof item === 'string' && item.trim().length > 0)) throw new Error('Claude route requires an explicit allowedTools array');
+    return { id, profile, environment: environment as Record<string, string>, compatibleModels: compatibleModels as string[], allowedTools: route.allowedTools as string[], runNonce };
+  }
+  return { id, profile, environment: environment as Record<string, string>, compatibleModels: compatibleModels as string[], runNonce };
+}
+
+function runtime(value: unknown, factoryId: string): LocalConsoleRuntimeConfiguration | undefined {
   if (value === undefined) return undefined;
-  const input = object(value); const provider = object(input?.provider);
-  if (provider?.id !== 'codex' || !object(provider.environment) || !Array.isArray(provider.compatibleModels) || !provider.compatibleModels.every((item) => typeof item === 'string' && item.trim()) || typeof provider.runNonce !== 'string' || provider.runNonce.trim().length === 0) throw new Error('runtime.provider must explicitly configure Codex CLI, a controlled environment, compatible models, and a run nonce');
+  const input = object(value);
+  const rawProviders = Array.isArray(input?.providers) ? input.providers : input?.provider === undefined ? [] : [input.provider];
+  if (rawProviders.length === 0) throw new Error('runtime must include at least one provider route');
+  const providers = rawProviders.map(providerRoute);
+  if (new Set(providers.map((provider) => `${provider.id}:${provider.profile}`)).size !== providers.length) throw new Error('runtime provider route ID/profile pairs must be unique');
+  const providerRoutes = new Set(providers.map((provider) => `${provider.id}:${provider.profile}`));
   if (!Array.isArray(input?.workItems)) throw new Error('runtime must include explicit eligible workItems');
   const workItems = input.workItems.map((item) => {
     const candidate = object(item); const intent = candidate?.intent as RunIntent | undefined; const context = candidate?.context as ProviderCurrentContext | undefined;
-    if (typeof candidate?.workItemId !== 'string' || intent?.format !== 'faktori.run-intent/v1' || intent.target?.factoryId !== factoryId || intent.execution?.providerId !== 'codex' || !context || typeof context.prompt !== 'string' || providerContextPayloadDigest(context) === '' || !intent.execution.approvedInputDigests?.includes(providerContextPayloadDigest(context))) throw new Error('runtime work item must contain a factory-bound Codex intent and exact approved context');
-    return { workItemId: candidate.workItemId, intent, context };
+    if (typeof candidate?.workItemId !== 'string' || candidate.workItemId.trim().length === 0 || intent?.format !== 'faktori.run-intent/v1' || intent.target?.factoryId !== factoryId || !providerRoutes.has(`${intent.execution?.providerId}:${intent.execution?.profile}`) || !context || typeof context.prompt !== 'string' || providerContextPayloadDigest(context) === '' || !intent.execution.approvedInputDigests?.includes(providerContextPayloadDigest(context))) throw new Error('runtime work item must contain a factory-bound intent, configured provider/profile route, and exact approved context');
+    if (candidate.dependsOnWorkItemIds !== undefined && (!Array.isArray(candidate.dependsOnWorkItemIds) || !candidate.dependsOnWorkItemIds.every((dependency) => typeof dependency === 'string' && dependency.trim().length > 0))) throw new Error('runtime work-item dependencies must be explicit work-item IDs');
+    return { workItemId: candidate.workItemId, intent, context, dependsOnWorkItemIds: [...new Set((candidate.dependsOnWorkItemIds ?? []) as string[])] };
   });
+  if (new Set(workItems.map((item) => item.workItemId)).size !== workItems.length || new Set(workItems.map((item) => item.intent.runId)).size !== workItems.length) throw new Error('runtime work-item and run IDs must be unique');
+  const workItemIds = new Set(workItems.map((item) => item.workItemId));
+  if (workItems.some((item) => item.dependsOnWorkItemIds.some((dependency) => !workItemIds.has(dependency) || dependency === item.workItemId))) throw new Error('runtime work-item dependency must reference a different configured work item');
+  if (input.resumePlans !== undefined && !Array.isArray(input.resumePlans)) throw new Error('runtime.resumePlans must be an array');
+  const resumePlans = (input.resumePlans ?? []).map((item) => {
+    const candidate = object(item);
+    const sourceRunId = requiredText(candidate?.sourceRunId, 'runtime.resumePlans.sourceRunId');
+    const targetWorkItemId = requiredText(candidate?.targetWorkItemId, 'runtime.resumePlans.targetWorkItemId');
+    if (!workItemIds.has(targetWorkItemId)) throw new Error('runtime resume plan must reference a configured target work item');
+    return { sourceRunId, targetWorkItemId };
+  });
+  if (new Set(resumePlans.map((item) => item.sourceRunId)).size !== resumePlans.length) throw new Error('runtime resume source run IDs must be unique');
   const gmInput = object(input.gm);
-  const gm = gmInput === undefined ? undefined : { instructions: { revision: requiredText(object(gmInput.instructions)?.revision, 'runtime.gm.instructions.revision'), content: requiredText(object(gmInput.instructions)?.content, 'runtime.gm.instructions.content') }, ...(gmInput.diagnosisResponse === undefined ? {} : { diagnosisResponse: gmInput.diagnosisResponse }), ...(Array.isArray(gmInput.configuredRoutineActions) ? { configuredRoutineActions: gmInput.configuredRoutineActions as DeterministicConsoleRuntimeConfiguration['gm'] extends infer _ ? Array<'refresh_projection' | 'reconcile_unresolved_operations' | 'prune_expired_console_commands'> : never } : {}) };
-  return { provider: { id: 'codex', environment: provider.environment as Record<string, string>, compatibleModels: provider.compatibleModels as string[], runNonce: provider.runNonce }, workItems, ...(gm === undefined ? {} : { gm }) };
+  const gm = gmInput === undefined ? undefined : (() => {
+    const template = object(gmInput.diagnosisTemplate);
+    const intent = template?.intent as RunIntent | undefined;
+    if (intent?.format !== 'faktori.run-intent/v1' || intent.target.factoryId !== factoryId || intent.execution.profile !== 'native'
+      || !providerRoutes.has(`${intent.execution.providerId}:${intent.execution.profile}`)) throw new Error('runtime GM diagnosis template must contain a factory-bound intent on a configured provider/profile route');
+    return {
+      instructions: { revision: requiredText(object(gmInput.instructions)?.revision, 'runtime.gm.instructions.revision'), content: requiredText(object(gmInput.instructions)?.content, 'runtime.gm.instructions.content') },
+      diagnosisTemplate: { intent },
+      ...(Array.isArray(gmInput.configuredRoutineActions) ? { configuredRoutineActions: gmInput.configuredRoutineActions as Array<'refresh_projection' | 'reconcile_unresolved_operations' | 'prune_expired_console_commands'> } : {}),
+    };
+  })();
+  return { providers, workItems, resumePlans, ...(gm === undefined ? {} : { gm }) };
 }
 
 /** Explicit test seam. Production startup never supplies a transcript or mock runner. */
-export interface LocalConsoleDependencies { codexRunner?: CodexProcessRunner; }
+export interface LocalConsoleDependencies {
+  /** Test-only seams; production startup always constructs the native implementations. */
+  codexRunner?: CodexProcessRunner;
+  claudeRunner?: ClaudeProcessRunner;
+  cursorTransport?: CursorAcpTransport;
+  providerAdapters?: Partial<Record<SupportedProviderId, ProviderTurnAdapter>>;
+  nativeIdentityProbe?: NativeIdentityProbeContract;
+  healthPollIntervalMs?: number;
+}
 
 /** Parse the owner-controlled local service config; browser input never reaches this boundary. */
 export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConfiguration {
@@ -91,7 +193,10 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   }
   const commandToken = input.commandToken === undefined ? undefined : requiredText(input.commandToken, 'commandToken');
   const factoryId = requiredText(input.factoryId, 'factoryId');
-  return { factoryId, journalPath: absolutePath(input.journalPath, 'journalPath'), projectionPath: absolutePath(input.projectionPath, 'projectionPath'), port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), ...(runtime(input.runtime, factoryId) === undefined ? {} : { runtime: runtime(input.runtime, factoryId) }) };
+  const factoryConfiguration = input.factoryConfiguration === undefined ? undefined : resolveFactoryConfig(input.factoryConfiguration as FactoryConfiguration);
+  if (factoryConfiguration !== undefined && factoryConfiguration.factory.id !== factoryId) throw new Error('factoryConfiguration must resolve to the Console factoryId');
+  const configuredRuntime = runtime(input.runtime, factoryId);
+  return { factoryId, journalPath: absolutePath(input.journalPath, 'journalPath'), projectionPath: absolutePath(input.projectionPath, 'projectionPath'), port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -102,37 +207,302 @@ export interface StartedConsole {
   close(): Promise<void>;
 }
 
-function configuredOwnerActions(coordinator: DurableCoordinator, configuration: DeterministicConsoleRuntimeConfiguration, dependencies: LocalConsoleDependencies): ConsoleOwnerActions {
-  const runner = dependencies.codexRunner ?? new NativeCodexProcessRunner({
-    identityProbe: new NativeIdentityProbe({ cwd: process.cwd(), env: configuration.provider.environment }), runNonce: configuration.provider.runNonce,
+interface ConfiguredRuntime {
+  ownerActions: ConsoleOwnerActions;
+  diagnosis?: GMProviderDiagnosisPort;
+  diagnosisWorkItemIds: ReadonlySet<string>;
+  shutdown(): Promise<void>;
+}
+
+function sameWorker(left: WorkerIdentity | undefined, right: WorkerIdentity): boolean {
+  if (left === undefined || left.kind !== right.kind) return false;
+  return left.kind === 'native' && right.kind === 'native'
+    ? left.pid === right.pid && left.processStartedAt === right.processStartedAt && left.processGroupId === right.processGroupId && left.runNonce === right.runNonce
+    : left.kind === 'container' && right.kind === 'container' && left.containerId === right.containerId && left.containerStartedAt === right.containerStartedAt && left.runNonce === right.runNonce;
+}
+
+function providerRouteKey(providerId: string, profile: string): string {
+  return `${providerId}:${profile}`;
+}
+
+function gmDiagnosisPrompt(request: Parameters<GMProviderDiagnosisPort['diagnose']>[0]): string {
+  return JSON.stringify({
+    task: 'faktori_factory_health_diagnosis',
+    findingId: request.findingId,
+    findingKey: request.findingKey,
+    instructionRevision: request.instructionRevision,
+    instructions: request.instructions,
+    category: request.category,
+    occurrenceCount: request.occurrenceCount,
+    latestSummary: request.latestSummary,
+    outputContract: { format: 'json', maxCharacters: request.maxOutputCharacters, fields: ['summary', 'recommendations'] },
   });
-  const adapter = new CodexAdapter({
-    limits: coordinator.limits, environment: configuration.provider.environment, compatibleModels: configuration.provider.compatibleModels,
-    runner,
-  });
-  const delivery = new CoordinatorProviderDelivery({ coordinator, adapter, providerId: 'codex', terminateWorker: async () => { throw new Error('deterministic provider has no live worker to terminate'); } });
+}
+
+function consoleHierarchy(configuration: LocalConsoleConfiguration): NonNullable<Parameters<typeof createConsoleService>[0]['hierarchy']> {
+  const catalog = configuration.factoryConfiguration;
+  const entries = configuration.runtime?.workItems ?? [];
+  const intentIdByConfiguredId = new Map(entries.map((entry) => [entry.workItemId, entry.intent.workItem.id]));
+  return {
+    ...(catalog === undefined ? {} : { factory: { id: catalog.factory.id, name: catalog.factory.name } }),
+    products: catalog?.products.map((product) => ({ id: product.id, name: product.name })) ?? [],
+    pods: catalog?.pods.map((pod) => ({ id: pod.id, productId: pod.productId })) ?? [],
+    workItems: entries.map((entry) => ({
+      id: entry.intent.workItem.id,
+      label: entry.workItemId,
+      productId: entry.intent.target.productId,
+      ...(entry.intent.target.podId === undefined ? {} : { podId: entry.intent.target.podId }),
+      dependsOnWorkItemIds: entry.dependsOnWorkItemIds.map((dependency) => intentIdByConfiguredId.get(dependency) as string),
+    })),
+  };
+}
+
+function configuredRuntime(coordinator: DurableCoordinator, configuration: LocalConsoleRuntimeConfiguration, dependencies: LocalConsoleDependencies): ConfiguredRuntime {
+  const nativeProbes = new Map<string, NativeIdentityProbeContract>();
+  const containerProbes = new Map<string, ContainerIdentityProbe>();
+  const adapters = new Map<string, ProviderTurnAdapter>();
+  const cursorRoute = configuration.providers.find((route) => route.id === 'cursor');
+  const requestBroker = cursorRoute === undefined ? undefined : new ConsoleProviderRequestBroker({ coordinator, timeoutMs: cursorRoute.requestTimeoutMs });
+  for (const route of configuration.providers) {
+    const key = providerRouteKey(route.id, route.profile);
+    const injected = dependencies.providerAdapters?.[route.id];
+    const commands = new BoundedCommandRunner();
+    if (injected !== undefined) {
+      adapters.set(key, injected);
+      continue;
+    }
+    if (route.profile === 'isolated') {
+      const docker = new DockerCliRunner({ commands, cwd: process.cwd(), env: route.environment });
+      const identityProbe = new DockerCliIdentityProbe({ commands, cwd: process.cwd(), env: route.environment });
+      containerProbes.set(key, identityProbe);
+      const runner = new DockerCodexProcessRunner({
+        docker,
+        identityProbe,
+        runNonce: route.runNonce,
+        allowUnsandboxedCodexInsideValidatedContainer: route.docker.allowUnsandboxedCodexInsideValidatedContainer,
+        planFor: (request) => buildDockerExecutionPlan({
+          runId: request.runId,
+          workspacePath: request.cwd,
+          command: request.command,
+          args: request.args,
+          environment: request.environment,
+          approvedInputs: route.docker.approvedInputs,
+          ...(route.docker.credentialProfile === undefined ? {} : { credentialProfile: route.docker.credentialProfile }),
+          networkMode: route.docker.networkMode,
+          limits: { maxRuntimeSeconds: Math.max(1, Math.ceil(request.timeoutMs / 1_000)), ...route.docker.resources },
+        }, {
+          image: route.docker.image,
+          scratchRoot: route.docker.scratchRoot,
+          controlStoragePaths: route.docker.controlStoragePaths,
+          ...(route.docker.allowedSharedScratchRoots === undefined ? {} : { allowedSharedScratchRoots: route.docker.allowedSharedScratchRoots }),
+        }),
+      });
+      adapters.set(key, new CodexAdapter({ limits: coordinator.limits, environment: route.environment, compatibleModels: route.compatibleModels, runner }));
+      continue;
+    }
+    const identityProbe = dependencies.nativeIdentityProbe ?? new NativeIdentityProbe({ commands, cwd: process.cwd(), env: route.environment });
+    nativeProbes.set(key, identityProbe);
+    if (route.id === 'codex') {
+      const runner = dependencies.codexRunner ?? new NativeCodexProcessRunner({ identityProbe, runNonce: route.runNonce });
+      adapters.set(key, new CodexAdapter({ limits: coordinator.limits, environment: route.environment, compatibleModels: route.compatibleModels, runner }));
+      continue;
+    }
+    if (route.id === 'claude') {
+      const runner = dependencies.claudeRunner ?? new NativeClaudeProcessRunner({ identityProbe, runNonce: route.runNonce });
+      adapters.set(key, new ClaudeAdapter({ limits: coordinator.limits, environment: route.environment, compatibleModels: route.compatibleModels, allowedTools: route.allowedTools, runner }));
+      continue;
+    }
+    if (identityProbe.inspectProcessGroup === undefined) throw new Error('Cursor provider route requires native process-group inspection');
+    const cursorProbe = { inspect: (pid: number) => identityProbe.inspect(pid), inspectProcessGroup: (groupId: number) => identityProbe.inspectProcessGroup!(groupId) };
+    const transport = dependencies.cursorTransport ?? new CursorAcpStdioTransport({ environment: route.environment, identityProbe: cursorProbe, killProcessGroup: (groupId, signal) => commands.killProcessGroup(groupId, signal), runNonce: route.runNonce });
+    adapters.set(key, new CursorAcpAdapter({ transport, limits: { ...coordinator.limits, requestTimeoutMs: route.requestTimeoutMs }, ...(requestBroker === undefined ? {} : { replyPolicy: requestBroker.replyPolicy() }) }));
+  }
   const entries = new Map(configuration.workItems.map((entry) => [entry.workItemId, entry]));
-  return createConsoleOwnerActions(coordinator, {
-    intentForWorkItem: async (workItemId) => entries.get(workItemId)?.intent,
-    startAdmittedRun: async (runId) => { const entry = [...entries.values()].find((candidate) => candidate.intent.runId === runId); if (!entry) throw new Error('admitted work item context is unavailable'); const result = await delivery.deliver({ runId, context: entry.context }); return { detail: `provider_${result.final.outcome}` }; },
+  const byRunId = new Map(configuration.workItems.map((entry) => [entry.intent.runId, entry]));
+  const resumePlans = new Map(configuration.resumePlans.map((plan) => [plan.sourceRunId, plan.targetWorkItemId]));
+  const reservedWorkItems = new Set([...resumePlans.values()]);
+  const prepared = new Map<string,
+    | { kind: 'native'; reason: string; value: DurableNativeTerminationPreparation; identityProbe: NativeIdentityProbeContract }
+    | { kind: 'container'; reason: string; value: DurableDockerTerminationPreparation; identityProbe: ContainerIdentityProbe }
+  >();
+  const active = new Map<string, CoordinatorProviderDelivery>();
+  const background = new Set<Promise<unknown>>();
+  const deliveries = new Map<string, CoordinatorProviderDelivery>();
+  for (const route of configuration.providers) {
+    const key = providerRouteKey(route.id, route.profile);
+    const adapter = adapters.get(key);
+    const nativeIdentityProbe = nativeProbes.get(key);
+    const containerIdentityProbe = containerProbes.get(key);
+    if (adapter === undefined || (route.profile === 'native' ? nativeIdentityProbe === undefined && dependencies.providerAdapters?.[route.id] === undefined : containerIdentityProbe === undefined && dependencies.providerAdapters?.[route.id] === undefined)) throw new Error(`provider route ${key} could not be constructed`);
+    deliveries.set(key, new CoordinatorProviderDelivery({
+      coordinator,
+      adapter,
+      providerId: route.id,
+      terminateWorker: async (worker, reason) => {
+        const snapshot = coordinator.snapshots().find((candidate) => candidate.intent.execution.providerId === route.id && candidate.intent.execution.profile === route.profile && sameWorker(candidate.worker, worker));
+        if (snapshot === undefined) throw new Error('active durable worker could not be resolved for termination');
+        const prior = prepared.get(snapshot.intent.runId);
+        if (prior !== undefined) {
+          if (prior.reason !== reason || !sameWorker(prior.value.identity, worker)) throw new Error('native termination was repeated with conflicting authority');
+          return;
+        }
+        if (worker.kind === 'native') {
+          if (nativeIdentityProbe === undefined) throw new Error('native termination probe is unavailable');
+          const value = await prepareDurableNativeTermination({ coordinator, runId: snapshot.intent.runId, identity: worker, identityProbe: nativeIdentityProbe, reason });
+          prepared.set(snapshot.intent.runId, { kind: 'native', reason, value, identityProbe: nativeIdentityProbe });
+        } else {
+          if (containerIdentityProbe === undefined) throw new Error('container termination probe is unavailable');
+          const value = await prepareDurableDockerTermination({ coordinator, runId: snapshot.intent.runId, identity: worker, identityProbe: containerIdentityProbe, reason });
+          prepared.set(snapshot.intent.runId, { kind: 'container', reason, value, identityProbe: containerIdentityProbe });
+        }
+      },
+    }));
+  }
+
+  async function observePrepared(runId: string): Promise<void> {
+    const pending = prepared.get(runId);
+    if (pending === undefined) return;
+    prepared.delete(runId);
+    if (pending.kind === 'native') await observeDurableNativeTermination({ coordinator, runId, preparation: pending.value, identityProbe: pending.identityProbe, reason: pending.reason, operationId: pending.value.operationId });
+    else await observeDurableDockerTermination({ coordinator, runId, preparation: pending.value, identityProbe: pending.identityProbe, reason: pending.reason, operationId: pending.value.operationId });
+  }
+
+  async function deliver(entry: LocalConsoleRuntimeConfiguration['workItems'][number], resume?: ProviderSessionBinding): Promise<Awaited<ReturnType<CoordinatorProviderDelivery['deliver']>>> {
+    const delivery = deliveries.get(providerRouteKey(entry.intent.execution.providerId, entry.intent.execution.profile));
+    if (delivery === undefined) throw new Error('configured provider delivery route is unavailable');
+    active.set(entry.intent.runId, delivery);
+    try {
+      const result = await delivery.deliver({ runId: entry.intent.runId, context: entry.context, ...(resume === undefined ? {} : { resume }) });
+      await observePrepared(entry.intent.runId);
+      return result;
+    } finally {
+      active.delete(entry.intent.runId);
+    }
+  }
+
+  function launch(entry: LocalConsoleRuntimeConfiguration['workItems'][number], resume?: ProviderSessionBinding): void {
+    const turn = deliver(entry, resume);
+    background.add(turn);
+    void turn.catch(() => undefined).finally(() => background.delete(turn));
+  }
+
+  const ownerActions = createConsoleOwnerActions(coordinator, {
+    intentForWorkItem: async (workItemId) => reservedWorkItems.has(workItemId) ? undefined : entries.get(workItemId)?.intent,
+    startAdmittedRun: async (runId) => {
+      const entry = byRunId.get(runId);
+      if (entry === undefined) throw new Error('admitted work item context is unavailable');
+      launch(entry);
+      return { detail: 'provider_delivery_started' };
+    },
+    cancelRun: async (runId, reason) => {
+      const delivery = active.get(runId);
+      if (delivery === undefined) throw new Error('run_has_no_active_provider_delivery');
+      const result = await delivery.cancel(runId);
+      await observePrepared(runId);
+      return { detail: `provider_${result.outcome}` };
+    },
+    resumeRun: async (sourceRunId) => {
+      const targetId = resumePlans.get(sourceRunId);
+      const entry = targetId === undefined ? undefined : entries.get(targetId);
+      const source = coordinator.snapshot(sourceRunId);
+      const sessionId = source?.providerResult?.sessionId;
+      if (entry === undefined || source === undefined || sessionId === undefined) throw new Error('trusted_explicit_resume_plan_unavailable');
+      const admitted = await coordinator.admit(entry.intent);
+      if (!admitted.accepted) throw new Error(admitted.reason ?? 'resume_target_admission_rejected');
+      const binding: ProviderSessionBinding = {
+        sessionId,
+        sourceRunId,
+        sourceContext: source.intent.context,
+        sourceScope: {
+          factoryId: source.intent.target.factoryId,
+          productId: source.intent.target.productId,
+          repository: source.intent.target.repository,
+          workspaceId: source.intent.execution.workspaceId,
+          workspacePath: source.intent.execution.workspacePath,
+          providerId: source.intent.execution.providerId as SupportedProviderId,
+        },
+      };
+      launch(entry, binding);
+      return { detail: `provider_resume_started:${entry.intent.runId}` };
+    },
+    ...(requestBroker === undefined ? {} : { answerRequest: (runId: string, requestId: string, answer: string) => requestBroker.answer(runId, requestId, answer) }),
   });
+
+  const diagnosis: GMProviderDiagnosisPort | undefined = configuration.gm === undefined ? undefined : {
+    diagnose: async (request) => {
+      const prompt = gmDiagnosisPrompt(request);
+      const suffix = createHash('sha256').update(request.findingKey).digest('hex').slice(0, 24);
+      const template = configuration.gm!.diagnosisTemplate.intent;
+      const context: ProviderCurrentContext = {
+        packetRevision: template.context.packetRevision,
+        digest: `sha256:${createHash('sha256').update(`faktori-gm-context:${prompt}`).digest('hex')}`,
+        prompt,
+      };
+      const intent: RunIntent = {
+        ...structuredClone(template),
+        runId: `gm-diagnosis-${suffix}`,
+        admissionKey: `gm-diagnosis-${suffix}`,
+        context: { packetRevision: context.packetRevision, digest: context.digest },
+        execution: { ...template.execution, approvedInputDigests: [providerContextPayloadDigest(context)] },
+        budget: { ...template.budget, reservationId: `gm-diagnosis-${suffix}`, status: 'held' },
+        attempt: 1,
+      };
+      const entry: LocalConsoleRuntimeConfiguration['workItems'][number] = { workItemId: intent.workItem.id, intent, context, dependsOnWorkItemIds: [] };
+      const admitted = await coordinator.admit(intent);
+      if (!admitted.accepted) throw new Error(admitted.reason ?? 'GM diagnosis admission rejected');
+      const result = await deliver(entry);
+      if (!['completed', 'unchanged_verified'].includes(result.final.outcome) || typeof result.final.summary !== 'string' || result.final.summary.length > request.maxOutputCharacters) throw new Error('GM diagnosis provider result was not a bounded successful JSON summary');
+      return JSON.parse(result.final.summary) as unknown;
+    },
+  };
+
+  return {
+    ownerActions,
+    ...(diagnosis === undefined ? {} : { diagnosis }),
+    diagnosisWorkItemIds: new Set(configuration.gm === undefined ? [] : [configuration.gm.diagnosisTemplate.intent.workItem.id]),
+    async shutdown(): Promise<void> {
+      requestBroker?.close();
+      await Promise.allSettled([...active].map(async ([runId, delivery]) => { await delivery.cancel(runId); await observePrepared(runId); }));
+      await Promise.allSettled([...background]);
+    },
+  };
 }
 
 export async function startLocalConsole(configuration: LocalConsoleConfiguration, ownerActions?: ConsoleOwnerActions, dependencies: LocalConsoleDependencies = {}): Promise<StartedConsole> {
   const identity: CoordinatorIdentity = { instanceId: `console-${process.pid}-${Date.now()}`, pid: process.pid, processStartedAt: new Date().toISOString() };
   const coordinator = await Coordinator.open({ factoryId: configuration.factoryId, journalPath: configuration.journalPath, projectionPath: configuration.projectionPath, identity, limits: configuration.limits });
   await coordinator.claim();
-  const configuredActions = configuration.runtime === undefined ? undefined : configuredOwnerActions(coordinator, configuration.runtime, dependencies);
-  const gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configuration.runtime.gm.diagnosisResponse === undefined ? {} : { diagnosis: { diagnose: async () => configuration.runtime!.gm!.diagnosisResponse } }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
-  const app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configuredActions ?? ownerActions });
+  let configured: ConfiguredRuntime | undefined;
+  let gm: FactoryGM | undefined;
+  let observer: CoordinatorGMHealthObserver | undefined;
+  let app: ReturnType<typeof createConsoleService> | undefined;
+  let pollInterval: ReturnType<typeof setInterval> | undefined;
   try {
-    const address = await app.listen({ host: '127.0.0.1', port: configuration.port });
+    configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies);
+    gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
+    observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration) });
+    const listeningApp = app;
+    pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
+    pollInterval?.unref();
+    const address = await listeningApp.listen({ host: '127.0.0.1', port: configuration.port });
+    await observer?.poll();
     return {
-      coordinator, app, url: address, ...(gm === undefined ? {} : { gm }),
-      async close(): Promise<void> { await app.close(); await coordinator.release(); coordinator.close(); },
+      coordinator, app: listeningApp, url: address, ...(gm === undefined ? {} : { gm }),
+      async close(): Promise<void> {
+        if (pollInterval !== undefined) clearInterval(pollInterval);
+        await listeningApp.close();
+        await configured?.shutdown();
+        await observer?.settle();
+        await coordinator.release();
+        coordinator.close();
+      },
     };
   } catch (error) {
-    await app.close(); await coordinator.release(); coordinator.close();
+    if (pollInterval !== undefined) clearInterval(pollInterval);
+    await app?.close();
+    await configured?.shutdown();
+    await coordinator.release(); coordinator.close();
     throw error;
   }
 }

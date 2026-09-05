@@ -13,6 +13,7 @@ export type GMHealthSignal =
       productId?: string;
       podId?: string;
       handoffKey: string;
+      sourceEventId?: string;
       observedAt: string;
       summary: string;
     }
@@ -22,6 +23,7 @@ export type GMHealthSignal =
       productId?: string;
       podId?: string;
       mergeKey: string;
+      sourceEventId?: string;
       observedAt: string;
       waitingMinutes: number;
       summary: string;
@@ -70,6 +72,8 @@ export interface GMFinding {
   recommendations: GMRecommendation[];
   rejectedRecommendations: Array<{ kind: GMRecommendationKind; detail: string; reason: string }>;
   maintenance: Array<{ action: GMRoutineAction; status: 'completed' | 'failed' | 'not_configured'; observedAt: string }>;
+  /** Exact coordinator events already incorporated, for restart-safe observation dedupe. */
+  sourceEventIds?: string[];
 }
 
 export interface GMImprovementProposal {
@@ -97,6 +101,7 @@ export interface GMProviderDiagnosisPort {
 
 export interface GMDiagnosisRequest {
   findingId: string;
+  findingKey: string;
   instructionRevision: string;
   instructions: string;
   category: GMHealthSignal['kind'];
@@ -175,6 +180,7 @@ function validateSignal(signal: GMHealthSignal, factoryId: string): void {
   boundedText(signalSubject(signal), 'signal subject', 512);
   if (signal.productId !== undefined) boundedText(signal.productId, 'productId', 256);
   if (signal.podId !== undefined) boundedText(signal.podId, 'podId', 256);
+  if (signal.sourceEventId !== undefined) boundedText(signal.sourceEventId, 'sourceEventId', 256);
   if (signal.kind === 'merge_wait_bottleneck' && (!Number.isFinite(signal.waitingMinutes) || signal.waitingMinutes < 0)) {
     throw new Error('waitingMinutes must be a finite non-negative number');
   }
@@ -241,6 +247,9 @@ export class FactoryGM {
     validateSignal(signal, this.#options.factoryId);
     const key = findingKey(signal);
     const previous = await this.#options.store.findingByKey(key);
+    if (signal.sourceEventId !== undefined && previous?.sourceEventIds?.includes(signal.sourceEventId)) {
+      return { finding: previous, diagnosisInvoked: false, ownerAttentionNewlyRequired: false };
+    }
     const wasAttentionRequired = previous?.ownerAttention === 'owner_once';
     const attention = signal.kind === 'merge_wait_bottleneck' && signal.waitingMinutes >= this.#mergeWaitAttentionMinutes
       ? 'owner_once' : previous?.ownerAttention ?? 'none';
@@ -251,9 +260,11 @@ export class FactoryGM {
       ownerAttention: attention, ...(attention === 'owner_once' ? { ownerAlertedAt: signal.observedAt } : {}),
       diagnosis: { state: diagnosisNeeded(signal) ? 'requested' : 'not_needed', ...(diagnosisNeeded(signal) ? { requestedAt: signal.observedAt } : {}) },
       recommendations: [], rejectedRecommendations: [], maintenance: [],
+      ...(signal.sourceEventId === undefined ? {} : { sourceEventIds: [signal.sourceEventId] }),
     } : {
       ...previous, occurrenceCount: previous.occurrenceCount + 1, updatedAt: signal.observedAt, latestSummary: signal.summary,
       ownerAttention: attention, ...(attention === 'owner_once' && previous.ownerAlertedAt === undefined ? { ownerAlertedAt: signal.observedAt } : {}),
+      ...(signal.sourceEventId === undefined ? {} : { sourceEventIds: [...(previous.sourceEventIds ?? []), signal.sourceEventId] }),
     };
     await this.#options.store.upsertFinding(finding);
 
@@ -266,7 +277,7 @@ export class FactoryGM {
     let response: unknown;
     try {
       response = await this.#options.diagnosis!.diagnose({
-        findingId: finding.findingId, instructionRevision: this.#options.instructions.revision, instructions: this.#options.instructions.content,
+        findingId: finding.findingId, findingKey: finding.findingKey, instructionRevision: this.#options.instructions.revision, instructions: this.#options.instructions.content,
         category: finding.category, occurrenceCount: finding.occurrenceCount, latestSummary: finding.latestSummary, maxOutputCharacters: MAX_DIAGNOSIS,
       });
     } catch {
@@ -312,3 +323,4 @@ export class FactoryGM {
 }
 
 export * from './coordinator-store.ts';
+export * from './health-observer.ts';

@@ -162,6 +162,8 @@ export type RunEventKind =
   | 'effect.unresolved'
   | 'worker.started'
   | 'provider.event'
+  | 'provider.requested'
+  | 'provider.request.answered'
   | 'provider.final'
   | 'usage.observed'
   | 'authority.revoked'

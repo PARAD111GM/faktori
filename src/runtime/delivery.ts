@@ -136,7 +136,8 @@ export class CoordinatorProviderDelivery {
 
   /** Explicitly cancels only the currently delivering worker for this run. */
   async cancel(runId: string): Promise<ProviderFinalResult> {
-    if (!this.#tails.has(runId)) throw new DeliveryPreconditionError(`Run ${runId} has no active ${this.providerLabel()} delivery to cancel`);
+    const activeDelivery = this.#tails.get(runId);
+    if (activeDelivery === undefined) throw new DeliveryPreconditionError(`Run ${runId} has no active ${this.providerLabel()} delivery to cancel`);
     const snapshot = this.#coordinator.snapshot(runId);
     if (snapshot === undefined || snapshot.worker === undefined) throw new DeliveryPreconditionError(`Run ${runId} has no durable active worker identity`);
     if (snapshot.authorityRevoked) throw new DeliveryPreconditionError(`Run ${runId} authority is already revoked`);
@@ -158,6 +159,10 @@ export class CoordinatorProviderDelivery {
     if (!authorized || !snapshot.worker) {
       return unavailable('interrupted_uncertain', 'Codex cancellation was not authorized by the durable worker boundary');
     }
+    // The provider turn owns the process wait. Do not report the owner cancel
+    // complete until that delivery has observed and journaled its terminal
+    // result; the durable termination receipt can then be appended last.
+    await activeDelivery.result;
     return result;
   }
 

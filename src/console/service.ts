@@ -39,8 +39,16 @@ export interface ConsoleServiceOptions {
   /** Exact browser origins that may issue commands. Wildcards are intentionally unsupported. */
   allowedOrigins: string[];
   ownerActions?: ConsoleOwnerActions;
+  hierarchy?: {
+    factory?: { id: string; name: string };
+    products: Array<{ id: string; name: string }>;
+    pods: Array<{ id: string; productId: string }>;
+    workItems: Array<{ id: string; label: string; productId: string; podId?: string; dependsOnWorkItemIds: string[] }>;
+  };
   assetsDirectory?: string;
   now?: () => Date;
+  /** Test seam for the local append-only journal watcher. */
+  eventPollIntervalMs?: number;
 }
 
 type RecordedCommand = {
@@ -108,7 +116,28 @@ function parseRequest(value: unknown): ConsoleCommandRequest {
   return { commandId: text(input?.commandId, 'commandId', MAX_COMMAND_ID), command: parseCommand(input?.command) };
 }
 
-function publicRun(snapshot: RunSnapshot): Record<string, unknown> {
+function publicProviderRequests(coordinator: DurableCoordinator, runId: string): Array<Record<string, unknown>> {
+  const requests = new Map<string, Record<string, unknown>>();
+  for (const event of coordinator.journal.events()) {
+    if (event.runId !== runId || (event.kind !== 'provider.requested' && event.kind !== 'provider.request.answered')) continue;
+    const request = object(event.data.request);
+    const requestId = safeText(request?.requestId, 256);
+    if (requestId === undefined) continue;
+    if (event.kind === 'provider.requested') {
+      const method = safeText(request?.method, 256);
+      const prompt = safeText(request?.prompt, 1_000);
+      if (method === undefined || prompt === undefined) continue;
+      const options = Array.isArray(request?.options) ? request.options.map((item) => safeText(item, 128)).filter((item): item is string => item !== undefined) : [];
+      requests.set(requestId, { requestId, method, prompt, options, status: 'pending', observedAt: safeText(request?.observedAt, 128) });
+    } else {
+      const prior = requests.get(requestId);
+      if (prior !== undefined) requests.set(requestId, { ...prior, status: request?.status === 'answered' ? 'answered' : 'timed_out' });
+    }
+  }
+  return [...requests.values()];
+}
+
+function publicRun(coordinator: DurableCoordinator, snapshot: RunSnapshot): Record<string, unknown> {
   const result = snapshot.providerResult;
   const usage = result?.usage;
   return {
@@ -131,6 +160,7 @@ function publicRun(snapshot: RunSnapshot): Record<string, unknown> {
     reservation: snapshot.reservation,
     authority: { epoch: snapshot.authorityEpoch, revoked: snapshot.authorityRevoked },
     messages: snapshot.messages.map((message) => ({ messageId: message.messageId, createdAt: message.createdAt, delivery: message.delivery })),
+    providerRequests: publicProviderRequests(coordinator, snapshot.intent.runId),
     result: result === undefined ? undefined : {
       outcome: result.outcome,
       summary: safeText(result.summary),
@@ -169,6 +199,54 @@ function contentSecurityPolicy(): string {
   return "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'";
 }
 
+function hierarchyState(snapshots: RunSnapshot[], configured: ConsoleServiceOptions['hierarchy']): Record<string, unknown> {
+  const factoryId = configured?.factory?.id ?? snapshots[0]?.intent.target.factoryId ?? 'factory';
+  const products = new Map((configured?.products ?? []).map((product) => [product.id, product.name]));
+  const pods = new Map((configured?.pods ?? []).map((pod) => [pod.id, pod.productId]));
+  for (const snapshot of snapshots) {
+    products.set(snapshot.intent.target.productId, products.get(snapshot.intent.target.productId) ?? snapshot.intent.target.productId);
+    if (snapshot.intent.target.podId !== undefined) pods.set(snapshot.intent.target.podId, snapshot.intent.target.productId);
+  }
+  const configuredWork = new Map((configured?.workItems ?? []).map((work) => [work.id, work]));
+  for (const snapshot of snapshots) {
+    if (!configuredWork.has(snapshot.intent.workItem.id)) configuredWork.set(snapshot.intent.workItem.id, {
+      id: snapshot.intent.workItem.id,
+      label: snapshot.intent.workItem.id,
+      productId: snapshot.intent.target.productId,
+      ...(snapshot.intent.target.podId === undefined ? {} : { podId: snapshot.intent.target.podId }),
+      dependsOnWorkItemIds: [],
+    });
+  }
+  const latestState = new Map<string, string>();
+  for (const snapshot of snapshots) latestState.set(snapshot.intent.workItem.id, snapshot.state);
+  const nodes: Array<Record<string, unknown>> = [{ id: `factory:${factoryId}`, kind: 'factory', label: configured?.factory?.name ?? factoryId }];
+  const parentEdges: Array<{ from: string; to: string }> = [];
+  for (const [productId, name] of products) {
+    nodes.push({ id: `product:${productId}`, kind: 'product', label: name, productId });
+    parentEdges.push({ from: `factory:${factoryId}`, to: `product:${productId}` });
+  }
+  for (const [podId, productId] of pods) {
+    nodes.push({ id: `pod:${podId}`, kind: 'pod', label: podId, productId, podId });
+    parentEdges.push({ from: `product:${productId}`, to: `pod:${podId}` });
+  }
+  const dependencyEdges: Array<{ from: string; to: string }> = [];
+  for (const work of configuredWork.values()) {
+    nodes.push({ id: `work:${work.id}`, kind: 'work_item', label: work.label, productId: work.productId, ...(work.podId === undefined ? {} : { podId: work.podId }), state: latestState.get(work.id) ?? 'not_started' });
+    parentEdges.push({ from: work.podId === undefined ? `product:${work.productId}` : `pod:${work.podId}`, to: `work:${work.id}` });
+    for (const dependency of work.dependsOnWorkItemIds) dependencyEdges.push({ from: `work:${work.id}`, to: `work:${dependency}` });
+  }
+  return {
+    factoryId,
+    nodes,
+    parentEdges,
+    dependencyEdges,
+    filters: {
+      products: [...products].map(([id, name]) => ({ id, name })),
+      pods: [...pods].map(([id, productId]) => ({ id, productId })),
+    },
+  };
+}
+
 /**
  * Loopback-only API and static Console host. The browser receives a redacted
  * projection; commands are authenticated, origin-checked, durable and replay-safe.
@@ -178,6 +256,14 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   const events = new EventEmitter();
   const now = options.now ?? (() => new Date());
   let commandTail: Promise<unknown> = Promise.resolve();
+  let observedEventCount = options.coordinator.journal.events().length;
+  const journalPoll = setInterval(() => {
+    const count = options.coordinator.journal.events().length;
+    if (count === observedEventCount) return;
+    observedEventCount = count;
+    events.emit('state');
+  }, options.eventPollIntervalMs ?? 200);
+  journalPoll.unref();
 
   function records(): RecordedCommand[] {
     return options.coordinator.journal.events().map(commandRecord).filter((value): value is RecordedCommand => value !== undefined);
@@ -194,7 +280,8 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     return {
       format: 'faktori.console-state/v1', observedAt: now().toISOString(), stale: false,
       admissionPaused: currentPause(records()),
-      runs: snapshots.map(publicRun),
+      runs: snapshots.map((snapshot) => publicRun(options.coordinator, snapshot)),
+      hierarchy: hierarchyState(snapshots, options.hierarchy),
       overview: { activeRuns: snapshots.filter((snapshot) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(snapshot.state)).length, waitingDecisions: waiting.length, failedRuns: snapshots.filter((snapshot) => snapshot.state === 'failed').length },
       resources: { knownUsageTokens: knownTokens, reportedUsageCount: reported.length, unavailableUsageCount: usages.length - reported.length, reservedTokens, unavailableMeasurements: usages.filter((usage) => usage.availability === 'unavailable').length, queueAge: snapshots.filter((snapshot) => snapshot.state === 'queued' || snapshot.state === 'admitted').map((snapshot) => ({ runId: snapshot.intent.runId, createdAt: snapshot.intent.createdAt })) },
       factoryGM: coordinatorGMState(options.coordinator),
@@ -223,8 +310,14 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   }
 
   async function execute(request: ConsoleCommandRequest): Promise<RecordedCommand> {
-    const previous = records().find((record) => record.commandId === request.commandId);
-    if (previous !== undefined) return previous;
+    const priorRecords = records().filter((record) => record.commandId === request.commandId);
+    const previous = priorRecords.at(-1);
+    if (previous !== undefined) {
+      if (JSON.stringify(previous.command) !== JSON.stringify(request.command)) {
+        return { commandId: request.commandId, command: request.command, status: 'failed', observedAt: now().toISOString(), result: { detail: 'command_id_payload_conflict' } };
+      }
+      return previous;
+    }
     const accepted: RecordedCommand = { commandId: request.commandId, command: request.command, status: 'accepted', observedAt: now().toISOString() };
     await record(accepted);
     try {
@@ -265,6 +358,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   }
 
   app.addHook('onSend', async (_request, reply) => { secureHeaders(reply); });
+  app.addHook('onClose', async () => { clearInterval(journalPoll); });
   app.get('/api/console/state', async () => state());
   app.get('/api/console/events', async (request, reply) => {
     secureHeaders(reply);

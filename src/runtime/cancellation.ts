@@ -31,6 +31,17 @@ export interface DurableDockerTerminationPreparation {
   };
 }
 
+export interface DurableNativeTerminationPreparation {
+  operationId: string;
+  identity: Extract<WorkerIdentity, { kind: 'native' }>;
+  preflight: {
+    pid: number;
+    processStartedAt: string;
+    processGroupId: number;
+    running: true;
+  };
+}
+
 function stable(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
@@ -132,6 +143,53 @@ export async function prepareDurableDockerTermination(
     identity: options.identity,
     preflight: { ...observed, running: true },
   };
+}
+
+/**
+ * Durable pre-signal half of a native transport-owned termination. The native
+ * Codex runner remains the single owner of SIGTERM/SIGKILL; this hook only
+ * revokes authority, records the exact effect, and proves the worker identity
+ * immediately before the transport is allowed to signal it.
+ */
+export async function prepareDurableNativeTermination(
+  options: DurableCancellationOptions & {
+    identity: Extract<WorkerIdentity, { kind: 'native' }>;
+    identityProbe: NativeIdentityProbe;
+  },
+): Promise<DurableNativeTerminationPreparation> {
+  const authority = new JournalCancellationAuthority(options);
+  await authority.revokeBeforeTermination(options.identity, options.reason);
+  const observed = await options.identityProbe.inspect(options.identity.pid);
+  if (observed === undefined || 'status' in observed || !observed.running
+    || observed.pid !== options.identity.pid
+    || observed.processStartedAt !== options.identity.processStartedAt
+    || observed.processGroupId !== options.identity.processGroupId) {
+    throw new Error('Native termination preflight could not prove the exact running worker identity; no signal is authorized');
+  }
+  return {
+    operationId: authority.operationId,
+    identity: options.identity,
+    preflight: { ...observed, running: true },
+  };
+}
+
+/** Records the native transport's post-signal observation without inventing a provider receipt. */
+export async function observeDurableNativeTermination(
+  options: DurableCancellationOptions & {
+    preparation: DurableNativeTerminationPreparation;
+    identityProbe: NativeIdentityProbe;
+  },
+): Promise<CancellationResult> {
+  const { identity, operationId } = options.preparation;
+  const observed = await options.identityProbe.inspect(identity.pid);
+  const group = await options.identityProbe.inspectProcessGroup?.(identity.processGroupId);
+  const processExited = observed !== undefined && 'status' in observed && observed.status === 'absent';
+  const groupExited = group !== undefined && (('status' in group && group.status === 'absent')
+    || ('members' in group && group.members.every((member) => !member.running)));
+  const result: CancellationResult = processExited && (options.identityProbe.inspectProcessGroup === undefined || groupExited)
+    ? { authorityRevoked: true, outcome: 'confirmed_exited', identity, detail: 'exact native worker identity and process group absent after transport termination' }
+    : { authorityRevoked: true, outcome: 'interrupted_uncertain', identity, detail: 'native worker identity or process-group exit could not be confirmed after transport termination' };
+  return recordCancellationResult(options, operationId, result);
 }
 
 /** Records the post-stop observation without inventing a provider receipt. */

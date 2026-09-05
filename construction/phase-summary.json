@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "phase": 5,
-  "generatedAt": "2026-09-05T16:49:39.058Z",
+  "generatedAt": "2026-09-05T17:26:42.213Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 295423,
+    "total": 1107792,
     "excludedChildCount": 2,
     "kind": "overlap-safe-lower-bound"
   },
@@ -16,7 +16,7 @@
   },
   "models": [
     {
-      "model": "gpt-5.6-terra",
+      "model": "gpt-5.6-sol",
       "reasoning": "high",
       "recordCount": 1
     }
@@ -24,10 +24,6 @@
   "unknown": [
     {
       "ticket": "F5-01",
-      "reason": "telemetry:unknown"
-    },
-    {
-      "ticket": "F5-03",
       "reason": "telemetry:unknown"
     },
     {
@@ -41,13 +37,26 @@
   ],
   "coverageGaps": [],
   "records": {
-    "accepted": 3,
+    "accepted": 5,
     "duplicates": 0
   },
   "budget": {
     "estimate": 800000,
-    "remaining": 504577,
-    "percentUsed": 36.93
+    "remaining": 0,
+    "percentUsed": 138.47
   },
-  "notices": []
+  "notices": [
+    {
+      "threshold": 70,
+      "type": "budget-threshold"
+    },
+    {
+      "threshold": 90,
+      "type": "budget-threshold"
+    },
+    {
+      "threshold": 100,
+      "type": "budget-threshold"
+    }
+  ]
 }

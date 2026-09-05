@@ -3,7 +3,7 @@
   "phase": 5,
   "policy": "Use the least expensive model likely to produce accepted work; escalate only from demonstrated failure.",
   "assignments": [
-    {"role":"phase implementer-orchestrator","tickets":["F5-01","F5-02","F5-03","F5-04"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Cross-layer API/coordinator/provider integration, installed package wiring, records, browser proof and acceptance evidence."},
+    {"role":"phase implementer-orchestrator","tickets":["F5-01","F5-02","F5-03","F5-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Escalated cross-layer API/coordinator/provider integration, installed package wiring, records, browser proof and acceptance remediation after the initial assembled candidate left supported runtime and owner-control gaps."},
     {"role":"Console UI specialist","tickets":["F5-01","F5-02","F5-04"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded React/Vite Console and accessibility-safe state/action rendering in exclusive console paths."},
     {"role":"Factory GM specialist","tickets":["F5-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded event diagnosis/finding behavior, authority rejection and deterministic tests in exclusive GM paths."}
   ],
@@ -40,6 +40,12 @@
       "from": {"resumeScope":"durable session and source context only"},
       "to": {"resumeScope":"durable source factory, product, repository, workspace identity and path, provider, session, and context"},
       "reason": "Build Manager exact-head verification found that an explicit session could otherwise be resumed in a different admitted workspace or product scope. The correction rejects that mismatch before launch intent and adapter invocation while allowing current context and artifact revisions to advance."
+    },
+    {
+      "ticket": "F5-01..F5-04",
+      "from": {"model":"gpt-5.6-terra","reasoning":"high","candidate":"assembled Console with deterministic installed fixture and deferred supported-provider controls"},
+      "to": {"model":"gpt-5.6-sol","reasoning":"high","candidate":"installed Codex, Claude, Cursor and isolated-Codex routes with durable live controls and dynamic GM diagnosis"},
+      "reason": "Build Manager exact-head review found that the first candidate substituted a deterministic fixture for the installed provider runtime and deferred material hierarchy, provider-request, cancellation, replay, and GM execution behavior. The demonstrated cross-layer failures required escalation and a full bounded remediation pass."
     }
   ]
 }

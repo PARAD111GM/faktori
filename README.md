@@ -12,12 +12,14 @@ integration identifiers belong here.
 
 ## Status
 
-Phase 2 adds a durable coordinator journal, rebuildable SQLite projection,
-bounded native and isolated execution profiles, a Codex adapter, and
-controller-owned action admission. The package build emits installable
-JavaScript and declarations; its packed CLI rebuilds a real SQLite projection
-from a clean temporary install. Remote publication remains a later-phase
-transport. The frozen fixtures remain test contracts, not benchmark results.
+Phases 0–4 are accepted. The Phase 5 candidate adds an installed loopback
+Console over the durable coordinator, native Codex/Claude/Cursor and isolated
+Codex runtime routes, replay-safe owner controls, explicit provider request
+responses, bounded event-driven Factory GM diagnosis, and resource/attention
+visibility. The package build emits installable JavaScript and declarations;
+its packed CLI is verified from a clean temporary install. This candidate does
+not authorize Phase 6 until Build Manager acceptance. Frozen fixtures remain
+test contracts, not benchmark results.
 
 ## Start here
 
@@ -36,6 +38,8 @@ transport. The frozen fixtures remain test contracts, not benchmark results.
   six lifecycle outcomes, evidence, and provider-neutral handoffs.
 - [Recoverable runtime](docs/runtime/README.md) — journal, SQLite, execution
   profiles, Codex adapter, cancellation, and action authority boundaries.
+- [Local Console and Factory GM](docs/console.md) — loopback service, live
+  views, owner controls, provider routes, and bounded health diagnosis.
 - [Comparison fixtures](docs/comparison/README.md) — frozen, reproducible cases.
 - [Implementation plan](docs/implementation-plan.md) — accepted V1 specification.
 

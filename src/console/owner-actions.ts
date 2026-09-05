@@ -28,8 +28,13 @@ export function createConsoleOwnerActions(coordinator: DurableCoordinator, ports
       const intent = await ports.intentForWorkItem(workItemId);
       if (intent === undefined) throw new Error('work_item_not_eligible');
       const acceptedRun = admitted(await coordinator.admit(intent));
-      const started = await ports.startAdmittedRun?.(acceptedRun.runId);
-      return { ...acceptedRun, ...(started?.detail === undefined ? {} : { detail: started.detail }) };
+      if (ports.startAdmittedRun === undefined) return acceptedRun;
+      // Admission is the durable command boundary. Provider delivery continues
+      // independently so cancel and next-turn messages are never queued behind
+      // an entire model turn.
+      const started = ports.startAdmittedRun(acceptedRun.runId);
+      void started.catch(() => undefined);
+      return { ...acceptedRun, detail: 'provider_delivery_started' };
     },
     answer: ports.answerRequest === undefined ? undefined : (runId, requestId, answer) => ports.answerRequest!(runId, requestId, answer),
     cancel: ports.cancelRun === undefined ? undefined : (runId, reason) => ports.cancelRun!(runId, reason),

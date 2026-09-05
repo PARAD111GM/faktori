@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   cancelDurableNativeRun,
+  observeDurableNativeTermination,
   observeDurableDockerTermination,
+  prepareDurableNativeTermination,
   prepareDurableDockerTermination,
 } from '../../src/runtime/cancellation.ts';
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
@@ -207,6 +209,44 @@ describe('durable cancellation integration', () => {
       reservation: expect.objectContaining({ status: 'uncertain' }),
     }));
     expect(coordinator.snapshot('cancel-run')?.providerResult).toBeUndefined();
+    await coordinator.release();
+    coordinator.close();
+  });
+
+  it('supports a transport-owned native signal with durable preparation and post-exit observation', async () => {
+    const { coordinator, identity } = await fixture();
+    let exited = false;
+    const identityProbe = {
+      inspect: async () => exited
+        ? { status: 'absent' }
+        : { pid: identity.pid, processStartedAt: identity.processStartedAt, processGroupId: identity.processGroupId, running: true },
+      inspectProcessGroup: async () => exited
+        ? { status: 'absent' }
+        : { processGroupId: identity.processGroupId, members: [{ pid: identity.pid, processStartedAt: identity.processStartedAt, processGroupId: identity.processGroupId, running: true }] },
+    };
+    const preparation = await prepareDurableNativeTermination({
+      coordinator,
+      runId: 'cancel-run',
+      identity,
+      identityProbe,
+      reason: 'owner_cancelled',
+      operationId: 'native-transport-cancel',
+    });
+    expect(coordinator.snapshot('cancel-run')).toEqual(expect.objectContaining({ state: 'cancelling', authorityRevoked: true }));
+    expect(coordinator.snapshot('cancel-run').unresolvedEffects).toHaveLength(1);
+
+    exited = true;
+    const result = await observeDurableNativeTermination({
+      coordinator,
+      runId: 'cancel-run',
+      preparation,
+      identityProbe,
+      reason: 'owner_cancelled',
+      operationId: 'native-transport-cancel',
+    });
+    expect(result.outcome).toBe('confirmed_exited');
+    expect(coordinator.snapshot('cancel-run')).toEqual(expect.objectContaining({ state: 'cancelled', authorityRevoked: true }));
+    expect(coordinator.snapshot('cancel-run').unresolvedEffects).toEqual([]);
     await coordinator.release();
     coordinator.close();
   });

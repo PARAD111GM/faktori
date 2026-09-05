@@ -89,3 +89,26 @@ network. This verifies a working mount alternative without changing Docker
 settings, restarting workloads, or sharing a home directory. Installations
 must discover and validate their configured workspace-sharing boundary before
 admitting isolated jobs. It still does not prove the full Linux factory gate.
+
+## Full Linux package attempt and portability findings
+
+The manager then ran the complete repository gate in a disposable Linux arm64
+container from the public Git archive at `9a85fc8`. No host credential stores,
+provider sessions, existing containers, or Docker socket were exposed. Locked
+npm dependencies and Linux compiler prerequisites were downloaded; this was
+deterministic verification, not provider inference. Container resources were
+bounded to two CPUs, 2 GiB memory, and 256 processes.
+
+Setup attempts separately exposed missing Python/C++ tools, npm wrapper
+selection of the wrong version, non-executable temporary mounts, and npm 12
+blocking the SQLite install script. After invoking npm 12.0.2 explicitly and
+building only SQLite, a real in-memory SQLite query succeeded on Node 24.20.0.
+The actual suite then reported **286 passed, 25 failed, three unhandled errors**
+(39 files, exit 1). Build and packed verification were not reached.
+
+Failures included hardcoded macOS temporary paths, missing `ps`/`gh` in the
+minimal worker image, unhandled missing-process-tool errors, and update tests
+requiring `dist` before the check command built it. The runtime itself also
+defaulted to the macOS scratch path. These findings were returned to the same
+Phase 7 implementer for bounded portability remediation; they are not waived
+or hidden by creating a fake macOS directory in Linux. F7-02 remains open.

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 
 import { resolveFactoryConfig, type FactoryConfiguration, type ResolvedFactoryConfiguration } from '../config/index.ts';
-import type { AdmissionLimits, CoordinatorIdentity, DurableCoordinator } from '../runtime/index.ts';
+import type { AdmissionLimits, CoordinatorIdentity, DurableCoordinator, ProcessProbe, ProcessStatus } from '../runtime/index.ts';
 import { CoordinatorProviderDelivery, DurableCoordinator as Coordinator } from '../runtime/index.ts';
 import { CodexAdapter } from '../providers/codex.ts';
 import type { CodexProcessRunner } from '../providers/codex.ts';
@@ -35,7 +35,7 @@ export interface LocalConsoleConfiguration {
 }
 
 export type LocalProviderRoute =
-  | { id: 'codex'; profile: 'native'; environment: Record<string, string>; compatibleModels: string[]; runNonce: string }
+  | { id: 'codex'; profile: 'native'; environment: Record<string, string>; compatibleModels: string[]; runNonce: string; contextIsolation: 'host' | 'bounded' }
   | { id: 'codex'; profile: 'isolated'; environment: Record<string, string>; compatibleModels: string[]; runNonce: string; docker: { image: string; scratchRoot: string; controlStoragePaths: string[]; allowedSharedScratchRoots?: string[]; approvedInputs: Array<{ path: string; label?: string }>; credentialProfile?: CredentialProfile; networkMode: 'none' | 'bridge'; resources: { memoryBytes: number; cpuCount: number; pids: number }; allowUnsandboxedCodexInsideValidatedContainer: boolean } }
   | { id: 'claude'; profile: 'native'; environment: Record<string, string>; compatibleModels: string[]; allowedTools: string[]; runNonce: string }
   | { id: 'cursor'; profile: 'native'; environment: Record<string, string>; requestTimeoutMs: number; runNonce: string };
@@ -127,7 +127,9 @@ function providerRoute(value: unknown): LocalProviderRoute {
     if (!Array.isArray(route.allowedTools) || !route.allowedTools.every((item) => typeof item === 'string' && item.trim().length > 0)) throw new Error('Claude route requires an explicit allowedTools array');
     return { id, profile, environment: environment as Record<string, string>, compatibleModels: compatibleModels as string[], allowedTools: route.allowedTools as string[], runNonce };
   }
-  return { id, profile, environment: environment as Record<string, string>, compatibleModels: compatibleModels as string[], runNonce };
+  const contextIsolation = route.contextIsolation ?? 'host';
+  if (contextIsolation !== 'host' && contextIsolation !== 'bounded') throw new Error('native Codex route contextIsolation must be host or bounded');
+  return { id, profile, environment: environment as Record<string, string>, compatibleModels: compatibleModels as string[], runNonce, contextIsolation };
 }
 
 function runtime(value: unknown, factoryId: string): LocalConsoleRuntimeConfiguration | undefined {
@@ -180,7 +182,59 @@ export interface LocalConsoleDependencies {
   cursorTransport?: CursorAcpTransport;
   providerAdapters?: Partial<Record<SupportedProviderId, ProviderTurnAdapter>>;
   nativeIdentityProbe?: NativeIdentityProbeContract;
+  /** Test/host seam for the Console coordinator process itself. */
+  coordinatorIdentityProbe?: NativeIdentityProbeContract;
   healthPollIntervalMs?: number;
+}
+
+function observedNativeProcess(value: Awaited<ReturnType<NativeIdentityProbeContract['inspect']>>): value is Exclude<typeof value, { status: 'absent' | 'unknown' } | undefined> {
+  return value !== undefined && 'pid' in value;
+}
+
+function localProcessEnvironment(): Record<string, string> {
+  return Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+}
+
+async function localCoordinatorOwnership(dependencies: LocalConsoleDependencies): Promise<{ identity: CoordinatorIdentity; processProbe: ProcessProbe }> {
+  const identityProbe = dependencies.coordinatorIdentityProbe ?? new NativeIdentityProbe({
+    commands: new BoundedCommandRunner(),
+    cwd: process.cwd(),
+    env: localProcessEnvironment(),
+  });
+  const self = await identityProbe.inspect(process.pid);
+  if (!observedNativeProcess(self) || self.pid !== process.pid || !self.running) {
+    throw new Error('Console cannot establish its exact native process identity; coordinator ownership is unavailable');
+  }
+  const classify = async (identity: Pick<CoordinatorIdentity, 'pid' | 'processStartedAt' | 'processGroupId'>): Promise<ProcessStatus> => {
+    const processList = await identityProbe.inspectAll?.();
+    if (processList !== undefined) {
+      if ('status' in processList) return 'unknown';
+      const listed = processList.find((entry) => entry.pid === identity.pid);
+      if (listed === undefined) return 'dead';
+      if (listed.processStartedAt !== identity.processStartedAt
+        || (identity.processGroupId !== undefined && listed.processGroupId !== identity.processGroupId)) return 'mismatch';
+      return listed.running ? 'alive' : 'dead';
+    }
+    const observed = await identityProbe.inspect(identity.pid);
+    if (!observedNativeProcess(observed)) return observed?.status === 'absent' ? 'dead' : 'unknown';
+    if (observed.processStartedAt !== identity.processStartedAt
+      || (identity.processGroupId !== undefined && observed.processGroupId !== identity.processGroupId)) return 'mismatch';
+    return observed.running ? 'alive' : 'dead';
+  };
+  return {
+    identity: {
+      instanceId: `console-${process.pid}-${Date.now()}`,
+      pid: process.pid,
+      processStartedAt: self.processStartedAt,
+      processGroupId: self.processGroupId,
+    },
+    processProbe: {
+      coordinator: classify,
+      // Coordinator PID absence is sufficient only for the coordinator lock.
+      // Worker recovery must retain its group-aware transport-specific proof.
+      worker: async () => 'unknown',
+    },
+  };
 }
 
 /** Parse the owner-controlled local service config; browser input never reaches this boundary. */
@@ -304,7 +358,7 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
     nativeProbes.set(key, identityProbe);
     if (route.id === 'codex') {
       const runner = dependencies.codexRunner ?? new NativeCodexProcessRunner({ identityProbe, runNonce: route.runNonce });
-      adapters.set(key, new CodexAdapter({ limits: coordinator.limits, environment: route.environment, compatibleModels: route.compatibleModels, runner }));
+      adapters.set(key, new CodexAdapter({ limits: coordinator.limits, environment: route.environment, compatibleModels: route.compatibleModels, contextIsolation: route.contextIsolation, runner }));
       continue;
     }
     if (route.id === 'claude') {
@@ -469,8 +523,8 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
 }
 
 export async function startLocalConsole(configuration: LocalConsoleConfiguration, ownerActions?: ConsoleOwnerActions, dependencies: LocalConsoleDependencies = {}): Promise<StartedConsole> {
-  const identity: CoordinatorIdentity = { instanceId: `console-${process.pid}-${Date.now()}`, pid: process.pid, processStartedAt: new Date().toISOString() };
-  const coordinator = await Coordinator.open({ factoryId: configuration.factoryId, journalPath: configuration.journalPath, projectionPath: configuration.projectionPath, identity, limits: configuration.limits });
+  const { identity, processProbe } = await localCoordinatorOwnership(dependencies);
+  const coordinator = await Coordinator.open({ factoryId: configuration.factoryId, journalPath: configuration.journalPath, projectionPath: configuration.projectionPath, identity, limits: configuration.limits, processProbe });
   await coordinator.claim();
   let configured: ConfiguredRuntime | undefined;
   let gm: FactoryGM | undefined;

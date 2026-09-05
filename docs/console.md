@@ -49,6 +49,14 @@ so it truthfully rejects any selected product whose resolved budget has
 `strictSpending: true`. A token estimate and coordinator accounting are not a
 hard spending control.
 
+The generated Codex route uses the unmodified CLI's bounded context mode: it
+ignores user configuration and exec-policy rules, disables memories, apps,
+plugins, and multi-agent fan-out, sets approval policy to `never`, and requests
+`workspace-write`. Authentication may still come from the existing provider
+store. This prevents ambient context injection and escalation; it is not a
+claim that a native provider process cannot read host paths. Only the isolated
+container profile supplies a separately validated filesystem boundary.
+
 This is a convenience for an owner-selected native Codex proof, not the generic
 bootstrap default. The default remains isolated execution, and a complete
 factory evaluation still covers Codex, Claude, and Cursor rather than treating

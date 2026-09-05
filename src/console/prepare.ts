@@ -103,6 +103,8 @@ export function prepareLocalCodexConsole(value: unknown): Record<string, unknown
     ...criteria.map((criterion) => `- ${criterion}`),
     'Inherited constraints:',
     ...(constraints.length === 0 ? ['- None recorded.'] : constraints.map((constraint) => `- ${constraint}`)),
+    'Treat provider authentication as the only permitted ambient state. Do not inspect memory, user configuration, parent/sibling directories, or paths outside this repository.',
+    'Do not create symlinks, hard links, or dependency references to paths outside this repository. If acceptance tooling is missing and an approved offline package cache is available, record the exact dependency in the product package manifest and lockfile and install it product-locally.',
     'Work only in this repository. Preserve the accepted scope and starting behavior. Do not use remotes, publish, merge, deploy, access credentials, or add paid/network services. Implement the smallest correct change, run the repository acceptance tests, and finish with a concise summary of changed files and observed commands.',
   ].join('\n');
   const context: ProviderCurrentContext = {
@@ -136,7 +138,7 @@ export function prepareLocalCodexConsole(value: unknown): Record<string, unknown
     limits: { ...product.budget, strictSpendingSupported: false },
     factoryConfiguration: configuration,
     runtime: {
-      providers: [{ id: 'codex', profile: 'native', environment, compatibleModels: [model], runNonce: `codex-${suffix}` }],
+      providers: [{ id: 'codex', profile: 'native', environment, compatibleModels: [model], runNonce: `codex-${suffix}`, contextIsolation: 'bounded' }],
       workItems: [{ workItemId, intent, context, dependsOnWorkItemIds: [] }],
       resumePlans: [],
     },

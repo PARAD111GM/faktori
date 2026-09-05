@@ -120,6 +120,7 @@ export interface NativeProcessRunner {
 
 export interface NativeIdentityProbe {
   inspect(pid: number): Promise<NativeIdentityObservation | undefined>;
+  inspectAll?(): Promise<readonly NativeProcessObservation[] | { status: 'unknown' }>;
   inspectProcessGroup?(processGroupId: number): Promise<NativeProcessGroupObservation | undefined>;
 }
 

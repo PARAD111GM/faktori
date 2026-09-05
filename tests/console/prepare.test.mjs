@@ -66,7 +66,9 @@ describe('local Console preparation', () => {
     expect(parsed.runtime.workItems[0].intent.execution.approvedInputDigests).toHaveLength(1);
     expect(parsed.runtime.workItems[0].context.prompt).toContain('The documented acceptance command passes.');
     expect(parsed.runtime.workItems[0].context.prompt).toContain('Do not change the test oracle.');
-    expect(parsed.runtime.providers).toEqual([expect.objectContaining({ id: 'codex', profile: 'native', compatibleModels: ['gpt-5.5'] })]);
+    expect(parsed.runtime.workItems[0].context.prompt).toContain('Do not inspect memory');
+    expect(parsed.runtime.workItems[0].context.prompt).toContain('Do not create symlinks');
+    expect(parsed.runtime.providers).toEqual([expect.objectContaining({ id: 'codex', profile: 'native', compatibleModels: ['gpt-5.5'], contextIsolation: 'bounded' })]);
   });
 
   it('rejects a dirty product and an unsupported strict-spending promise', async () => {

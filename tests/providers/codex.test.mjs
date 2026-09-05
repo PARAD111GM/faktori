@@ -131,6 +131,19 @@ describe('bounded Codex exec adapter', () => {
     expect(result.final.usage).toEqual(expect.objectContaining({ availability: 'partially_reported', inputTokens: 1, outputTokens: 2 }));
   });
 
+  it('can suppress ambient user memory and escalation without claiming native filesystem isolation', async () => {
+    const runner = fakeRunner({ exitCode: 0, stdout: jsonl({ type: 'turn.completed' }) });
+    const provider = adapter(runner, {}, { contextIsolation: 'bounded' });
+
+    expect((await provider.start(intent(), context())).final.outcome).toBe('completed');
+    expect(runner.calls[0].args).toEqual(expect.arrayContaining([
+      'exec', '--ignore-user-config', '--ignore-rules', '--disable', 'memories', '--disable', 'apps',
+      '--disable', 'plugins', '--disable', 'multi_agent', '--disable', 'multi_agent_v2', '--strict-config',
+      '-c', 'approval_policy="never"', '-c', 'sandbox_mode="workspace-write"', '--json', '--model', 'gpt-5.5',
+    ]));
+    expect(runner.calls[0].args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+  });
+
   it('executes the exact authorized prompt bytes and rejects substituted content', async () => {
     const runner = fakeRunner({ exitCode: 0, stdout: jsonl({ type: 'thread.started', thread_id: 'thread-exact' }, { type: 'turn.completed' }) });
     const exact = context({ prompt: '  exact Codex prompt\n' });

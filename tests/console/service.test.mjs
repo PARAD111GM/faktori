@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -158,6 +158,28 @@ describe('loopback Console service', () => {
       expect(started.url).toMatch(/^http:\/\/127\.0\.0\.1:/);
       await started.close();
       expect(() => parseLocalConsoleConfiguration({ ...config, allowedOrigins: ['*'] })).toThrow(/exact loopback/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('reclaims only a lock whose exact coordinator process is observed gone', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-console-reclaim-'));
+    const journalPath = join(root, 'operations.jsonl');
+    const lockPath = `${journalPath}.coordinator-lock`;
+    const config = parseLocalConsoleConfiguration({ factoryId: 'factory', journalPath, projectionPath: join(root, 'projection.sqlite'), port: 0, allowedOrigins: ['http://127.0.0.1:4173'], limits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 10, maxTokens: 100, strictSpending: false, strictSpendingSupported: false } });
+    const current = { pid: process.pid, processStartedAt: 'current-process-start', processGroupId: process.pid, running: true };
+    const probe = (processList) => ({ inspect: async (pid) => pid === process.pid ? current : { status: 'unknown' }, inspectAll: async () => processList });
+
+    try {
+      await writeFile(lockPath, `${JSON.stringify({ instanceId: 'gone', pid: 910_001, processStartedAt: 'old-start', processGroupId: 910_001 })}\n`);
+      const started = await startLocalConsole(config, undefined, { coordinatorIdentityProbe: probe([current]) });
+      expect(started.url).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      await started.close();
+
+      await writeFile(lockPath, `${JSON.stringify({ instanceId: 'reused', pid: 910_002, processStartedAt: 'old-start', processGroupId: 910_002 })}\n`);
+      await expect(startLocalConsole(config, undefined, { coordinatorIdentityProbe: probe([current, { pid: 910_002, processStartedAt: 'replacement-start', processGroupId: 910_002, running: true }]) })).rejects.toThrow(/coordinator is mismatch/);
+
+      await writeFile(lockPath, `${JSON.stringify({ instanceId: 'unknown', pid: 910_003, processStartedAt: 'old-start', processGroupId: 910_003 })}\n`);
+      await expect(startLocalConsole(config, undefined, { coordinatorIdentityProbe: probe({ status: 'unknown' }) })).rejects.toThrow(/coordinator is unknown/);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 

@@ -343,14 +343,19 @@ export class NativeIdentityProbe implements NativeIdentityProbeContract {
     return observed;
   }
 
-  async inspectProcessGroup(processGroupId: number): Promise<NativeProcessGroupObservation | undefined> {
-    if (!Number.isInteger(processGroupId) || processGroupId < 1) return { status: 'unknown' };
+  async inspectAll(): Promise<readonly NativeProcessObservation[] | { status: 'unknown' }> {
     const result = await this.commands.run(boundedInvocation('ps', ['-axo', 'pid=,lstart=,pgid=,stat='], this.cwd, this.env, 1_000));
     if (result.timedOut || result.outputLimitExceeded || result.spawnError !== undefined || result.exitCode !== 0) return { status: 'unknown' };
     const lines = result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
     const parsed = lines.map(parseNativeProcess);
-    if (parsed.some((entry) => entry === undefined)) return { status: 'unknown' };
-    const members = (parsed as NativeProcessObservation[]).filter((entry) => entry.processGroupId === processGroupId);
+    return parsed.some((entry) => entry === undefined) ? { status: 'unknown' } : parsed as NativeProcessObservation[];
+  }
+
+  async inspectProcessGroup(processGroupId: number): Promise<NativeProcessGroupObservation | undefined> {
+    if (!Number.isInteger(processGroupId) || processGroupId < 1) return { status: 'unknown' };
+    const observed = await this.inspectAll();
+    if ('status' in observed) return observed;
+    const members = observed.filter((entry) => entry.processGroupId === processGroupId);
     return members.length === 0 ? { status: 'absent' } : { processGroupId, members };
   }
 }

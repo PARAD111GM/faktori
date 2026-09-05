@@ -64,6 +64,8 @@ export interface CodexAdapterOptions {
   environment: Readonly<Record<string, string>>;
   /** Defaults to the observed compatible Phase 0 runtime model. */
   compatibleModels?: readonly string[];
+  /** Suppresses ambient user configuration, memory and optional integrations for a bounded product turn. */
+  contextIsolation?: 'host' | 'bounded';
 }
 
 /** Current packet contents are separately bound to the immutable RunIntent reference. */
@@ -316,10 +318,25 @@ function timeoutMs(intent: RunIntent): number {
   return intent.budget.maxRuntimeMinutes * 60_000;
 }
 
-function baseArgs(model: string): string[] {
-  // Deliberately do not supply --sandbox, --dangerously-bypass-approvals-and-sandbox,
-  // --add-dir, or any approval-widening configuration. Native behavior is unproven.
-  return ['--json', '--model', model];
+function baseArgs(model: string, contextIsolation: 'host' | 'bounded'): string[] {
+  // Bounded mode suppresses ambient context and escalation and requests the
+  // unmodified CLI's workspace-write policy. It is not a claim of native
+  // filesystem read isolation. No mode widens approval or adds directories.
+  return [
+    ...(contextIsolation === 'bounded' ? [
+      '--ignore-user-config',
+      '--ignore-rules',
+      '--disable', 'memories',
+      '--disable', 'apps',
+      '--disable', 'plugins',
+      '--disable', 'multi_agent',
+      '--disable', 'multi_agent_v2',
+      '--strict-config',
+      '-c', 'approval_policy="never"',
+      '-c', 'sandbox_mode="workspace-write"',
+    ] : []),
+    '--json', '--model', model,
+  ];
 }
 
 function parseEvents(stdout: string): { events: CodexNormalizedEvent[]; malformedEventCount: number } {
@@ -409,12 +426,14 @@ export class CodexAdapter {
   readonly #limits: CodexAdapterLimits;
   readonly #compatibleModels: ReadonlySet<string>;
   readonly #environment: Readonly<Record<string, string>>;
+  readonly #contextIsolation: 'host' | 'bounded';
 
   constructor(options: CodexAdapterOptions) {
     this.#runner = options.runner;
     this.#limits = options.limits;
     this.#compatibleModels = new Set(options.compatibleModels ?? ['gpt-5.5']);
     this.#environment = Object.freeze({ ...options.environment });
+    this.#contextIsolation = options.contextIsolation ?? 'host';
   }
 
   async start(intent: RunIntent, currentContext: CodexCurrentContext, lifecycle?: CodexProcessLifecycle): Promise<CodexRunResult> {
@@ -425,7 +444,7 @@ export class CodexAdapter {
       ?? (prompt ? undefined : 'current context packet and prompt are required')
       ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('start', invalid);
-    return this.#execute('start', intent, ['exec', ...baseArgs(intent.execution.model), prompt as string], lifecycle);
+    return this.#execute('start', intent, ['exec', ...baseArgs(intent.execution.model, this.#contextIsolation), prompt as string], lifecycle);
   }
 
   async resume(intent: RunIntent, sessionBinding: CodexSessionBinding, currentContext: CodexCurrentContext, lifecycle?: CodexProcessLifecycle): Promise<CodexRunResult> {
@@ -437,7 +456,7 @@ export class CodexAdapter {
       ?? (prompt ? undefined : 'current context packet and prompt are required')
       ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('resume', invalid);
-    return this.#execute('resume', intent, ['exec', 'resume', ...baseArgs(intent.execution.model), sessionBinding.sessionId, prompt as string], lifecycle);
+    return this.#execute('resume', intent, ['exec', 'resume', ...baseArgs(intent.execution.model, this.#contextIsolation), sessionBinding.sessionId, prompt as string], lifecycle);
   }
 
   async cancel(intent: RunIntent, lifecycle?: CodexProcessLifecycle): Promise<ProviderFinalResult> {

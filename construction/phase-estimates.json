@@ -180,6 +180,17 @@
       "assumptions": ["The estimate includes manager, implementer, two bounded specialists, verification, rework and contingency.","Account percentage is not token-convertible and is monitored separately.","Unknown or overlapping telemetry remains unknown and never weakens acceptance."],
       "baseline": {"manager":"Adjacent private phase-5-manager-baseline.json; raw provenance is not committed."},
       "revisionNotes": ["No native hard token cap was set. Measured implementer total is reported only as an overlap-safe lower bound."]
+    },
+    {
+      "phase": 6,
+      "hardCeiling": false,
+      "confidence": "low",
+      "currentRevision": 1,
+      "estimateTokens": 700000,
+      "revisions": [{"revision":1,"estimateTokens":700000,"allocations":{"managerCoordination":60000,"implementerOrchestrationAndIntegration":220000,"specialistDelivery":160000,"verificationAndRework":180000,"contingency":80000},"rationale":"Manager-provided bottom-up Phase 6 planning estimate for recovery, service protection, maintenance implementation, public-kit reconstruction, verification, and bounded acceptance rework."}],
+      "assumptions": ["The estimate includes manager, implementer, two bounded specialists, verification, rework and contingency.","It is a soft planning estimate and the native goal remains uncapped.","Account percentage is not token-convertible and is monitored separately.","Unknown or overlapping telemetry remains unknown and never weakens acceptance."],
+      "baseline": {"manager":"Adjacent private phase-6-manager-baseline.json; raw provenance is not committed."},
+      "revisionNotes": ["No reset credit or paid usage was authorized; estimates are planning data rather than hard stops."]
     }
   ]
 }

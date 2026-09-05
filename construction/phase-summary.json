@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "phase": 5,
-  "generatedAt": "2026-09-05T17:26:42.213Z",
+  "phase": 6,
+  "generatedAt": "2026-09-05T18:05:09.032Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 1107792,
+    "total": 645987,
     "excludedChildCount": 2,
     "kind": "overlap-safe-lower-bound"
   },
@@ -23,27 +23,31 @@
   ],
   "unknown": [
     {
-      "ticket": "F5-01",
+      "ticket": "F6-01..F6-03",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F5-01",
+      "ticket": "F6-04",
+      "reason": "telemetry:unknown"
+    },
+    {
+      "ticket": "F6-01..F6-03",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F5-03",
+      "ticket": "F6-04",
       "reason": "parent-child-overlap:unknown"
     }
   ],
   "coverageGaps": [],
   "records": {
-    "accepted": 5,
+    "accepted": 4,
     "duplicates": 0
   },
   "budget": {
-    "estimate": 800000,
-    "remaining": 0,
-    "percentUsed": 138.47
+    "estimate": 700000,
+    "remaining": 54013,
+    "percentUsed": 92.28
   },
   "notices": [
     {
@@ -52,10 +56,6 @@
     },
     {
       "threshold": 90,
-      "type": "budget-threshold"
-    },
-    {
-      "threshold": 100,
       "type": "budget-threshold"
     }
   ]

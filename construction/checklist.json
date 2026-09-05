@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 5,
+    "currentPhase": 6,
     "source": "docs/implementation-plan.md",
     "phaseBudgets": {
       "0": 360000,
@@ -10,7 +10,8 @@
       "2": 2200000,
       "3": 2400000,
       "4": 650000,
-      "5": 800000
+      "5": 800000,
+      "6": 700000
     }
   },
   "tickets": [
@@ -830,7 +831,7 @@
       "id": "F6-01",
       "phase": 6,
       "title": "Exercise recovery boundaries",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F2-02",
@@ -840,16 +841,30 @@
         "F4-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "recovery and security tests specialist",
+        "agentId": "recovery_security_tests",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Interrupted and uncertain work is reconstructed from the append-only journal, blocks fresh admission after restore, and requires an explicit evidence-bearing disposition before resolution."
+      ],
+      "evidence": [
+        {
+          "label": "Recovery projection and coordinator gate",
+          "url": "src/runtime/sqlite-projection.ts"
+        },
+        {
+          "label": "Backup and restore recovery tests",
+          "url": "tests/maintenance/backup-restore.test.mjs"
+        }
+      ]
     },
     {
       "id": "F6-02",
       "phase": 6,
       "title": "Complete local service protection",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F2-02",
         "F2-04",
@@ -857,31 +872,63 @@
         "F5-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "recovery and security tests specialist",
+        "agentId": "recovery_security_tests",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Loopback origin and command-token checks remain fail-closed, crafted static paths cannot escape by traversal or symlink, and startup recovers coordinator state before listening."
+      ],
+      "evidence": [
+        {
+          "label": "Local service boundary",
+          "url": "src/console/service.ts"
+        },
+        {
+          "label": "Crafted-request protection tests",
+          "url": "tests/security/local-service-protection.test.mjs"
+        }
+      ]
     },
     {
       "id": "F6-03",
       "phase": 6,
       "title": "Implement backup and compatible updates",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F6-01"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase implementer-orchestrator",
+        "agentId": "root",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Offline backups are complete, digest-verified, projection- and credential-excluding snapshots; restore targets a new root, rebinds owner configuration, preserves historical journal bytes, and update activation is approval-digest-bound and atomic."
+      ],
+      "evidence": [
+        {
+          "label": "Backup, restore, and reconciliation implementation",
+          "url": "src/maintenance/backup.ts"
+        },
+        {
+          "label": "Compatible update implementation",
+          "url": "src/maintenance/update.ts"
+        },
+        {
+          "label": "Update behavior tests",
+          "url": "tests/maintenance/update.test.mjs"
+        }
+      ]
     },
     {
       "id": "F6-04",
       "phase": 6,
       "title": "Package the public kit",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F1-01",
         "F1-02",
@@ -891,10 +938,28 @@
         "F6-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "public kit documentation specialist",
+        "agentId": "public_kit_docs",
+        "model": "gpt-5.6-luna",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "The public tarball includes the maintenance APIs, operator guides, compatibility boundary, examples, frozen comparison materials, and a clean-consumer smoke that executes the installed backup, restore, and managed-release paths."
+      ],
+      "evidence": [
+        {
+          "label": "Public maintenance guide",
+          "url": "docs/maintenance/README.md"
+        },
+        {
+          "label": "Packed public-kit verifier",
+          "url": "scripts/verify-packed-cli.mjs"
+        },
+        {
+          "label": "Public maintenance examples",
+          "url": "examples/maintenance/README.md"
+        }
+      ]
     },
     {
       "id": "F7-01",
@@ -1477,6 +1542,70 @@
       "from": "complete",
       "to": "complete",
       "reason": "Resource, queue, attention, GM finding, and improvement visibility completed and browser-verified."
+    },
+    {
+      "eventId": "status-1788629598513-4mv5k5",
+      "at": "2026-09-05T17:33:18.514Z",
+      "ticketId": "F6-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Phase 6 authorized at accepted base 00ca700; assembled recovery-boundary coverage and gap analysis started."
+    },
+    {
+      "eventId": "status-1788629598775-ad8z10",
+      "at": "2026-09-05T17:33:18.776Z",
+      "ticketId": "F6-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Crafted-request protection review started against the installed loopback service and execution boundary."
+    },
+    {
+      "eventId": "status-1788629599041-7y3evs",
+      "at": "2026-09-05T17:33:19.042Z",
+      "ticketId": "F6-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Shared backup, separate-restore, reconciliation, compatibility, and update contracts are being established before specialist fan-out."
+    },
+    {
+      "eventId": "status-1788629599303-5of1po",
+      "at": "2026-09-05T17:33:19.304Z",
+      "ticketId": "F6-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Public package contents and clean-install reconstruction requirements are under inventory."
+    },
+    {
+      "eventId": "status-1788631465462-jeg5rj",
+      "at": "2026-09-05T18:04:25.463Z",
+      "ticketId": "F6-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Recovery boundaries, restored-run admission blocking, explicit reconciliation, and restart-safe projection behavior passed the assembled gate."
+    },
+    {
+      "eventId": "status-1788631466523-u9yitx",
+      "at": "2026-09-05T18:04:26.524Z",
+      "ticketId": "F6-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Loopback authentication/origin enforcement, crafted static-path protection, and recover-before-listen startup passed the assembled gate."
+    },
+    {
+      "eventId": "status-1788631467600-c0v5rg",
+      "at": "2026-09-05T18:04:27.601Z",
+      "ticketId": "F6-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Digest-verified backup/restore and approval-bound compatible update activation with a real pinned native SQLite rebuild passed."
+    },
+    {
+      "eventId": "status-1788631468695-4kzylf",
+      "at": "2026-09-05T18:04:28.696Z",
+      "ticketId": "F6-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "The public tarball, maintenance docs/examples, comparison boundary, clean installation, and installed CLI reconstruction proof passed."
     }
   ]
 }

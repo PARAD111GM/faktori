@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "phase": 5,
+  "phase": 6,
   "policy": "Use the least expensive model likely to produce accepted work; escalate only from demonstrated failure.",
   "assignments": [
-    {"role":"phase implementer-orchestrator","tickets":["F5-01","F5-02","F5-03","F5-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Escalated cross-layer API/coordinator/provider integration, installed package wiring, records, browser proof and acceptance remediation after the initial assembled candidate left supported runtime and owner-control gaps."},
-    {"role":"Console UI specialist","tickets":["F5-01","F5-02","F5-04"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded React/Vite Console and accessibility-safe state/action rendering in exclusive console paths."},
-    {"role":"Factory GM specialist","tickets":["F5-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded event diagnosis/finding behavior, authority rejection and deterministic tests in exclusive GM paths."}
+    {"role":"phase implementer-orchestrator","tickets":["F6-01","F6-02","F6-03","F6-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Owns recovery and maintenance contracts, runtime integration, installed public-kit proof, canonical records, and acceptance remediation across shared paths."},
+    {"role":"recovery and security tests specialist","tickets":["F6-01","F6-02","F6-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded adversarial recovery, backup/restore, update, and local-service tests in exclusive test paths."},
+    {"role":"public kit documentation specialist","tickets":["F6-04"],"model":"gpt-5.6-luna","reasoning":"medium","rationale":"Bounded operator documentation, compatibility boundary, examples, comparison clarification, and packed-kit verification in exclusive public paths."}
   ],
   "priorAssignments": [
     {"role":"phase implementer-orchestrator","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Shared contracts, integration, package and CLI, canonical records, consequential verification, and manager coordination."},
@@ -46,6 +46,24 @@
       "from": {"model":"gpt-5.6-terra","reasoning":"high","candidate":"assembled Console with deterministic installed fixture and deferred supported-provider controls"},
       "to": {"model":"gpt-5.6-sol","reasoning":"high","candidate":"installed Codex, Claude, Cursor and isolated-Codex routes with durable live controls and dynamic GM diagnosis"},
       "reason": "Build Manager exact-head review found that the first candidate substituted a deterministic fixture for the installed provider runtime and deferred material hierarchy, provider-request, cancellation, replay, and GM execution behavior. The demonstrated cross-layer failures required escalation and a full bounded remediation pass."
+    },
+    {
+      "ticket": "F6-03",
+      "from": {"updateApproval":"preview digest checked before taking the update lock","releaseValidation":"candidate files inspected in place"},
+      "to": {"updateApproval":"preview recomputed under the update lock before activation","releaseValidation":"content-addressed candidate is copied, rehashed, clean-installed, and executed before manifest activation"},
+      "reason": "Manager review identified a preview-to-apply mutation race and insufficient proof that an independent release could launch."
+    },
+    {
+      "ticket": "F6-03",
+      "from": {"restore":"portable files restored without an executed Console proof","credentialScrubbing":"narrow exact-key set"},
+      "to": {"restore":"configuration paths are explicitly rebound and the restored Console is started in the recovery test","credentialScrubbing":"sensitive suffix and environment-style keys are stripped while explicit credential paths are excluded"},
+      "reason": "Manager review required behavioral relocation evidence and broader documented handling for common credential-bearing configuration keys."
+    },
+    {
+      "ticket": "F6-04",
+      "from": {"comparisonStatus":"Phase 6 text could imply an incumbent paired run"},
+      "to": {"comparisonStatus":"Phase 7 is explicitly the isolated paired comparison gate under the frozen checksums and verifier"},
+      "reason": "Manager review clarified the evidence boundary between packaging the public kit and the later independent comparison."
     }
   ]
 }

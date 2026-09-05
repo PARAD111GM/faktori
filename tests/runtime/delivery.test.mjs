@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
-import { CoordinatorCodexDelivery, DeliveryPreconditionError } from '../../src/runtime/delivery.ts';
+import { CoordinatorCodexDelivery, CoordinatorProviderDelivery, DeliveryPreconditionError } from '../../src/runtime/delivery.ts';
 
 async function fixtureDirectory() {
   return mkdtemp(join(tmpdir(), 'faktori-delivery-'));
@@ -307,6 +307,40 @@ describe('coordinator-owned Codex delivery', () => {
       expect(cancelled.outcome).toBe('interrupted_uncertain');
       expect(delivered.final.outcome).toBe('interrupted_uncertain');
       expect(terminations).toEqual([{ identity: worker, reason: 'cancelled' }]);
+      await owner.release();
+      owner.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('provider-neutral coordinator delivery', () => {
+  it('routes a non-Codex run through the same durable transport boundary without changing provider identity', async () => {
+    const directory = await fixtureDirectory();
+    try {
+      const owner = await coordinator(directory);
+      const claudeIntent = intent('claude-delivery');
+      claudeIntent.execution.providerId = 'claude';
+      claudeIntent.execution.model = 'claude-compatible';
+      await owner.admit(claudeIntent);
+      const worker = { kind: 'native', pid: 712, processStartedAt: 'claude-worker-start', processGroupId: 712, runNonce: 'claude-worker-nonce' };
+      const adapter = {
+        async start(_run, _context, lifecycle) {
+          await lifecycle.onStarted(worker);
+          return { command: 'start', events: [{ type: 'system.init', raw: { type: 'system.init' } }], malformedEventCount: 0, final: final({ sessionId: 'claude-session' }) };
+        },
+        async resume() { throw new Error('not used'); },
+      };
+      const service = new CoordinatorProviderDelivery({ coordinator: owner, adapter, providerId: 'claude', terminateWorker: async () => undefined });
+
+      const result = await service.deliver(request('claude-delivery'));
+
+      expect(result.final).toEqual(expect.objectContaining({ outcome: 'completed', sessionId: 'claude-session' }));
+      const events = owner.journal.events().filter((event) => event.runId === 'claude-delivery');
+      expect(events.find((event) => event.kind === 'effect.intended')?.data.effect.operationId).toMatch(/^claude-turn-/);
+      expect(events.find((event) => event.kind === 'usage.observed')?.data.source).toBe('claude');
+      expect(owner.snapshot('claude-delivery')).toEqual(expect.objectContaining({ state: 'succeeded' }));
       await owner.release();
       owner.close();
     } finally {

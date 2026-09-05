@@ -1,4 +1,11 @@
 import type { ProviderFinalResult, RunIntent, UsageTelemetry, WorkerIdentity } from '../runtime/contracts.ts';
+import type {
+  ProviderCurrentContext,
+  ProviderNormalizedEvent,
+  ProviderRunResult,
+  ProviderSessionBinding,
+  ProviderTurnLifecycle,
+} from './contracts.ts';
 
 /** The small, injected boundary around the vendor-owned Codex executable. */
 export interface CodexProcessRunner {
@@ -19,10 +26,7 @@ export interface CodexProcessRequest {
   lifecycle?: CodexProcessLifecycle;
 }
 
-export interface CodexProcessLifecycle {
-  onStarted(worker: WorkerIdentity): Promise<void>;
-  onTerminationRequired?(worker: WorkerIdentity, reason: 'timeout' | 'output_limit' | 'cancelled'): Promise<void>;
-}
+export type CodexProcessLifecycle = ProviderTurnLifecycle;
 
 export interface CodexProcessResult {
   exitCode: number | null;
@@ -62,31 +66,10 @@ export interface CodexAdapterOptions {
 }
 
 /** Current packet contents are separately bound to the immutable RunIntent reference. */
-export interface CodexCurrentContext {
-  packetRevision: string;
-  digest: string;
-  prompt: string;
-}
+export type CodexCurrentContext = ProviderCurrentContext;
 
 /** Coordinator-recorded provenance required to resume a disposable native session. */
-export interface CodexSessionBinding {
-  sessionId: string;
-  sourceRunId: string;
-  sourceContext: {
-    packetRevision: string;
-    digest: string;
-  };
-  /** Durable source scope. The adapter rejects reuse outside this workspace. */
-  sourceScope: {
-    factoryId: string;
-    productId: string;
-    repository: string;
-    workspaceId: string;
-    /** Private operational path. It must not be copied into public evidence. */
-    workspacePath: string;
-    providerId: string;
-  };
-}
+export type CodexSessionBinding = ProviderSessionBinding;
 
 export interface CodexProviderCapabilities {
   resume: true;
@@ -97,20 +80,9 @@ export interface CodexProviderCapabilities {
   nativeCancellationReceipt: 'unavailable';
 }
 
-export interface CodexNormalizedEvent {
-  type: string;
-  raw: Record<string, unknown>;
-}
+export type CodexNormalizedEvent = ProviderNormalizedEvent;
 
-export interface CodexRunResult {
-  command: 'start' | 'resume';
-  sessionId?: string;
-  events: CodexNormalizedEvent[];
-  malformedEventCount: number;
-  /** Bounded, sanitized error evidence only; ordinary agent text is never error evidence. */
-  errorEvidence?: string;
-  final: ProviderFinalResult;
-}
+export type CodexRunResult = ProviderRunResult;
 
 type Outcome = ProviderFinalResult['outcome'];
 type JsonRecord = Record<string, unknown>;

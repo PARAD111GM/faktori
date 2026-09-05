@@ -1,26 +1,24 @@
 import { createHash } from 'node:crypto';
 
-import type { CodexCurrentContext, CodexProcessLifecycle, CodexRunResult, CodexSessionBinding } from '../providers/codex.ts';
+import type {
+  ProviderCurrentContext,
+  ProviderRunResult,
+  ProviderSessionBinding,
+  ProviderTurnAdapter,
+  ProviderTurnLifecycle,
+  SupportedProviderId,
+} from '../providers/contracts.ts';
 import type { DurableEffectIntent, ProviderFinalResult, RunIntent, RunSnapshot, UsageTelemetry, WorkerIdentity } from './contracts.ts';
 import { isTerminalRunState } from './contracts.ts';
 import type { DurableCoordinator } from './coordinator.ts';
 
-export interface CodexTurnAdapter {
-  start(intent: RunIntent, currentContext: CodexCurrentContext, lifecycle?: CodexTurnLifecycle): Promise<CodexRunResult>;
-  resume(intent: RunIntent, sessionBinding: CodexSessionBinding, currentContext: CodexCurrentContext, lifecycle?: CodexTurnLifecycle): Promise<CodexRunResult>;
-  cancel?(intent: RunIntent, lifecycle?: CodexTurnLifecycle): Promise<ProviderFinalResult>;
-}
-
-/** Called by the actual Codex transport after it has observed its worker. */
-export type CodexTurnLifecycle = CodexProcessLifecycle;
-
-export interface CodexDeliveryRequest {
+export interface ProviderDeliveryRequest {
   runId: string;
-  context: CodexCurrentContext;
-  resume?: CodexSessionBinding;
+  context: ProviderCurrentContext;
+  resume?: ProviderSessionBinding;
 }
 
-export interface CodexDeliveryResult {
+export interface ProviderDeliveryResult {
   status: 'delivered' | 'already_recorded';
   command: 'start' | 'resume';
   final: ProviderFinalResult;
@@ -77,23 +75,26 @@ function isWorkerIdentity(value: unknown): value is WorkerIdentity {
  * adapter. It does not provide action authority and it never turns an absent
  * receipt into a success.
  */
-export class CoordinatorCodexDelivery {
+export class CoordinatorProviderDelivery {
   readonly #coordinator: DurableCoordinator;
-  readonly #adapter: CodexTurnAdapter;
+  readonly #adapter: ProviderTurnAdapter;
+  readonly #providerId: SupportedProviderId;
   readonly #terminateWorker: (worker: WorkerIdentity, reason: string) => Promise<void>;
-  #tails = new Map<string, Promise<CodexDeliveryResult>>();
+  #tails = new Map<string, Promise<ProviderDeliveryResult>>();
 
   constructor(options: {
     coordinator: DurableCoordinator;
-    adapter: CodexTurnAdapter;
+    adapter: ProviderTurnAdapter;
+    providerId: SupportedProviderId;
     terminateWorker: (worker: WorkerIdentity, reason: string) => Promise<void>;
   }) {
     this.#coordinator = options.coordinator;
     this.#adapter = options.adapter;
+    this.#providerId = options.providerId;
     this.#terminateWorker = options.terminateWorker;
   }
 
-  async deliver(request: CodexDeliveryRequest): Promise<CodexDeliveryResult> {
+  async deliver(request: ProviderDeliveryRequest): Promise<ProviderDeliveryResult> {
     const previous = this.#tails.get(request.runId);
     if (previous !== undefined) return previous;
     const run = this.deliverExclusive(request);
@@ -107,11 +108,11 @@ export class CoordinatorCodexDelivery {
 
   /** Explicitly cancels only the currently delivering worker for this run. */
   async cancel(runId: string): Promise<ProviderFinalResult> {
-    if (!this.#tails.has(runId)) throw new DeliveryPreconditionError(`Run ${runId} has no active Codex delivery to cancel`);
+    if (!this.#tails.has(runId)) throw new DeliveryPreconditionError(`Run ${runId} has no active ${this.providerLabel()} delivery to cancel`);
     const snapshot = this.#coordinator.snapshot(runId);
     if (snapshot === undefined || snapshot.worker === undefined) throw new DeliveryPreconditionError(`Run ${runId} has no durable active worker identity`);
     if (snapshot.authorityRevoked) throw new DeliveryPreconditionError(`Run ${runId} authority is already revoked`);
-    if (this.#adapter.cancel === undefined) throw new DeliveryPreconditionError('Codex adapter does not expose explicit cancellation');
+    if (this.#adapter.cancel === undefined) throw new DeliveryPreconditionError(`${this.#providerId} adapter does not expose explicit cancellation`);
     const expectedWorker = stable(snapshot.worker);
     let authorized = false;
     const result = await this.#adapter.cancel(snapshot.intent, {
@@ -132,10 +133,10 @@ export class CoordinatorCodexDelivery {
     return result;
   }
 
-  private async deliverExclusive(request: CodexDeliveryRequest): Promise<CodexDeliveryResult> {
+  private async deliverExclusive(request: ProviderDeliveryRequest): Promise<ProviderDeliveryResult> {
     const snapshot = this.exactSnapshot(request, true);
     const command = request.resume === undefined ? 'start' : 'resume';
-    const sessionId = command === 'resume' ? this.requireResumeBinding(snapshot.intent, request.resume as CodexSessionBinding) : undefined;
+    const sessionId = command === 'resume' ? this.requireResumeBinding(snapshot.intent, request.resume as ProviderSessionBinding) : undefined;
     const operation = this.operation(snapshot.intent, command, sessionId);
     const replay = this.priorDelivery(snapshot.intent.runId, operation);
     if (replay !== undefined) return replay;
@@ -145,10 +146,10 @@ export class CoordinatorCodexDelivery {
     await this.#coordinator.recordEffectIntent(snapshot.intent.runId, operation);
     let observedWorker = false;
     let observedWorkerIdentity: string | undefined;
-    const lifecycle: CodexTurnLifecycle = {
+    const lifecycle: ProviderTurnLifecycle = {
       onStarted: async (worker): Promise<void> => {
-        if (observedWorker) throw new DeliveryPreconditionError(`Codex delivery operation ${operation.operationId} reported more than one worker identity`);
-        if (!isWorkerIdentity(worker)) throw new DeliveryPreconditionError('Codex transport did not report an exact worker identity');
+        if (observedWorker) throw new DeliveryPreconditionError(`${this.#providerId} delivery operation ${operation.operationId} reported more than one worker identity`);
+        if (!isWorkerIdentity(worker)) throw new DeliveryPreconditionError(`${this.#providerId} transport did not report an exact worker identity`);
         await this.#coordinator.recordEffectReceipt(snapshot.intent.runId, {
           operationId: operation.operationId,
           observedAt: new Date().toISOString(),
@@ -159,18 +160,18 @@ export class CoordinatorCodexDelivery {
         observedWorkerIdentity = stable(worker);
       },
       onTerminationRequired: async (worker, reason): Promise<void> => {
-        if (!isWorkerIdentity(worker)) throw new DeliveryPreconditionError('Codex transport requested termination for an unproven worker identity');
-        if (!observedWorker || observedWorkerIdentity !== stable(worker)) throw new DeliveryPreconditionError('Codex transport requested termination for a worker other than the recorded worker');
+        if (!isWorkerIdentity(worker)) throw new DeliveryPreconditionError(`${this.#providerId} transport requested termination for an unproven worker identity`);
+        if (!observedWorker || observedWorkerIdentity !== stable(worker)) throw new DeliveryPreconditionError(`${this.#providerId} transport requested termination for a worker other than the recorded worker`);
         await this.#terminateWorker(worker, reason);
       },
     };
     try {
       const result = command === 'start'
         ? await this.#adapter.start(snapshot.intent, request.context, lifecycle)
-        : await this.#adapter.resume(snapshot.intent, request.resume as CodexSessionBinding, request.context, lifecycle);
+        : await this.#adapter.resume(snapshot.intent, request.resume as ProviderSessionBinding, request.context, lifecycle);
       if (!observedWorker) {
-        await this.recordLifecycleFailure(snapshot.intent.runId, operation, 'Codex transport returned without an exact worker-start callback');
-        return this.finalize(snapshot.intent.runId, command, unavailable('interrupted_uncertain', 'Codex transport returned without an exact worker-start callback'));
+        await this.recordLifecycleFailure(snapshot.intent.runId, operation, `${this.#providerId} transport returned without an exact worker-start callback`);
+        return this.finalize(snapshot.intent.runId, command, unavailable('interrupted_uncertain', `${this.#providerId} transport returned without an exact worker-start callback`));
       }
       for (const event of result.events) {
         await this.#coordinator.record('provider.event', snapshot.intent.runId, {
@@ -181,32 +182,32 @@ export class CoordinatorCodexDelivery {
       }
       return this.finalize(snapshot.intent.runId, command, result.final);
     } catch {
-      if (!observedWorker) await this.recordLifecycleFailure(snapshot.intent.runId, operation, 'Codex transport failed before an exact worker-start callback');
-      return this.finalize(snapshot.intent.runId, command, unavailable('interrupted_uncertain', 'Codex transport failed after launch intent; provider outcome is unknown'));
+      if (!observedWorker) await this.recordLifecycleFailure(snapshot.intent.runId, operation, `${this.#providerId} transport failed before an exact worker-start callback`);
+      return this.finalize(snapshot.intent.runId, command, unavailable('interrupted_uncertain', `${this.#providerId} transport failed after launch intent; provider outcome is unknown`));
     }
   }
 
-  private exactSnapshot(request: CodexDeliveryRequest, allowPriorReplay = false): RunSnapshot {
+  private exactSnapshot(request: ProviderDeliveryRequest, allowPriorReplay = false): RunSnapshot {
     const snapshot = this.#coordinator.snapshot(request.runId);
     if (snapshot === undefined) throw new DeliveryPreconditionError(`Run ${request.runId} was not admitted`);
     if (!allowPriorReplay && isTerminalRunState(snapshot.state)) throw new DeliveryPreconditionError(`Run ${request.runId} is terminal and cannot receive a Codex turn`);
     if (!allowPriorReplay && snapshot.authorityRevoked) throw new DeliveryPreconditionError(`Run ${request.runId} authority is revoked`);
-    if (snapshot.intent.execution.providerId !== 'codex') throw new DeliveryPreconditionError(`Run ${request.runId} is not assigned to Codex`);
+    if (snapshot.intent.execution.providerId !== this.#providerId) throw new DeliveryPreconditionError(`Run ${request.runId} is not assigned to ${this.#providerId}`);
     if (request.context.packetRevision !== snapshot.intent.context.packetRevision || request.context.digest !== snapshot.intent.context.digest) {
       throw new DeliveryPreconditionError(`Run ${request.runId} current context does not match the admitted packet revision and digest`);
     }
-    if (request.context.prompt.trim().length === 0) throw new DeliveryPreconditionError('Current Codex context prompt is required');
+    if (request.context.prompt.trim().length === 0) throw new DeliveryPreconditionError(`Current ${this.#providerId} context prompt is required`);
     return snapshot;
   }
 
-  private requireResumeBinding(target: RunIntent, binding: CodexSessionBinding): string {
-    if (binding.sessionId.trim().length === 0) throw new DeliveryPreconditionError('Codex resume requires an explicit session binding');
+  private requireResumeBinding(target: RunIntent, binding: ProviderSessionBinding): string {
+    if (binding.sessionId.trim().length === 0) throw new DeliveryPreconditionError(`${this.#providerId} resume requires an explicit session binding`);
     const source = this.#coordinator.snapshot(binding.sourceRunId);
     if (source === undefined || source.providerResult === undefined || source.providerResult.sessionId !== binding.sessionId) {
-      throw new DeliveryPreconditionError('Codex resume session is not proven by a durable source provider final record');
+      throw new DeliveryPreconditionError(`${this.#providerId} resume session is not proven by a durable source provider final record`);
     }
     if (source.intent.context.packetRevision !== binding.sourceContext.packetRevision || source.intent.context.digest !== binding.sourceContext.digest) {
-      throw new DeliveryPreconditionError('Codex resume source context binding does not match durable source intent');
+      throw new DeliveryPreconditionError(`${this.#providerId} resume source context binding does not match durable source intent`);
     }
     const durableScope = {
       factoryId: source.intent.target.factoryId,
@@ -217,7 +218,7 @@ export class CoordinatorCodexDelivery {
       providerId: source.intent.execution.providerId,
     };
     if (stable(binding.sourceScope) !== stable(durableScope)) {
-      throw new DeliveryPreconditionError('Codex resume source scope does not match the durable source intent');
+      throw new DeliveryPreconditionError(`${this.#providerId} resume source scope does not match the durable source intent`);
     }
     const targetScope = {
       factoryId: target.target.factoryId,
@@ -228,7 +229,7 @@ export class CoordinatorCodexDelivery {
       providerId: target.execution.providerId,
     };
     if (stable(durableScope) !== stable(targetScope)) {
-      throw new DeliveryPreconditionError('Codex resume cannot cross its recorded factory, product, repository, workspace, or provider scope');
+      throw new DeliveryPreconditionError(`${this.#providerId} resume cannot cross its recorded factory, product, repository, workspace, or provider scope`);
     }
     return binding.sessionId;
   }
@@ -237,15 +238,15 @@ export class CoordinatorCodexDelivery {
     const request = { runId: intent.runId, command, sessionId, context: intent.context, execution: intent.execution, attempt: intent.attempt };
     const requestDigest = digest(request);
     return {
-      operationId: `codex-turn-${requestDigest}`,
+      operationId: `${this.#providerId}-turn-${requestDigest}`,
       kind: command === 'start' ? 'worker.launch' : 'worker.resume',
-      identityKey: digest({ runId: intent.runId, workspaceId: intent.execution.workspaceId, providerId: 'codex' }),
+      identityKey: digest({ runId: intent.runId, workspaceId: intent.execution.workspaceId, providerId: this.#providerId }),
       requestedAt: new Date().toISOString(),
       requestDigest,
     };
   }
 
-  private priorDelivery(runId: string, operation: DurableEffectIntent): CodexDeliveryResult | undefined {
+  private priorDelivery(runId: string, operation: DurableEffectIntent): ProviderDeliveryResult | undefined {
     const effects = this.#coordinator.journal.events().filter((event) => event.runId === runId && event.kind === 'effect.intended');
     let prior: DurableEffectIntent | undefined;
     for (const event of effects) {
@@ -259,11 +260,11 @@ export class CoordinatorCodexDelivery {
     // requestedAt differs on replay; operation identity is the digest-bound
     // semantic key. Any other changed field is a fail-closed reuse.
     if (prior.kind !== operation.kind || prior.identityKey !== operation.identityKey || prior.requestDigest !== operation.requestDigest) {
-      throw new DeliveryPreconditionError(`Codex delivery operation ${operation.operationId} was reused with conflicting content`);
+      throw new DeliveryPreconditionError(`${this.#providerId} delivery operation ${operation.operationId} was reused with conflicting content`);
     }
     const snapshot = this.#coordinator.snapshot(runId);
     if (snapshot?.providerResult === undefined) {
-      throw new DeliveryPreconditionError(`Codex delivery operation ${operation.operationId} is unresolved and cannot be retried`);
+      throw new DeliveryPreconditionError(`${this.#providerId} delivery operation ${operation.operationId} is unresolved and cannot be retried`);
     }
     return { status: 'already_recorded', command: operation.kind === 'worker.resume' ? 'resume' : 'start', final: snapshot.providerResult };
   }
@@ -277,10 +278,30 @@ export class CoordinatorCodexDelivery {
     });
   }
 
-  private async finalize(runId: string, command: 'start' | 'resume', final: ProviderFinalResult): Promise<CodexDeliveryResult> {
-    await this.#coordinator.record('usage.observed', runId, { usage: final.usage, source: 'codex' });
+  private async finalize(runId: string, command: 'start' | 'resume', final: ProviderFinalResult): Promise<ProviderDeliveryResult> {
+    await this.#coordinator.record('usage.observed', runId, { usage: final.usage, source: this.#providerId });
     await this.#coordinator.record('provider.final', runId, { result: final, command });
     await this.#coordinator.record('reservation.released', runId, { status: usageStatus(final.usage), reason: 'provider_final_usage_telemetry' });
     return { status: 'delivered', command, final };
   }
+
+  private providerLabel(): string {
+    return `${this.#providerId[0]?.toUpperCase() ?? ''}${this.#providerId.slice(1)}`;
+  }
 }
+
+/** Phase 2 compatibility surface; new providers use CoordinatorProviderDelivery directly. */
+export class CoordinatorCodexDelivery extends CoordinatorProviderDelivery {
+  constructor(options: {
+    coordinator: DurableCoordinator;
+    adapter: ProviderTurnAdapter;
+    terminateWorker: (worker: WorkerIdentity, reason: string) => Promise<void>;
+  }) {
+    super({ ...options, providerId: 'codex' });
+  }
+}
+
+export type CodexTurnAdapter = ProviderTurnAdapter;
+export type CodexTurnLifecycle = ProviderTurnLifecycle;
+export type CodexDeliveryRequest = ProviderDeliveryRequest;
+export type CodexDeliveryResult = ProviderDeliveryResult;

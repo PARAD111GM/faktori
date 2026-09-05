@@ -57,3 +57,25 @@ socket-restricted construction sandbox:
 This proves the assembled repository and package on the observed macOS host.
 It does not satisfy the missing independent Linux instance, solve the frozen
 RED cases, or replace live provider/product evidence.
+
+## Subsequent manager verification after Docker recovery
+
+After an owner-approved force-quit and reopen, Docker Engine 29.5.3 responded
+again. Existing workloads were not used for verification. Cached images were
+launched with network disabled, read-only root filesystems, bounded memory/CPU
+and process counts; no images were downloaded. Project bind mounts failed with
+`bind source path does not exist`, so only selected public files were streamed
+into temporary container memory instead.
+
+- Cached Node 24.20.0 ran on Linux arm64. The compiled configuration module
+  resolved the unchanged solo and multiple-product examples, retaining their
+  product/pod counts and provider/environment assignments (exit 0).
+- Cached Python 3.12.14 ran on Linux aarch64. Direct invocation of the three
+  unchanged plain test functions reproduced the frozen baseline: two passed,
+  and `test_boundary_today_is_not_overdue` failed (exit 1). An earlier unittest
+  discovery attempt found zero tests (exit 5); it is not passing evidence.
+
+These are bounded Linux-container observations, not a complete independent
+Linux factory installation, browser journey, provider isolation proof, or
+completed Python bug fix. Host bind-mount behavior still requires diagnosis;
+the complete F7-02 gate remains open. The frozen inputs were not changed.

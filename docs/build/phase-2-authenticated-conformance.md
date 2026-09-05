@@ -1,8 +1,8 @@
-# Phase 2 authenticated conformance checkpoint
+# Phase 2 authenticated conformance evidence
 
-Status: authenticated execution reached the vendor CLI, but the required
-edit/test/resume/cancel proof has not completed. This is retained failure
-evidence, not acceptance.
+Status: passed. The required authenticated Docker edit/test, exact-session
+resume, durable cancellation, and recovery exercise completed. Build Manager
+exact-head acceptance remains separate from this evidence.
 
 ## Boundary used
 
@@ -34,9 +34,48 @@ evidence, not acceptance.
    unchanged. This attempt is retained privately as
    `.build/phase-2-auth-conformance.json`.
 
-No successful source session exists from these attempts, so resume and the
-controlled long-turn cancellation proof were not run. No result is promoted
-from a terminal event without the requested workspace effect and test receipt.
+No result was promoted from either attempt merely because the provider emitted
+a terminal event. Both failures remain part of the evidence chain.
+
+## Successful authorized exercise
+
+The owner delegated the pending technical judgment, and the Build Manager
+authorized the existing Docker-only inner-sandbox override for this bounded
+scratch exercise. The option remained disabled by default, was accepted only
+on an unchanged plan returned by the hardened Docker builder, and did not alter
+native execution.
+
+The resulting exercise observed all of the following:
+
+- **Start:** the shipped coordinator, adapter, and Docker transport admitted one
+  worker, changed only `fixture.txt`, ran `npm test` with exit 0, returned a
+  structured `completed` result, and independently passed the fixture verifier.
+- **Resume:** a second admitted run used the exact durable source session and
+  same factory/product/repository/workspace/provider scope without `--last`,
+  changed only `resume.txt` in addition to the prior fixture change, ran
+  `npm run test:resume` with exit 0, returned `completed`, and independently
+  passed the resume verifier.
+- **Cancellation:** a third admitted run started the controlled `sleep 120`
+  command. Explicit cancellation durably recorded authority revocation and
+  termination intent before exactly one container stop. The container was then
+  confirmed absent, the scratch status remained unchanged from before the
+  cancellation turn, and the provider result correctly remained
+  `interrupted_uncertain` because no native Codex cancellation receipt exists.
+- **Recovery:** rebuilding the disposable SQLite projection from the journal
+  produced `succeeded`, `succeeded`, and `cancelled` for the three runs.
+
+The start reported 107,441 input tokens, of which 88,320 were cached, and 504
+output tokens. The resume reported 229,156 input tokens, of which 204,288 were
+cached, and 1,066 output tokens. Cached input is a subset of input, not an
+additional total. The cancelled run emitted no usage telemetry; none was
+invented.
+
+All three actual containers used the immutable image, UID `65532:65532`,
+`/workspace`, bridge networking, and only the workspace plus dedicated vendor
+profile mounts. Observed environment keys were limited to `CODEX_HOME`, `LANG`,
+`PATH`, and image-provided Node/Yarn version metadata. No host home, Docker
+socket, controller storage, journal, or publisher credential/environment was
+present.
 
 ## Deterministic checkpoint after the attempts
 
@@ -58,16 +97,9 @@ The implementer and Build Manager independently ran the pinned Node 24.20.0
 full check at that exact revision. Strict TypeScript, 18 test files with 158
 tests, emitted build, and packed CLI verification passed.
 
-## Remaining live gate
+## Remaining gate
 
-The vendor CLI documents its inner-sandbox bypass for environments that are
-already externally sandboxed. Enabling that override is a security-significant
-owner decision. No approval has been received, the option remains disabled,
-and no bypassed execution has run.
-
-If the owner approves the Docker-only override, the same dedicated profile,
-immutable image, validated mount boundary, controlled environment, and scratch
-workspace will be reused for one bounded edit/test run, exact-session resume,
-and durable cancellation exercise. F2-02 and F2-03 remain `in_progress` until
-those effects and boundaries are observed and the Build Manager accepts the
-resulting exact head.
+The live evidence satisfies the F2-02 and F2-03 acceptance requirements. The
+remaining phase gate is a clean assembled check and Build Manager acceptance of
+the exact final candidate. No push, merge, deployment, publication, billing
+change, or product effect is part of this exercise.

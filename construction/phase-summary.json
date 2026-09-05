@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "phase": 2,
-  "generatedAt": "2026-09-05T05:04:20.471Z",
+  "generatedAt": "2026-09-05T05:15:08.426Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 1978585,
-    "excludedChildCount": 4,
+    "total": 2078333,
+    "excludedChildCount": 7,
     "kind": "overlap-safe-lower-bound"
   },
   "estimated": {
@@ -39,6 +39,10 @@
       "reason": "telemetry:unknown"
     },
     {
+      "ticket": "F2-03",
+      "reason": "telemetry:unknown"
+    },
+    {
       "ticket": "F2-01",
       "reason": "parent-child-overlap:unknown"
     },
@@ -55,6 +59,18 @@
       "reason": "parent-child-overlap:unknown"
     },
     {
+      "ticket": "F2-03",
+      "reason": "parent-child-overlap:unknown"
+    },
+    {
+      "ticket": "F2-03",
+      "reason": "parent-child-overlap:unknown"
+    },
+    {
+      "ticket": "F2-03",
+      "reason": "parent-child-overlap:unknown"
+    },
+    {
       "ticket": "phase-2-manager",
       "reason": "coverage-overlap:unknown"
     }
@@ -62,22 +78,26 @@
   "coverageGaps": [
     {
       "group": "phase-2-construction",
-      "retainedTotal": 1978585,
+      "retainedTotal": 2078333,
       "excludedMeasurements": 1
     }
   ],
   "records": {
-    "accepted": 13,
+    "accepted": 18,
     "duplicates": 0
   },
   "budget": {
     "estimate": 2200000,
-    "remaining": 221415,
-    "percentUsed": 89.94
+    "remaining": 121667,
+    "percentUsed": 94.47
   },
   "notices": [
     {
       "threshold": 70,
+      "type": "budget-threshold"
+    },
+    {
+      "threshold": 90,
       "type": "budget-threshold"
     }
   ]

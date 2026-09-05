@@ -304,7 +304,7 @@
       "id": "F2-02",
       "phase": 2,
       "title": "Implement workspaces and execution profiles",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-01"
       ],
@@ -315,7 +315,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Digest-pinned isolated and explicit native plans, exact-env argv transports, PID/container identity probes, coalesced durable cancellation, continuous-identity native group escalation, output/runtime bounds, and Docker --rm log capture are implemented. Real Docker runs observed UID 65532, /workspace cwd, no Docker socket or publisher environment, and authenticated vendor access. Two failed authenticated attempts are retained; the required edit/test proof remains pending explicit owner approval for the Docker-only inner-sandbox override."
+        "Digest-pinned isolated and explicit native plans, exact-env argv transports, PID/container identity probes, coalesced durable cancellation, continuous-identity native group escalation, output/runtime bounds, and Docker --rm log capture are implemented. Authenticated start, resume, and cancellation runs observed UID 65532, /workspace cwd, only the workspace and dedicated vendor-profile mounts, no Docker socket, host home, control storage, journal, or publisher credentials/environment, durable revocation before exactly one stop, and confirmed container absence. The owner-approved inner-sandbox override remained Docker-only, hardened-plan-bound, and disabled by default."
       ],
       "evidence": [
         {"label":"Execution profiles","url":"src/execution/index.ts"},
@@ -329,7 +329,7 @@
       "id": "F2-03",
       "phase": 2,
       "title": "Implement the Codex adapter and local delivery loop",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F2-02"
@@ -341,7 +341,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "The adapter and coordinator-owned single-worker path bind exact environment, cwd, model, current packet, durable source session, source factory/product/repository/workspace/provider scope, worker identity, events, final result, usage, and reservation disposition. Cross-scope resume fails before launch. Empty/nonterminal/malformed output cannot invent completion, and the live harness rejected a provider terminal event because the requested fixture effect was absent. Two authenticated starts are retained as failed evidence; successful Docker edit/test/resume/cancel proof remains pending the Docker-only override decision."
+        "The adapter and coordinator-owned single-worker path bind exact environment, cwd, model, current packet, durable source session, source factory/product/repository/workspace/provider scope, worker identity, events, final result, usage, and reservation disposition. Live authenticated evidence now proves a bounded fixture edit plus provider/local tests, exact-session same-scope resume without --last plus a second edit/test, explicit durable cancellation of a started long command, truthful interrupted_uncertain provider cancellation, confirmed container exit, unchanged cancellation workspace state, and succeeded/succeeded/cancelled projection recovery. Earlier failed attempts remain retained and demonstrate that terminal provider events cannot invent a workspace effect."
       ],
       "evidence": [
         {"label":"Codex adapter","url":"src/providers/codex.ts"},
@@ -944,6 +944,24 @@
       "from": "in_progress",
       "to": "complete",
       "reason": "Durable single-effect admission, private restart-safe grant verification, exact run/scope/revision/epoch binding, and forged, stale, revoked, replayed, and malformed denial behavior pass.",
+      "actor": "phase-2-orchestrator"
+    },
+    {
+      "eventId": "phase-2-complete-f2-02-authenticated-isolation",
+      "at": "2026-09-05T05:12:00Z",
+      "ticketId": "F2-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Authenticated Docker start, resume, and cancellation observed the immutable non-root boundary, only approved mounts and environment, no controller or publisher reachability, durable single-stop cancellation, and confirmed container exit.",
+      "actor": "phase-2-orchestrator"
+    },
+    {
+      "eventId": "phase-2-complete-f2-03-live-delivery",
+      "at": "2026-09-05T05:12:01Z",
+      "ticketId": "F2-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "The shipped coordinator, Codex adapter, and Docker transport completed a real edit/test, exact-session scoped resume with a second edit/test, explicit durable cancellation, and journal-to-SQLite recovery with truthful outcomes and usage.",
       "actor": "phase-2-orchestrator"
     }
   ]

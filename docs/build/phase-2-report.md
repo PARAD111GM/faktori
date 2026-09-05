@@ -1,19 +1,18 @@
 # Phase 2 implementation report
 
-Status: deterministic implementation checkpoint complete; authenticated Docker
-acceptance evidence pending. Phase 2 is not accepted and this report is not a
-completion claim.
+Status: Phase 2 implementation and authenticated Docker acceptance evidence are
+complete. Build Manager exact-head acceptance remains pending.
 
 ## Scope and checkpoint
 
 - Phase: 2 — one recoverable execution loop.
 - Tickets: F2-01 through F2-04 only.
 - Starting revision: `c0f33d958210daab54d606d7f69b64705aec6bdf`.
-- Current implementation checkpoint before this report commit:
-  `fa23242a19a05dacd171e0aff2f539d5379480f9`
-  (`fix: verify native process group exit`).
-- Final candidate revision: pending authenticated Docker evidence, final record
-  refresh, and Build Manager exact-head acceptance.
+- Current implementation and evidence checkpoint before this report commit:
+  `f84db3bf165b08415aea13d28b1eafda03c84099`
+  (`docs: record phase 2 conformance checkpoint`).
+- Final candidate revision: the commit containing this report and generated
+  records; its exact head is supplied to the Build Manager for acceptance.
 - Publication: no push, merge, publication, deployment, production action,
   billing change, usage reset, or separately billed model switch was performed.
 - Product isolation: no Twinzy, Triforge, provider-account configuration, or
@@ -24,8 +23,8 @@ completion claim.
 | Ticket | Status | Implementation and acceptance evidence |
 | --- | --- | --- |
 | F2-01 | Complete | The append-only JSONL journal is authoritative. Exclusive coordinator ownership, atomic admission and reservations, semantic run/effect identity, exact worker identity, queued messages, terminal results, restart recovery, and disposable SQLite reconstruction are behavior-tested. A committed malformed record blocks recovery; only an unterminated final tail is discarded. |
-| F2-02 | In progress | Digest-pinned isolated and explicit native profiles, exact-environment argv transports, resource/output/runtime bounds, process/container identity probes, and fail-closed process-tree cancellation are implemented. Cancellation is coalesced, native escalation requires continuous group identity, and leader exit cannot prove whole-tree exit. Real Docker exercises observed the hardened boundary and authenticated vendor access, but the edit/test proof remains blocked on explicit approval for the Docker-only inner-sandbox override. |
-| F2-03 | In progress | The Codex adapter and coordinator-owned single-worker delivery path implement explicit start/resume, current-context binding, durable source-session and scope binding, exact lifecycle identity, normalized events, structured results, usage disposition, and truthful failures. Two authenticated Docker starts are retained as failed evidence: one observed a thread-spawn EAGAIN/resource-unavailable failure under the original 64-PID profile and one emitted terminal provider events without the required fixture effect because the inner sandbox could not initialize. Successful edit/test/resume/cancel evidence remains pending. |
+| F2-02 | Complete | Digest-pinned isolated and explicit native profiles, exact-environment argv transports, resource/output/runtime bounds, process/container identity probes, and fail-closed process-tree cancellation are implemented. Cancellation is coalesced, native escalation requires continuous group identity, and leader exit cannot prove whole-tree exit. Authenticated start/resume/cancel runs observed the immutable non-root Docker boundary, only approved mounts/environment, no Docker socket, host home, control storage, journal, or publisher credentials/environment, durable revocation before one stop, and confirmed absence afterward. |
+| F2-03 | Complete | The Codex adapter and coordinator-owned single-worker delivery path implement explicit start/resume, current-context binding, durable source-session and scope binding, exact lifecycle identity, normalized events, structured results, usage disposition, and truthful failures. Live evidence proves one bounded edit/test, exact-session same-scope resume without `--last` plus a second edit/test, explicit durable cancellation of a started long command, truthful uncertain provider cancellation, and succeeded/succeeded/cancelled recovery. Earlier failed attempts remain retained. |
 | F2-04 | Complete | Controller-minted per-run HMAC capabilities bind action scope, expected revisions, authorization, target, and authority epoch. Restart-safe private verifier storage, cross-controller claims, effect-boundary revalidation, idempotency, and malformed/forged/stale/revoked denial are behavior-tested. No remote publisher is implemented. |
 
 The canonical status, owners, evidence links, and append-only completion events
@@ -75,13 +74,25 @@ credential profile, revocation before stop, confirmed exit, and an absent
 container afterward. Raw operational paths and identities remain only in the
 ignored private evidence area.
 
-Two authenticated attempts subsequently reached the same hardened boundary.
+Two failed authenticated attempts subsequently reached the same hardened boundary.
 The first observed a thread-spawn EAGAIN/resource-unavailable failure under the
 64-PID profile; no cgroup counter established a stronger cause. The second
 ran with a still-bounded 256-PID/two-CPU profile and emitted structured vendor
 events, but the inner Codex sandbox could not create its namespace and no edit
 occurred. The harness rejected that terminal event after independent fixture
-verification. The sanitized record is
+verification. They remain in the sanitized evidence chain.
+
+After owner-delegated approval of the Docker-only inner-sandbox override, one
+bounded exercise passed on an unchanged hardened plan. All three containers
+used UID `65532:65532`, `/workspace`, bridge networking, only the scratch
+workspace and dedicated vendor-profile mounts, and controlled environment
+keys. The shipped coordinator, adapter, and transport completed the fixture
+edit and provider/local test; explicitly resumed the exact durable source
+session in the same scope without `--last` for a second edit/test; then started
+the controlled long command and performed exactly one stop after durable
+authority revocation and termination intent. The container was confirmed
+absent, cancellation changed no files, and projection rebuild yielded
+`succeeded`, `succeeded`, and `cancelled`. The sanitized record is
 `docs/build/phase-2-authenticated-conformance.md`.
 
 ### F2-03 — Codex adapter and local delivery loop
@@ -202,14 +213,15 @@ Observed in the assigned worktree using Node `v24.20.0` and npm `12.0.2`:
 | Command or exercise | Observed result |
 | --- | --- |
 | Full `npm run check` through the cached toolchain at deterministic checkpoint `fa23242` | Implementer and Build Manager independently observed exit 0: strict TypeScript, 18 test files and 158 tests, emitted build, and packed-package CLI/SQLite/import verification passed. |
+| Full `npm run check` on the assembled final-candidate tree after live evidence and record refresh | Implementer observed exit 0: strict TypeScript, 18 test files and 158 tests, emitted build, and packed-package CLI verification passed. Build Manager exact-head verification remains pending. |
 | Resume-scope targeted tests plus strict typecheck | Implementer observed exit 0 before commit: two test files and 34 tests passed; `tsc --noEmit` and `git diff --check` passed. |
 | Actual native `better-sqlite3` load | Built narrowly for Node 24.20.0 and exercised real open/create/insert/query behavior; packed runtime rebuild also passed. |
 | Credential-free real Docker transport exercise | Exit 0 with immutable local image identity; observed hardened UID/cwd/mount/environment boundary, durable revoke-before-stop, confirmed exit, and absence afterward. |
-| Authenticated Docker Codex start/edit/test/resume/cancel | **Pending after two retained failures.** Authentication succeeded. Attempt 1 observed thread-spawn EAGAIN/resource-unavailable under the original 64-PID profile; no cgroup counter proved PID exhaustion. Attempt 2 emitted structured provider events but made no fixture change because the inner sandbox could not initialize; the harness correctly rejected terminal completion without the requested effect. Resume/cancel were not run without a valid source result. The Docker-only override remains disabled pending explicit owner approval. |
+| Authenticated Docker Codex start/edit/test/resume/cancel | **Passed after two retained failures.** Owner-delegated approval enabled the existing Docker-only opt-in on unchanged hardened plans. Start and exact-session resume each produced only their requested edit, provider test exit 0, independent local verification, structured completion, and reported usage. The controlled `sleep 120` was observed before explicit cancellation; authority revocation and termination intent preceded exactly one stop; container absence and unchanged cancellation workspace state were confirmed; provider cancellation remained truthfully `interrupted_uncertain`; projection rebuild returned succeeded/succeeded/cancelled. The Build Manager independently inspected this evidence and reran both scratch verifiers successfully. |
 
-The final candidate requires a fresh full check after the authenticated evidence
-and construction-record refresh. No deterministic check substitutes for that
-live acceptance gate.
+The fresh full check after the construction-record refresh passed. Build
+Manager exact-head acceptance remains distinct from both the live exercise and
+the implementer's deterministic suite.
 
 ## Usage and planning estimate
 
@@ -217,8 +229,8 @@ Phase 2 planning revision 1 estimated 1,800,000 tokens. Revision 2 raised the
 soft forecast to 2,200,000 after observed integration and boundary rework. It is
 not an invoice, permission to spend, completion target, or native hard cap.
 
-At this deterministic checkpoint, the original goal's cumulative counter
-reported 1,978,585 tokens. This is retained as the overlap-safe
+After the live exercise and final assembled check, the original goal's
+cumulative counter reported 2,078,333 tokens. This is retained as the overlap-safe
 construction lower bound;
 specialist totals are unavailable and parent/child coverage is unknown. The
 manager's separately baseline-derived 356,378-token sample is not added because
@@ -230,37 +242,20 @@ attribution, overlap, and dollar cost remain unavailable. Raw task and session
 identities remain in ignored `.build/usage/`; only sanitized aggregates are
 committed.
 
-The overlap-safe lower bound remains below the 2.2M forecast at this checkpoint,
-but the goal itself is uncapped. Live provider evidence, final record refresh,
+The successful start separately reported 107,441 input tokens (including
+88,320 cached) and 504 output tokens. Resume reported 229,156 input (including
+204,288 cached) and 1,066 output. These are recorded as child measurements and
+not added to the parent counter because overlap is unknown. Cancellation usage
+was unavailable and remains unknown. The overlap-safe lower bound remains below
+the 2.2M forecast, but the goal itself is uncapped. Final record verification
 and manager acceptance remain.
 
-## Pending gate and remaining concerns
+## Final gate and remaining concerns
 
-Authentication is established in the dedicated vendor-owned profile. The
-remaining decision is whether to enable the documented Codex inner-sandbox
-override only inside the already hardened, validated Docker boundary. No such
-approval has been received. Until it is explicit, do not enable the option or
-start another live attempt. After authorization:
-
-1. Check only vendor login status inside the same dedicated profile boundary;
-   never inspect or print credential contents, and record the owner-approved
-   Docker-only override authority without broadening it to native execution.
-2. Exercise the shipped `DockerCodexProcessRunner` and
-   `CoordinatorCodexDelivery` in a dedicated scratch Git workspace with the
-   accepted model, exact controlled environment, bridge networking, and one
-   bounded fixture edit plus test.
-3. Record sanitized structured start/edit/test evidence and private exact
-   worker/session provenance; verify no host home, Docker socket, control
-   storage, journal, or publisher credentials are exposed.
-4. Admit a second run and explicitly resume the durable source session in the
-   same bound scope with fresh current context and no `--last`.
-5. Start a controlled long turn and cancel only through durable revocation and
-   termination intent, exact identity preflight, then container stop. Preserve
-   uncertain usage/reservation state unless provider usage is actually emitted.
-6. Refresh the checklist, history, usage summary, and dashboard; mark F2-02 and
-   F2-03 complete only if observed evidence meets acceptance; rerun the full
-   check; commit the final candidate; and request Build Manager exact-head
-   acceptance.
+All four Phase 2 tickets now meet their stated acceptance evidence. The
+remaining gate is Build Manager acceptance of the clean exact candidate after
+the final full assembled check. No further live run is required unless that
+review finds evidence-specific cause.
 
 Other explicit limitations:
 
@@ -276,8 +271,10 @@ Other explicit limitations:
 
 ## Deviations and lessons for Phase 3
 
-- Phase 2 cannot close at this checkpoint because authenticated isolated
-  provider behavior is an explicit acceptance gate, not optional polish.
+- Authenticated isolated behavior required an explicit outer-versus-inner
+  sandbox judgment. Keep the override opt-in Docker-only, validate the exact
+  outer plan before inserting it, and never generalize owner approval to native
+  execution or a weaker container.
 - Establish a concrete transport-plus-coordinator slice before broad component
   fan-out in future runtime phases; interfaces and fake runners hide lifecycle
   gaps.

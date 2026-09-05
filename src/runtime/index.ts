@@ -3,4 +3,5 @@ export * from './cancellation.ts';
 export * from './coordinator.ts';
 export * from './delivery.ts';
 export * from './journal.ts';
+export * from './portability.ts';
 export * from './sqlite-projection.ts';

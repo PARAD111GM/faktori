@@ -77,6 +77,53 @@
       "revisionNotes": [
         "Initial Phase 1 estimate supplied by the Build Manager."
       ]
+    },
+    {
+      "phase": 2,
+      "hardCeiling": false,
+      "confidence": "low-to-medium",
+      "currentRevision": 2,
+      "estimateTokens": 2200000,
+      "revisions": [
+        {
+          "revision": 1,
+          "estimateTokens": 1800000,
+          "allocations": {
+            "managerCoordination": 200000,
+            "implementerOrchestrationAndIntegration": 400000,
+            "specialistDelivery": 700000,
+            "verificationAndRework": 300000,
+            "contingency": 200000
+          },
+          "rationale": "Phase 1 reported an approximately 1.18m-token overlap-safe lower bound; Phase 2 adds recovery, native SQLite, live provider, isolation, and caller-authentication work while reusing the accepted package and toolchain."
+        },
+        {
+          "revision": 2,
+          "estimateTokens": 2200000,
+          "allocations": {
+            "managerCoordination": 200000,
+            "implementerOrchestrationAndIntegration": 500000,
+            "specialistDelivery": 800000,
+            "verificationAndRework": 500000,
+            "contingency": 200000
+          },
+          "rationale": "At the 1,463,455-token overlap-safe lower bound, consequential boundary defects and an initially missing concrete coordinator/transport integration made the remaining 336,545-token native-goal allowance too optimistic for verified integration, final proof, and rework. Acceptance and scope remain unchanged."
+        }
+      ],
+      "assumptions": [
+        "The estimate includes manager, implementer, specialists, verification, and contingency.",
+        "It is a soft planning estimate, not an invoice, hard spending permission, or completion target.",
+        "The persistent manager baseline is recorded privately at the Phase 2 source timestamp; only later deltas belong to Phase 2.",
+        "Parent and child inclusion remains unknown unless telemetry establishes otherwise.",
+        "Unknown telemetry remains unknown rather than zero, and thresholds trigger reassessment without weakening acceptance."
+      ],
+      "baseline": {
+        "manager": "Adjacent private .build/phase-2-manager-baseline.json; raw provenance is not committed."
+      },
+      "revisionNotes": [
+        "Initial Phase 2 estimate and allocations supplied by the Build Manager.",
+        "Revision 2 preserves the original 1.8m native goal counter separately; it is a revised planning forecast, not a goal reset, billing switch, hard ceiling, or scope expansion."
+      ]
     }
   ]
 }

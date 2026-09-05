@@ -2,11 +2,12 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 1,
+    "currentPhase": 2,
     "source": "docs/implementation-plan.md",
     "phaseBudgets": {
       "0": 360000,
-      "1": 1600000
+      "1": 1600000,
+      "2": 2200000
     }
   },
   "tickets": [
@@ -276,7 +277,7 @@
       "id": "F2-01",
       "phase": 2,
       "title": "Implement coordinator and durable run records",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F1-01",
         "F1-02",
@@ -284,54 +285,93 @@
         "F1-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "durable state specialist",
+        "agent": "durable_state",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Append-only JSONL is authoritative; exclusive coordinator ownership, semantic run/effect identity, reservations, messages, exact worker identity, terminal outcomes, recovery, and disposable SQLite reconstruction are behavior-tested. Unknown workers and usage remain blocked or reserved rather than inferred away."
+      ],
+      "evidence": [
+        {"label":"Durable coordinator and journal","url":"src/runtime/coordinator.ts"},
+        {"label":"SQLite projection","url":"src/runtime/sqlite-projection.ts"},
+        {"label":"Recovery behavior tests","url":"tests/runtime/durable-state.test.mjs"},
+        {"label":"Interrupted-run rebuild fixture","url":"examples/runtime/interrupted-run.jsonl"}
+      ]
     },
     {
       "id": "F2-02",
       "phase": 2,
       "title": "Implement workspaces and execution profiles",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-01"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "execution profiles specialist",
+        "agent": "execution_profiles",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Digest-pinned isolated and explicit native plans, exact-env argv transports, PID/container identity probes, preflight-safe cancellation, output/runtime bounds, and Docker --rm log capture are implemented. A real credential-free Docker run observed UID 65532, /workspace cwd, no Docker socket, no publisher environment, durable revocation-before-stop, and confirmed exit. Manager-required authenticated isolated provider proof remains pending owner device login."
+      ],
+      "evidence": [
+        {"label":"Execution profiles","url":"src/execution/index.ts"},
+        {"label":"Production transports","url":"src/execution/transports.ts"},
+        {"label":"Execution boundary tests","url":"tests/execution"},
+        {"label":"Codex worker image","url":"docker/codex-worker.Dockerfile"}
+      ]
     },
     {
       "id": "F2-03",
       "phase": 2,
       "title": "Implement the Codex adapter and local delivery loop",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-01",
         "F2-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Codex adapter specialist",
+        "agent": "codex_adapter",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "The adapter and coordinator-owned single-worker path bind exact environment, cwd, model, current packet, durable source session, worker identity, events, final result, usage, and reservation disposition. Empty/nonterminal/malformed output cannot invent completion; nonzero exit and error channels remain distinct. Deterministic and packed-library checks pass; manager-required authenticated Docker edit/test/resume/cancel proof remains pending owner device login."
+      ],
+      "evidence": [
+        {"label":"Codex adapter","url":"src/providers/codex.ts"},
+        {"label":"Coordinator delivery loop","url":"src/runtime/delivery.ts"},
+        {"label":"Codex outcome tests","url":"tests/providers/codex.test.mjs"},
+        {"label":"Durable delivery tests","url":"tests/runtime/delivery.test.mjs"}
+      ]
     },
     {
       "id": "F2-04",
       "phase": 2,
       "title": "Implement controller-owned action admission",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F2-01",
         "F2-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "action admission specialist",
+        "agent": "action_admission",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Controller-minted per-run HMAC capabilities bind immutable scope, expected revisions, and current authority epoch. Durable cross-controller claims, restart-safe private verifier storage, effect-boundary revalidation, nonce/idempotency handling, and malformed/forged/stale/revoked denial are behavior-tested. No remote publication executor is present."
+      ],
+      "evidence": [
+        {"label":"Controller action admission","url":"src/actions/index.ts"},
+        {"label":"Action forgery and replay tests","url":"tests/actions/action-admission.test.mjs"},
+        {"label":"Runtime authority boundary","url":"docs/runtime/README.md"}
+      ]
     },
     {
       "id": "F3-01",
@@ -852,6 +892,56 @@
       "to": "complete",
       "reason": "Bootstrap semantic coverage now rejects nonexistent interview destinations and asserts the exact multi-target mappings used by configuration, discovery, proposal, and later-phase pending records.",
       "actor": "phase-1-orchestrator"
+    },
+    {
+      "eventId": "status-1788571587009-6fkgse",
+      "at": "2026-09-05T01:26:27.011Z",
+      "ticketId": "F2-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Shared runtime contract settled; durable state lane started."
+    },
+    {
+      "eventId": "status-1788571588472-17ttlm",
+      "at": "2026-09-05T01:26:28.472Z",
+      "ticketId": "F2-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Shared runtime contract settled; execution profile lane started."
+    },
+    {
+      "eventId": "status-1788571589836-jmteob",
+      "at": "2026-09-05T01:26:29.837Z",
+      "ticketId": "F2-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Shared runtime contract settled; bounded Codex adapter lane started."
+    },
+    {
+      "eventId": "status-1788571591167-jvgoq7",
+      "at": "2026-09-05T01:26:31.167Z",
+      "ticketId": "F2-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Shared action contract settled; action admission follows adapter integration."
+    },
+    {
+      "eventId": "phase-2-complete-f2-01-durable-recovery",
+      "at": "2026-09-05T02:18:54Z",
+      "ticketId": "F2-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Restart, semantic replay protection, exact ownership and worker recovery, conservative reservations, and real SQLite rebuild behavior pass under the accepted toolchain.",
+      "actor": "phase-2-orchestrator"
+    },
+    {
+      "eventId": "phase-2-complete-f2-04-action-admission",
+      "at": "2026-09-05T02:18:54Z",
+      "ticketId": "F2-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Durable single-effect admission, private restart-safe grant verification, exact run/scope/revision/epoch binding, and forged, stale, revoked, replayed, and malformed denial behavior pass.",
+      "actor": "phase-2-orchestrator"
     }
   ]
 }

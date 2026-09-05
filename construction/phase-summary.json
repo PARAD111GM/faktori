@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "phase": 1,
-  "generatedAt": "2026-09-05T01:17:31.322Z",
+  "phase": 2,
+  "generatedAt": "2026-09-05T02:20:56.093Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 1180239,
-    "excludedChildCount": 7,
+    "total": 1633351,
+    "excludedChildCount": 4,
     "kind": "overlap-safe-lower-bound"
   },
   "estimated": {
@@ -23,81 +23,57 @@
   ],
   "unknown": [
     {
-      "ticket": "F1-01",
+      "ticket": "F2-01",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F1-02",
+      "ticket": "F2-02",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F1-03",
+      "ticket": "F2-03",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F1-02",
+      "ticket": "F2-04",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F1-04",
-      "reason": "telemetry:unknown"
-    },
-    {
-      "ticket": "F1-01",
-      "reason": "telemetry:unknown"
-    },
-    {
-      "ticket": "F1-02",
-      "reason": "telemetry:unknown"
-    },
-    {
-      "ticket": "F1-01",
+      "ticket": "F2-01",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F1-02",
+      "ticket": "F2-02",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F1-03",
+      "ticket": "F2-03",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F1-02",
+      "ticket": "F2-04",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F1-04",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "F1-01",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "F1-02",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "phase-1-manager",
+      "ticket": "phase-2-manager",
       "reason": "coverage-overlap:unknown"
     }
   ],
   "coverageGaps": [
     {
-      "group": "phase-1-construction",
-      "retainedTotal": 1180239,
+      "group": "phase-2-construction",
+      "retainedTotal": 1633351,
       "excludedMeasurements": 1
     }
   ],
   "records": {
-    "accepted": 15,
+    "accepted": 9,
     "duplicates": 0
   },
   "budget": {
-    "estimate": 1600000,
-    "remaining": 419761,
-    "percentUsed": 73.76
+    "estimate": 2200000,
+    "remaining": 566649,
+    "percentUsed": 74.24
   },
   "notices": [
     {

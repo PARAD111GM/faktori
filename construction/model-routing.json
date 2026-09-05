@@ -1,53 +1,34 @@
 {
   "schemaVersion": 1,
-  "phase": 1,
-  "policy": "Use the least expensive model likely to produce accepted work; escalate only from evidence.",
+  "phase": 2,
+  "policy": "Use the least expensive model likely to produce accepted work; escalate only from demonstrated failure.",
   "assignments": [
-    {"role":"phase implementer-orchestrator","tickets":["F1-01","F1-02","F1-03","F1-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Shared integration, CLI and package surface, canonical records, consequential verification, and manager coordination."},
-    {"role":"configuration and context specialist","tickets":["F1-01","F1-03"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Typed sparse override resolution, authority validation, hierarchy invariants, and scoped context assembly are acceptance-sensitive."},
-    {"role":"bootstrap and provisioning specialist","tickets":["F1-02"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Revision-bound approval and idempotent filesystem and Git reconciliation require deeper bounded implementation reasoning."},
-    {"role":"skills, entry maps, and examples specialist","tickets":["F1-04"],"model":"gpt-5.6-luna","reasoning":"medium","rationale":"Once shared contracts settle, this is bounded first-party skill documentation, templates, wrappers, and example adaptation."},
-    {"role":"provisioning boundary reviewer","tickets":["F1-02"],"model":"gpt-5.6-sol","reasoning":"medium","rationale":"One narrow consequential review of approval consumption, recovery reconciliation, user-edit protection, and provisioning-root containment; no broad duplicate review."},
-    {"role":"serialized TypeScript runtime conversion specialist","tickets":["F1-01","F1-02","F1-03"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Manager verification found unchecked runtime implementations and parallel declarations; one cross-module writer converted config and context to actual strict TypeScript sources."},
-    {"role":"strict provisioning and CLI remediation specialist","tickets":["F1-02","F1-01"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"After repeated Terra-high passes left suppression in the 467-line approval, journal, effect and CLI graph, the narrow remaining strictification was escalated based on observed failure."}
+    {"role":"phase implementer-orchestrator","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Shared contracts, integration, package and CLI, canonical records, consequential verification, and manager coordination."},
+    {"role":"shared contract architect","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"One bounded read-only pass settled recovery, identity, telemetry, provider-outcome, cancellation, and caller-authentication seams before writer fan-out."},
+    {"role":"durable state specialist","tickets":["F2-01"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Append-only recovery, exclusive ownership, atomic reservations, and SQLite reconstruction are concurrency and authority sensitive."},
+    {"role":"execution profiles specialist","tickets":["F2-02"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Workspace containment, environment filtering, process identity, Docker boundaries, and uncertain termination require deeper bounded implementation."},
+    {"role":"Codex adapter specialist","tickets":["F2-03"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Explicit start and resume, event normalization, model compatibility, live scratch evidence, and truthful capability gaps are acceptance sensitive."},
+    {"role":"action admission specialist","tickets":["F2-04"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Caller authentication, revision-bound scope, revocation races, idempotency, and intent-before-effect require security-sensitive bounded implementation."},
+    {"role":"execution transport specialist","tickets":["F2-02","F2-03"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"The boundary review proved interfaces and fakes were insufficient; the existing Terra writer was reused for argv-only native and Docker transports with exact identity and deadline hooks."},
+    {"role":"coordinator delivery integration specialist","tickets":["F2-01","F2-03"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"The durable-state writer was reused for the thin single-worker admission-to-provider-final path, avoiding another shared-contract writer."},
+    {"role":"targeted boundary reviewer","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"One narrow read-only review crafted recovery, action-forgery, revocation, provider-outcome, and isolation failures; confirmed consequential gaps triggered targeted remediation without a second broad review."}
   ],
   "history": [
-    {
-      "phase": 0,
-      "assignments": [
-        {"role":"phase implementer-orchestrator","tickets":["F0-01","F0-02","F0-03","F0-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Cross-workstream integration, consequential verification, and manager coordination."},
-        {"role":"foundation and fixtures specialist","tickets":["F0-01","F0-04"],"model":"gpt-5.6-luna","reasoning":"medium","rationale":"Bounded documentation and concrete fixture construction with explicit acceptance contracts."},
-        {"role":"tracking and usage specialist","tickets":["F0-02"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Cumulative telemetry, overlap, history, and privacy semantics require deeper bounded reasoning."},
-        {"role":"provider feasibility specialist","tickets":["F0-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded CLI experiments and evidence normalization across three providers."}
-      ],
-      "materialChanges": [
-        {
-          "ticket": "F0-04",
-          "from": {"model":"gpt-5.6-luna","reasoning":"medium"},
-          "to": {"model":"gpt-5.6-terra","reasoning":"high"},
-          "reason": "Initial fixtures did not yet prove stable expected-RED failure reasons and a real base-GREEN browser contract; remediation required deeper acceptance-boundary work."
-        }
-      ]
-    }
+    {"phase":0,"summary":"Foundation, tracking, provider feasibility, and frozen fixtures; fixture acceptance escalated from Luna medium to Terra high after observed evidence gaps."},
+    {"phase":1,"summary":"Configuration, provisioning, context, lifecycle skills, TypeScript package conversion, and manager remediation; strict provisioning and CLI work escalated from Terra high to Sol high after repeated incomplete strictification."}
   ],
   "materialChanges": [
     {
-      "ticket": "F1-01",
-      "from": {"implementation":".mjs runtime with hand-maintained .d.ts","validation":"declarations only"},
-      "to": {"implementation":"actual .ts runtime sources","validation":"strict implementation typecheck"},
-      "reason": "Manager verification correctly identified that the initial shape did not satisfy the accepted TypeScript runtime contract."
+      "ticket": "F2-01",
+      "from": {"dependencyInstall":"scripts disabled; native build unproven"},
+      "to": {"dependencyBuild":"better-sqlite3 13.0.3 build-release only under Node 24.20.0/npm 12.0.2"},
+      "reason": "The phase brief required a narrowly scoped native dependency build and actual SQLite exercise; no unrelated dependency scripts were enabled."
     },
     {
-      "ticket": "F1-02",
-      "from": {"model":"gpt-5.6-terra","reasoning":"high","result":"strict config and context only; provisioning and CLI suppressions remained after repeated passes"},
-      "to": {"model":"gpt-5.6-sol","reasoning":"high","scope":"provisioning and CLI strictification only"},
-      "reason": "Observed repeated incomplete remediation warranted a narrow escalation without redoing accepted config or context work."
-    },
-    {
-      "ticket": "F1-02/F1-04",
-      "from": {"interviewMapping":"free-form string destinations checked only for presence"},
-      "to": {"interviewMapping":"explicit retained-destination arrays plus completed interview-to-proposal behavior proof"},
-      "reason": "Manager exact-head verification found mappings to fields absent from the actual runtime contracts; the original lifecycle specialist performed one bounded correction without schema expansion."
+      "ticket": "F2-03",
+      "from": {"implementation":"adapter and execution interfaces with fake transports"},
+      "to": {"implementation":"one coordinator-owned delivery path with production native and Docker CLI transports"},
+      "reason": "The targeted Sol-high review proved the initially assembled pieces could not execute a real single-worker run or durably bind its identity, deadline, events, result, and reservation."
     }
   ]
 }

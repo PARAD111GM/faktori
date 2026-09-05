@@ -29,6 +29,12 @@
       "from": {"implementation":"adapter and execution interfaces with fake transports"},
       "to": {"implementation":"one coordinator-owned delivery path with production native and Docker CLI transports"},
       "reason": "The targeted Sol-high review proved the initially assembled pieces could not execute a real single-worker run or durably bind its identity, deadline, events, result, and reservation."
+    },
+    {
+      "ticket": "F2-03",
+      "from": {"resumeScope":"durable session and source context only"},
+      "to": {"resumeScope":"durable source factory, product, repository, workspace identity and path, provider, session, and context"},
+      "reason": "Build Manager exact-head verification found that an explicit session could otherwise be resumed in a different admitted workspace or product scope. The correction rejects that mismatch before launch intent and adapter invocation while allowing current context and artifact revisions to advance."
     }
   ]
 }

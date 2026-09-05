@@ -13,6 +13,7 @@ Read that specification, your phase brief, and the latest accepted phase report 
 - Use available relevant skills, reading their instructions first. User-approved phase scope and orchestration take precedence over generic skill conventions.
 - The phase orchestrator alone updates the shared checklist. Reviewers remain read-only. All reports require observed evidence.
 - Budget targets are estimates, not completion criteria. Record measured versus unknown usage; never infer tokens from account percentages or double-count parent/child usage.
+- Keep construction estimates only in the construction records. Never copy or infer an estimate into a native goal `token_budget`; a native hard cap requires an explicit owner request.
 - Use apply_patch for file edits, small conventional commits, no co-author trailers, and no force pushes.
 - Implement the simplest behavior that meets the specification. Write behavior-level tests; focus deeper tests on authority, concurrency, credentials and recovery.
 - Do not buy services, switch to separately billed inference, alter existing provider credentials, or mutate active product infrastructure.

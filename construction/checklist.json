@@ -340,7 +340,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "The adapter and coordinator-owned single-worker path bind exact environment, cwd, model, current packet, durable source session, worker identity, events, final result, usage, and reservation disposition. Empty/nonterminal/malformed output cannot invent completion; nonzero exit and error channels remain distinct. Deterministic and packed-library checks pass; manager-required authenticated Docker edit/test/resume/cancel proof remains pending owner device login."
+        "The adapter and coordinator-owned single-worker path bind exact environment, cwd, model, current packet, durable source session, source factory/product/repository/workspace/provider scope, worker identity, events, final result, usage, and reservation disposition. Cross-scope resume fails before launch intent or adapter invocation. Empty/nonterminal/malformed output cannot invent completion; nonzero exit and error channels remain distinct. Deterministic and packed-library checks pass; manager-required authenticated Docker edit/test/resume/cancel proof remains pending owner device login."
       ],
       "evidence": [
         {"label":"Codex adapter","url":"src/providers/codex.ts"},

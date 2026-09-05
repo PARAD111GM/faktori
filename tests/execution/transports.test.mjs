@@ -178,16 +178,18 @@ describe('argv-only execution transports', () => {
   it('calls native lifecycle termination before a timeout signal and returns uncertain termination', async () => {
     const order = [];
     const child = new FakeChild(82);
+    let workerRunning = true;
     const commands = new BoundedCommandRunner({
       spawn: () => child,
       killProcessGroup: (pid, signal) => {
         order.push(`signal:${pid}:${signal}`);
-        if (signal === 'SIGTERM') queueMicrotask(() => child.emit('close', null, 'SIGTERM'));
+        if (signal === 'SIGTERM') queueMicrotask(() => { workerRunning = false; child.emit('close', null, 'SIGTERM'); });
       },
+      terminationGraceMs: 1,
     });
     const runner = new NativeCodexProcessRunner({
       commands, runNonce: 'native-timeout',
-      identityProbe: { inspect: async (pid) => ({ pid, processStartedAt: 'start-82', processGroupId: 82, running: true }) },
+      identityProbe: { inspect: async (pid) => workerRunning ? ({ pid, processStartedAt: 'start-82', processGroupId: 82, running: true }) : ({ status: 'absent' }) },
     });
     const lifecycle = {
         onStarted: async () => { order.push('started'); },
@@ -203,17 +205,21 @@ describe('argv-only execution transports', () => {
   it('composes explicit adapter cancellation with the exact active run and refuses a wrong run before signaling', async () => {
     const order = [];
     const child = new FakeChild(83);
+    let spawnedArgs;
+    let workerRunning = true;
     const commands = new BoundedCommandRunner({
-      spawn: () => child,
+      spawn: (_command, args) => { spawnedArgs = args; return child; },
       killProcessGroup: (pid, signal) => {
         order.push(`signal:${pid}:${signal}`);
-        if (signal === 'SIGTERM') queueMicrotask(() => child.emit('close', null, 'SIGTERM'));
+        if (signal === 'SIGTERM') queueMicrotask(() => { workerRunning = false; child.emit('close', null, 'SIGTERM'); });
       },
+      terminationGraceMs: 1,
     });
     const runner = new NativeCodexProcessRunner({
       commands,
       runNonce: 'native-explicit-cancel',
-      identityProbe: { inspect: async (pid) => ({ pid, processStartedAt: 'start-83', processGroupId: 83, running: true }) },
+      identityProbe: { inspect: async (pid) => workerRunning ? ({ pid, processStartedAt: 'start-83', processGroupId: 83, running: true }) : ({ status: 'absent' }) },
+      allowUnsandboxedCodexInsideValidatedContainer: true,
     });
     const adapter = new CodexAdapter({
       runner,
@@ -228,7 +234,7 @@ describe('argv-only execution transports', () => {
       workItem: { id: 'F2-03', revision: 'work@1' },
       target: { factoryId: 'factory', productId: 'product', repository: 'owner/repo', branch: 'build/f2', baseRevision: 'base', expectedRevision: 'expected' },
       context: { packetRevision: 'packet@1', digest: 'packet-digest' },
-      execution: { profile: 'native', workspaceId: 'workspace', workspacePath: CWD, providerId: 'codex', model: 'gpt-5.5', approvedInputDigests: [] },
+      execution: { profile: 'isolated', workspaceId: 'workspace', workspacePath: CWD, providerId: 'codex', model: 'gpt-5.5', approvedInputDigests: [] },
       budget: { reservationId: 'reservation', maxRuntimeMinutes: 5, estimatedTokens: 100, status: 'held' },
       authority: { authorityRevision: 'authority@1', epoch: 1, scopeDigest: 'scope', policy: { requireIntentApproval: true, requireSpecificationApproval: true, requireIndependentReview: true, mergeAuthority: 'human', productionReleaseAuthority: 'human', allowPreviewDeployment: false, allowLocalDeployment: false, allowSeparateBilling: false } },
       attempt: 1,
@@ -248,12 +254,111 @@ describe('argv-only execution transports', () => {
     const wrongRun = await adapter.cancel({ ...runIntent, runId: 'wrong-run' }, cancellationLifecycle);
     expect(wrongRun.outcome).toBe('failed');
     expect(order).toEqual(['started']);
+    expect(spawnedArgs).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+
+    const denied = await adapter.cancel(runIntent, {
+      async onStarted() { throw new Error('cancellation must not start a worker'); },
+      async onTerminationRequired() { throw new Error('journal unavailable'); },
+    });
+    expect(denied.outcome).toBe('interrupted_uncertain');
+    expect(order).toEqual(['started']);
 
     const cancelled = await adapter.cancel(runIntent, cancellationLifecycle);
     const interrupted = await running;
     expect(cancelled).toEqual(expect.objectContaining({ outcome: 'interrupted_uncertain', nativeCancellationReceipt: false }));
     expect(interrupted.final.outcome).toBe('interrupted_uncertain');
     expect(order).toEqual(['started', 'durable:cancelled', 'signal:83:SIGTERM']);
+  });
+
+  it('identity-checks SIGKILL escalation and resolves a native bound when SIGTERM is ignored', async () => {
+    const order = [];
+    const child = new FakeChild(84);
+    let running = true;
+    const commands = new BoundedCommandRunner({
+      spawn: () => child,
+      killProcessGroup: (pid, signal) => {
+        order.push(`signal:${pid}:${signal}`);
+        if (signal === 'SIGKILL') queueMicrotask(() => { running = false; child.emit('close', null, 'SIGKILL'); });
+      },
+      terminationGraceMs: 1,
+    });
+    const runner = new NativeCodexProcessRunner({
+      commands,
+      runNonce: 'native-sigterm-ignored',
+      identityProbe: {
+        inspect: async (pid) => {
+          order.push(`inspect:${running ? 'running' : 'absent'}`);
+          return running ? { pid, processStartedAt: 'start-84', processGroupId: 84, running: true } : { status: 'absent' };
+        },
+      },
+    });
+    const lifecycle = {
+      async onStarted() { order.push('started'); },
+      async onTerminationRequired(_worker, reason) { order.push(`durable:${reason}`); },
+    };
+
+    const result = await runner.run({ runId: 'sigterm-ignored-run', command: 'codex', args: ['exec'], cwd: CWD, environment: {}, timeoutMs: 5, lifecycle });
+
+    expect(result).toEqual(expect.objectContaining({ terminated: true, exitCode: null }));
+    expect(order).toEqual([
+      'inspect:running', 'started', 'durable:timeout', 'inspect:running',
+      'signal:84:SIGTERM', 'inspect:running', 'signal:84:SIGKILL', 'inspect:absent',
+    ]);
+  });
+
+  it('coalesces simultaneous explicit and bounded Docker termination into one durable hook and one stop', async () => {
+    const id = 'd'.repeat(64);
+    let logsChild;
+    let waitChild;
+    let hookCalls = 0;
+    let stops = 0;
+    let started;
+    const observedStart = new Promise((resolve) => { started = resolve; });
+    let releaseHook;
+    const hookGate = new Promise((resolve) => { releaseHook = resolve; });
+    const commands = new BoundedCommandRunner({
+      spawn: (_command, args) => {
+        const child = new FakeChild(args[0] === 'logs' ? 94 : 95);
+        if (args[0] === 'logs') logsChild = child;
+        if (args[0] === 'wait') waitChild = child;
+        return child;
+      },
+      killProcessGroup: () => {},
+    });
+    const docker = {
+      cwd: CWD,
+      env: {},
+      async run() { return { containerId: id }; },
+      async stop() {
+        stops += 1;
+        queueMicrotask(() => {
+          logsChild?.emit('close', 0, null);
+          waitChild?.stdout.emit('data', '143\n');
+          waitChild?.emit('close', 0, null);
+        });
+      },
+    };
+    const runner = new DockerCodexProcessRunner({
+      docker,
+      commands,
+      runNonce: 'docker-coalesced',
+      identityProbe: { inspect: async (containerId) => ({ containerId, containerStartedAt: 'docker-start', running: true }) },
+      planFor: () => ({ profile: 'isolated', trustDisclosure: 'test', image: 'faktori@sha256:abc', networkMode: 'none', args: ['run', '--detach', 'faktori@sha256:abc', 'codex', 'exec'], cwd: '/workspace', env: {}, mounts: [], limits: { maxRuntimeSeconds: 1, memoryBytes: 1, cpuCount: 1, pids: 1 } }),
+    });
+    const lifecycle = {
+      async onStarted() { started(); },
+      async onTerminationRequired() { hookCalls += 1; await hookGate; },
+    };
+    const running = runner.run({ runId: 'coalesced-run', command: 'codex', args: ['exec'], cwd: CWD, environment: {}, timeoutMs: 5, lifecycle });
+    await observedStart;
+    const explicit = runner.terminate({ runId: 'coalesced-run', cwd: CWD, lifecycle });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    releaseHook();
+
+    expect(await explicit).toEqual({ processTerminated: true, nativeCancellationReceipt: false });
+    expect(await running).toEqual(expect.objectContaining({ terminated: true, exitCode: null }));
+    expect(hookCalls).toBe(1);
+    expect(stops).toBe(1);
   });
 
   it('uses one detached Docker Codex plan and calls lifecycle before stopping after docker wait deadline', async () => {
@@ -266,7 +371,13 @@ describe('argv-only execution transports', () => {
         const child = new FakeChild(args[0] === 'wait' ? 92 : 93);
         if (args[0] === 'run') queueMicrotask(() => { child.stdout.emit('data', `${id}\n`); child.emit('close', 0, null); });
         if (args[0] === 'logs') { order.push('logs'); logsChild = child; }
-        if (args[0] === 'stop') queueMicrotask(() => { order.push('stop'); logsChild.emit('close', 0, null); child.emit('close', 0, null); });
+        if (args[0] === 'stop') queueMicrotask(() => {
+          order.push('stop');
+          logsChild.emit('close', 0, null);
+          waitChild.stdout.emit('data', '143\n');
+          waitChild.emit('close', 0, null);
+          child.emit('close', 0, null);
+        });
         if (args[0] === 'wait') waitChild = child;
         return child;
       },
@@ -292,6 +403,6 @@ describe('argv-only execution transports', () => {
 
     expect(result).toEqual(expect.objectContaining({ terminated: true, exitCode: null }));
     expect(order.slice(0, 4)).toEqual(['started:container', 'logs', 'termination:timeout', 'stop']);
-    expect(order).toContain('wait-signal:92:SIGTERM');
+    expect(order.filter((entry) => entry === 'stop')).toHaveLength(1);
   });
 });

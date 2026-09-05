@@ -11,6 +11,7 @@ import type {
   ProcessLaunchOptions,
 } from './index.ts';
 import type { DockerExecutionPlan } from './index.ts';
+import { isValidatedDockerExecutionPlan } from './index.ts';
 import type { CodexProcessRequest, CodexProcessResult, CodexTerminationRequest, CodexTerminationResult } from '../providers/codex.ts';
 import type { ContainerWorkerIdentity, NativeWorkerIdentity, WorkerIdentity } from '../runtime/contracts.ts';
 
@@ -36,8 +37,11 @@ export interface CommandInvocation {
   detached?: boolean;
   /** Runs after PID creation but before this runner attaches output consumers. */
   onLaunched?: (pid: number) => Promise<void>;
-  /** Runs before this runner signals the detached group for a terminal bound. */
-  onTerminationRequired?: (reason: 'timeout' | 'output_limit') => Promise<void>;
+  /** Runs before this runner signals the detached group for a terminal bound.
+   * Returning handled means the callback owns worker termination; the bounded
+   * result resolves when that callback settles even if the child never closes.
+   */
+  onTerminationRequired?: (reason: 'timeout' | 'output_limit') => Promise<void | 'handled'>;
 }
 
 export interface CommandResult {
@@ -85,6 +89,34 @@ export interface DockerCodexProcessRunnerOptions {
   planFor(request: CodexProcessRequest): DockerExecutionPlan;
   stdoutMaxBytes?: number;
   stderrMaxBytes?: number;
+  /** Owner-approved only when the unchanged hardened Docker plan is the outer sandbox. */
+  allowUnsandboxedCodexInsideValidatedContainer?: boolean;
+}
+
+type ActiveNativeCodexWorker = {
+  worker: NativeWorkerIdentity;
+  runId: string;
+  cwd: string;
+  cancelled: boolean;
+  termination?: Promise<void>;
+};
+
+type ActiveDockerCodexWorker = {
+  worker: ContainerWorkerIdentity;
+  runId: string;
+  cwd: string;
+  cancelled: boolean;
+  termination?: Promise<void>;
+};
+
+const CODEX_EXTERNAL_SANDBOX_FLAG = '--dangerously-bypass-approvals-and-sandbox';
+
+function codexArgsForValidatedContainer(args: readonly string[]): string[] {
+  if (args[0] !== 'exec' || args.includes(CODEX_EXTERNAL_SANDBOX_FLAG)
+    || args.includes('--sandbox') || args.includes('-s')) {
+    throw new Error('Codex inner-sandbox bypass requires an unmodified exec argv from the adapter');
+  }
+  return ['exec', CODEX_EXTERNAL_SANDBOX_FLAG, ...args.slice(1)];
 }
 
 /** Superset accepted by the adapter's per-turn process request as it evolves. */
@@ -175,13 +207,14 @@ export class BoundedCommandRunner {
         if (termination !== undefined) return;
         termination = (async (): Promise<void> => {
           try {
-            await input.onTerminationRequired?.(reason);
+            const handling = await input.onTerminationRequired?.(reason);
+            if (handling === 'handled') finish(null, null);
+            else terminate();
           } catch (error) {
             spawnError = `termination callback failed: ${errorMessage(error)}`;
             finish(null, null);
             return;
           }
-          terminate();
         })();
       };
       const timeout = setTimeout(() => { timedOut = true; requestTermination('timeout'); }, input.timeoutMs);
@@ -213,6 +246,20 @@ export class BoundedCommandRunner {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'unknown process error';
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function sameNativeWorker(
+  worker: NativeWorkerIdentity,
+  observed: NativeIdentityObservation | undefined,
+): observed is Extract<NativeIdentityObservation, { pid: number }> {
+  return observed !== undefined && 'pid' in observed
+    && observed.pid === worker.pid
+    && observed.processStartedAt === worker.processStartedAt
+    && observed.processGroupId === worker.processGroupId;
 }
 
 function boundedInvocation(command: string, args: readonly string[], cwd: string, env: Readonly<Record<string, string>>, timeoutMs: number): CommandInvocation {
@@ -353,7 +400,7 @@ export class NativeCodexProcessRunner {
   readonly runNonce: string;
   readonly stdoutMaxBytes: number;
   readonly stderrMaxBytes: number;
-  #active?: { worker: NativeWorkerIdentity; runId: string; cwd: string; cancelled: boolean };
+  #active?: ActiveNativeCodexWorker;
 
   constructor(options: NativeCodexProcessRunnerOptions) {
     this.commands = options.commands ?? new BoundedCommandRunner();
@@ -367,7 +414,7 @@ export class NativeCodexProcessRunner {
     if (request.command !== 'codex' || request.runId.trim().length === 0 || this.#active !== undefined) throw new Error('Native Codex runner permits exactly one active codex invocation');
     const lifecycle = request.lifecycle;
     let worker: NativeWorkerIdentity | undefined;
-    let active: { worker: NativeWorkerIdentity; runId: string; cwd: string; cancelled: boolean } | undefined;
+    let active: ActiveNativeCodexWorker | undefined;
     const result = await this.commands.run({
       command: 'codex', args: request.args, cwd: request.cwd, env: request.environment, timeoutMs: request.timeoutMs,
       stdoutMaxBytes: this.stdoutMaxBytes, stderrMaxBytes: this.stderrMaxBytes, detached: true,
@@ -379,9 +426,10 @@ export class NativeCodexProcessRunner {
         this.#active = active;
         await lifecycle?.onStarted(worker);
       },
-      onTerminationRequired: async (reason): Promise<void> => {
-        if (worker === undefined) throw new Error('native Codex worker was not observed before termination');
-        await lifecycle?.onTerminationRequired(worker, reason);
+      onTerminationRequired: async (reason): Promise<'handled'> => {
+        if (active === undefined || lifecycle?.onTerminationRequired === undefined) throw new Error('native Codex worker has no durable termination authority hook');
+        await this.terminateActive(active, lifecycle, reason);
+        return 'handled';
       },
     });
     const explicitlyCancelled = active?.cancelled === true;
@@ -393,13 +441,57 @@ export class NativeCodexProcessRunner {
 
   async terminate(request: CodexTerminationRequest & { lifecycle?: CodexTransportLifecycle }): Promise<CodexTerminationResult> {
     const active = this.#active;
-    if (active === undefined || active.cancelled || active.runId !== request.runId || active.cwd !== request.cwd) return { processTerminated: false };
+    if (active === undefined || active.runId !== request.runId || active.cwd !== request.cwd) return { processTerminated: false };
     // A request without the coordinator's durable authority hook fails closed.
     if (request.lifecycle === undefined) return { processTerminated: false };
-    await request.lifecycle.onTerminationRequired(active.worker, 'cancelled');
-    active.cancelled = true;
-    this.commands.killProcessGroup(active.worker.processGroupId, 'SIGTERM');
+    await this.terminateActive(active, request.lifecycle, 'cancelled');
     return { processTerminated: true, nativeCancellationReceipt: false };
+  }
+
+  private async terminateActive(
+    active: ActiveNativeCodexWorker,
+    lifecycle: CodexTransportLifecycle,
+    reason: 'timeout' | 'output_limit' | 'cancelled',
+  ): Promise<void> {
+    if (active.termination !== undefined) return active.termination;
+    const wasCancelled = active.cancelled;
+    let authorityRecorded = false;
+    const termination = (async (): Promise<void> => {
+      await lifecycle.onTerminationRequired(active.worker, reason);
+      authorityRecorded = true;
+      active.cancelled = active.cancelled || reason === 'cancelled';
+
+      const beforeSignal = await this.identityProbe.inspect(active.worker.pid);
+      if (beforeSignal !== undefined && 'status' in beforeSignal && beforeSignal.status === 'absent') return;
+      if (sameNativeWorker(active.worker, beforeSignal) && !beforeSignal.running) return;
+      if (!sameNativeWorker(active.worker, beforeSignal)) {
+        throw new Error('native worker identity unavailable or changed before SIGTERM; no signal sent');
+      }
+      this.commands.killProcessGroup(active.worker.processGroupId, 'SIGTERM');
+
+      await wait(this.commands.terminationGraceMs);
+      const afterTerm = await this.identityProbe.inspect(active.worker.pid);
+      if (afterTerm !== undefined && 'status' in afterTerm && afterTerm.status === 'absent') return;
+      if (sameNativeWorker(active.worker, afterTerm) && !afterTerm.running) return;
+      if (!sameNativeWorker(active.worker, afterTerm)) {
+        throw new Error('native worker identity unavailable or changed after SIGTERM; SIGKILL not sent');
+      }
+
+      this.commands.killProcessGroup(active.worker.processGroupId, 'SIGKILL');
+      await wait(this.commands.terminationGraceMs);
+      const afterKill = await this.identityProbe.inspect(active.worker.pid);
+      if (afterKill !== undefined && 'status' in afterKill && afterKill.status === 'absent') return;
+      if (sameNativeWorker(active.worker, afterKill) && !afterKill.running) return;
+      throw new Error('native worker exit could not be confirmed after identity-checked SIGKILL');
+    })();
+    active.termination = termination;
+    try {
+      await termination;
+    } catch (error) {
+      if (active.termination === termination) active.termination = undefined;
+      if (!authorityRecorded) active.cancelled = wasCancelled;
+      throw error;
+    }
   }
 }
 
@@ -412,7 +504,8 @@ export class DockerCodexProcessRunner {
   readonly planFor: (request: CodexProcessRequest) => DockerExecutionPlan;
   readonly stdoutMaxBytes: number;
   readonly stderrMaxBytes: number;
-  #active?: { worker: ContainerWorkerIdentity; runId: string; cwd: string; cancelled: boolean };
+  readonly allowUnsandboxedCodexInsideValidatedContainer: boolean;
+  #active?: ActiveDockerCodexWorker;
 
   constructor(options: DockerCodexProcessRunnerOptions) {
     this.docker = options.docker;
@@ -422,13 +515,21 @@ export class DockerCodexProcessRunner {
     this.planFor = options.planFor;
     this.stdoutMaxBytes = options.stdoutMaxBytes ?? DEFAULT_OUTPUT_CAP;
     this.stderrMaxBytes = options.stderrMaxBytes ?? DEFAULT_OUTPUT_CAP;
+    this.allowUnsandboxedCodexInsideValidatedContainer = options.allowUnsandboxedCodexInsideValidatedContainer === true;
   }
 
   async run(request: CodexTransportRequest): Promise<CodexProcessResult> {
     if (request.command !== 'codex' || request.runId.trim().length === 0 || this.#active !== undefined) throw new Error('Docker Codex runner permits exactly one active codex invocation');
     const lifecycle = request.lifecycle;
-    const plan = this.planFor(request);
+    const plannedRequest = this.allowUnsandboxedCodexInsideValidatedContainer
+      ? { ...request, args: codexArgsForValidatedContainer(request.args) }
+      : request;
+    const plan = this.planFor(plannedRequest);
     if (plan.profile !== 'isolated' || plan.args[0] !== 'run' || plan.args.filter((arg) => arg === 'codex').length !== 1) throw new Error('Docker Codex runner requires one validated detached Codex plan');
+    if (this.allowUnsandboxedCodexInsideValidatedContainer
+      && (!isValidatedDockerExecutionPlan(plan) || plan.args.filter((arg) => arg === CODEX_EXTERNAL_SANDBOX_FLAG).length !== 1)) {
+      throw new Error('Codex inner-sandbox bypass requires an unchanged plan from the hardened Docker builder');
+    }
     const startedAt = Date.now();
     const launched = await this.docker.run(plan.args);
     const observed = await this.identityProbe.inspect(launched.containerId);
@@ -439,11 +540,11 @@ export class DockerCodexProcessRunner {
     await lifecycle?.onStarted(worker);
     const remaining = (): number => Math.max(1, request.timeoutMs - (Date.now() - startedAt));
     let stoppedForBound = false;
-    const stopForBound = async (reason: 'timeout' | 'output_limit'): Promise<void> => {
-      if (stoppedForBound) return;
+    const stopForBound = async (reason: 'timeout' | 'output_limit'): Promise<'handled'> => {
+      if (lifecycle?.onTerminationRequired === undefined) throw new Error('Docker Codex worker has no durable termination authority hook');
+      await this.terminateActive(active, lifecycle, reason);
       stoppedForBound = true;
-      await lifecycle?.onTerminationRequired(worker, reason);
-      await this.docker.stop(worker.containerId);
+      return 'handled';
     };
     // Docker plans are --rm. Start following logs while the exact observed
     // container exists, before wait can observe removal at process exit.
@@ -470,15 +571,32 @@ export class DockerCodexProcessRunner {
 
   async terminate(request: CodexTerminationRequest & { lifecycle?: CodexTransportLifecycle }): Promise<CodexTerminationResult> {
     const active = this.#active;
-    if (active === undefined || active.cancelled || active.runId !== request.runId || active.cwd !== request.cwd) return { processTerminated: false };
+    if (active === undefined || active.runId !== request.runId || active.cwd !== request.cwd) return { processTerminated: false };
     if (request.lifecycle === undefined) return { processTerminated: false };
-    await request.lifecycle.onTerminationRequired(active.worker, 'cancelled');
-    active.cancelled = true;
-    try {
+    await this.terminateActive(active, request.lifecycle, 'cancelled');
+    return { processTerminated: true, nativeCancellationReceipt: false };
+  }
+
+  private async terminateActive(
+    active: ActiveDockerCodexWorker,
+    lifecycle: CodexTransportLifecycle,
+    reason: 'timeout' | 'output_limit' | 'cancelled',
+  ): Promise<void> {
+    if (active.termination !== undefined) return active.termination;
+    const wasCancelled = active.cancelled;
+    let authorityRecorded = false;
+    const termination = (async (): Promise<void> => {
+      await lifecycle.onTerminationRequired(active.worker, reason);
+      authorityRecorded = true;
+      active.cancelled = active.cancelled || reason === 'cancelled';
       await this.docker.stop(active.worker.containerId);
-      return { processTerminated: true, nativeCancellationReceipt: false };
+    })();
+    active.termination = termination;
+    try {
+      await termination;
     } catch (error) {
-      active.cancelled = false;
+      if (active.termination === termination) active.termination = undefined;
+      if (!authorityRecorded) active.cancelled = wasCancelled;
       throw error;
     }
   }

@@ -16,6 +16,7 @@ export const SAFE_ENVIRONMENT_KEYS = ['LANG', 'LC_ALL', 'PATH', 'TERM', 'TMPDIR'
 const FORBIDDEN_ENVIRONMENT_KEY = /^(?:GITHUB|GH|JIRA|ATLASSIAN|AWS|AZURE|GOOGLE|VERCEL|NETLIFY|CLOUDFLARE|DEPLOY|DOCKER|SSH|GIT_ASKPASS|GIT_CONFIG|NPM_TOKEN|NODE_AUTH_TOKEN)(?:_|$)/i;
 const SAFE_ENVIRONMENT_KEY = new Set<string>(SAFE_ENVIRONMENT_KEYS);
 const DOCKER_IMAGE_REFERENCE = /^(?:sha256:[a-f0-9]{64}|(?:(?:[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)(?::[0-9]+)?\/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*@sha256:[a-f0-9]{64})$/;
+const validatedDockerPlans = new WeakMap<object, string>();
 
 export class ExecutionPolicyError extends Error {
   constructor(message: string) {
@@ -98,6 +99,11 @@ export interface DockerProfileOptions {
   /** Controller-owned roots that must be named for every isolated execution. */
   controlStoragePaths: readonly string[];
   hostHome?: string;
+}
+
+/** True only for an unchanged plan returned by this module's hardened builder. */
+export function isValidatedDockerExecutionPlan(value: DockerExecutionPlan): boolean {
+  return validatedDockerPlans.get(value) === JSON.stringify(value);
 }
 
 export interface ProcessLaunchOptions {
@@ -201,7 +207,7 @@ export function buildDockerExecutionPlan(request: ExecutionRequest, options: Doc
   ]);
   const env = controlledEnvironment(request.environment, {}, request.credentialProfile, true);
   const dockerArgs = dockerArguments(request, options.image, mounts, env, networkMode);
-  return {
+  const plan: DockerExecutionPlan = {
     profile: 'isolated',
     trustDisclosure: dockerTrustDisclosure(networkMode, request.credentialProfile?.writable === true),
     image: options.image,
@@ -212,6 +218,8 @@ export function buildDockerExecutionPlan(request: ExecutionRequest, options: Doc
     mounts,
     limits: { ...request.limits },
   };
+  validatedDockerPlans.set(plan, JSON.stringify(plan));
+  return plan;
 }
 
 export async function launchNativeExecution(

@@ -11,7 +11,9 @@ import {
   launchDockerExecution,
   launchNativeExecution,
   profileTrustDisclosure,
+  isValidatedDockerExecutionPlan,
 } from '../../src/execution/index.ts';
+import { DockerCodexProcessRunner } from '../../src/execution/transports.ts';
 
 const roots = [];
 const IMAGE = `faktori@sha256:${'a'.repeat(64)}`;
@@ -102,6 +104,51 @@ describe('execution profiles', () => {
       '--env', 'LANG=C.UTF-8', '--env', 'CODEX_HOME=/credentials/profile', IMAGE, 'codex', 'exec', 'fix the test',
     ]);
     expect(plan.args.join(' ')).not.toMatch(/docker\.sock|\/Users\/|GITHUB|JIRA|DEPLOY/);
+    expect(isValidatedDockerExecutionPlan(plan)).toBe(true);
+  });
+
+  it('permits an inner-sandbox bypass only as an explicit opt-in on an unchanged hardened Docker plan', async () => {
+    const staged = await stagedJob();
+    let actualArgs;
+    const runner = new DockerCodexProcessRunner({
+      docker: {
+        cwd: staged.control,
+        env: {},
+        async run(args) { actualArgs = args; throw new Error('planned invocation captured'); },
+        async stop() {},
+      },
+      identityProbe: { inspect: async () => ({ status: 'unknown' }) },
+      runNonce: 'isolated-bypass-test',
+      allowUnsandboxedCodexInsideValidatedContainer: true,
+      planFor: (codexRequest) => buildDockerExecutionPlan({
+        ...request(staged),
+        runId: codexRequest.runId,
+        args: codexRequest.args,
+        environment: codexRequest.environment,
+        approvedInputs: [],
+      }, dockerOptions(staged)),
+    });
+
+    await expect(runner.run({
+      runId: 'run-42',
+      command: 'codex',
+      args: ['exec', '--json', '--model', 'gpt-5.5', 'bounded prompt'],
+      cwd: staged.workspace,
+      environment: { LANG: 'C.UTF-8' },
+      timeoutMs: 30_000,
+    })).rejects.toThrow('planned invocation captured');
+    expect(actualArgs).toContain('--dangerously-bypass-approvals-and-sandbox');
+
+    const unvalidated = new DockerCodexProcessRunner({
+      docker: { cwd: staged.control, env: {}, async run() { throw new Error('must not launch'); }, async stop() {} },
+      identityProbe: { inspect: async () => ({ status: 'unknown' }) },
+      runNonce: 'unvalidated-bypass-test',
+      allowUnsandboxedCodexInsideValidatedContainer: true,
+      planFor: () => ({ profile: 'isolated', trustDisclosure: 'forged', image: IMAGE, networkMode: 'none', args: ['run', '--detach', IMAGE, 'codex', 'exec', '--dangerously-bypass-approvals-and-sandbox'], cwd: '/workspace', env: {}, mounts: [], limits: request(staged).limits }),
+    });
+    await expect(unvalidated.run({
+      runId: 'run-42', command: 'codex', args: ['exec', '--json'], cwd: staged.workspace, environment: { LANG: 'C.UTF-8' }, timeoutMs: 30_000,
+    })).rejects.toThrow(/unchanged plan from the hardened Docker builder/);
   });
 
   it('rejects traversal, symlink escapes, control storage, and Docker socket mounts', async () => {

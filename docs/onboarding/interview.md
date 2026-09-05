@@ -11,6 +11,11 @@ Present this first when it fits: one owner, one product, one pod, one provider, 
 Cover product scope; stack; organization and owners; hierarchy terminology; provider preference; financial budget; human attention/availability; approval, merge, and release authority; environments; and incident, notification, and recovery preferences. For every retained answer or discovered fact, record its destination: a real `factory.defaults` config field (`providerId`, `budget`, or `authority`), `discovery.interview`/`discovery.inventory` metadata, proposal cost/workload/tradeoff/risk, or a named later-phase pending field. Preserve unresolved items as `unknowns` with source/revision; never infer or silently discard a preference.
 
 Explain that a new product inherits factory defaults and incurs only incremental cost/workload. It does not automatically receive a new pod; pod assignment is explicit.
+For an existing factory, retain the current resolved configuration as the
+previous revision, propose a next configuration with exactly the one discovered
+product, and use the normal proposal/approval flow before `faktori product new`.
+Any change to existing factory, product, provider, environment, or pod settings
+requires its own authority and is not folded into product creation.
 
 ## Finish gate
 

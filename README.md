@@ -12,16 +12,18 @@ integration identifiers belong here.
 
 ## Status
 
-Phases 0–5 are accepted. Phase 6 adds installed backup/restore and supported
+Phases 0–6 are accepted. Phase 7 is the assembled-product proof: cold-start,
+host/stack compatibility, the authority-gated isolated Twinzy delivery, and the
+frozen paired comparison. Phase 6 added installed backup/restore and supported
 runtime-update boundaries, plus a public maintenance kit. The Phase 5
 candidate added an installed loopback
 Console over the durable coordinator, native Codex/Claude/Cursor and isolated
 Codex runtime routes, replay-safe owner controls, explicit provider request
 responses, bounded event-driven Factory GM diagnosis, and resource/attention
 visibility. The package build emits installable JavaScript and declarations;
-its packed CLI is verified from a clean temporary install. This phase does not
-authorize Phase 7 or a comparison run. Frozen fixtures remain test contracts,
-not benchmark results.
+its packed CLI is verified from a clean temporary install. Frozen fixtures
+remain test contracts, not benchmark results; unsupported host or incumbent
+evidence remains explicitly unverified.
 
 ## Start here
 
@@ -57,6 +59,11 @@ the supported Node 24 runtime, for example:
 ```sh
 npm run faktori -- config resolve examples/config/solo.json
 ```
+
+After initial provisioning, add a separately discovered and approved product
+with `faktori product new <approved-bundle.json> <absolute-factory-root>`; see
+the [provisioning contract](docs/provisioning/README.md). It preserves the
+existing configuration/repositories and creates no implicit pod.
 
 Status updates require explicit safe arguments:
 

@@ -13,7 +13,9 @@ import {
   createFakeRemoteTransport,
   createProvisioningProposal,
   previewNewProduct,
+  provisionApprovedNewProduct,
   provisionApprovedProposal,
+  readApprovedConfigurationRevision,
   renderProvisioningProposal,
 } from '../../src/provisioning/index.ts';
 
@@ -155,6 +157,148 @@ describe('provisioning proposal and approval', () => {
       podsCreated: 0,
       product: expect.objectContaining({ providerId: 'codex', environmentId: 'local' }),
     }));
+  });
+
+  it('adds an approved product to an existing factory without changing its profile, repositories, or pods', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-product-new-'));
+    const source = await mkdtemp(join(tmpdir(), 'faktori-product-source-'));
+    roots.push(root, source);
+    await writeFile(join(source, 'package.json'), '{"name":"api"}\n');
+    const current = resolvedConfig();
+    const initial = proposalFor(current);
+    provisionApprovedProposal({ proposal: initial, approval: approve(initial), resolvedConfig: current, root });
+    const profile = join(root, 'config/factory-profile.json');
+    const profileBefore = await readFile(profile, 'utf8');
+    const webHeadBefore = execFileSync('git', ['-C', join(root, 'products/web'), 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+    const next = structuredClone(current);
+    next.products.push({
+      id: 'api', name: 'API', providerId: 'codex', environmentId: 'local',
+      authority: structuredClone(current.products[0].authority),
+    });
+    const proposal = proposalFor(next, {
+      change: { kind: 'add-product', productId: 'api', previousResolvedConfig: current },
+      localProductSources: { api: source },
+      costs: { recurring: '$0', incrementalProducts: { api: '$0 local' } },
+    });
+
+    expect(proposal.effects.map(({ id }) => id)).toEqual([
+      'local:product-registration:api',
+      'local:product-repository:api',
+    ]);
+    expect(renderProvisioningProposal(proposal)).toContain('create zero implicit pods');
+    const bundle = { proposal, approval: approve(proposal), resolvedConfig: next, previousResolvedConfig: current, root };
+    const first = provisionApprovedNewProduct(bundle);
+    expect(first.operations.every(({ status }) => status === 'completed')).toBe(true);
+    expect(await readFile(profile, 'utf8')).toBe(profileBefore);
+    expect(execFileSync('git', ['-C', join(root, 'products/web'), 'rev-parse', 'HEAD'], { encoding: 'utf8' })).toBe(webHeadBefore);
+    expect(execFileSync('git', ['-C', join(root, 'products/api'), 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
+    expect(next.pods).toEqual(current.pods);
+    expect(readApprovedConfigurationRevision(root)).toBe(proposal.configurationRevision);
+    const replay = provisionApprovedNewProduct(bundle);
+    expect(replay.operations.every(({ status }) => status === 'reconciled')).toBe(true);
+  });
+
+  it('rejects product additions that mutate existing scope, add a pod, or race from a stale revision', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-product-new-'));
+    roots.push(root);
+    const current = resolvedConfig();
+    const initial = proposalFor(current);
+    provisionApprovedProposal({ proposal: initial, approval: approve(initial), resolvedConfig: current, root });
+    const changedExisting = structuredClone(current);
+    changedExisting.products[0].name = 'Changed without product-update authority';
+    changedExisting.products.push({ id: 'api', name: 'API', providerId: 'codex', environmentId: 'local', authority: structuredClone(current.products[0].authority) });
+    expect(() => proposalFor(changedExisting, { change: { kind: 'add-product', productId: 'api', previousResolvedConfig: current } }))
+      .toThrow(/existing product web changed/);
+    const implicitPod = structuredClone(current);
+    implicitPod.products.push({ id: 'api', name: 'API', providerId: 'codex', environmentId: 'local', authority: structuredClone(current.products[0].authority) });
+    implicitPod.pods.push({ id: 'api-pod', productId: 'api' });
+    expect(() => proposalFor(implicitPod, { change: { kind: 'add-product', productId: 'api', previousResolvedConfig: current } }))
+      .toThrow(/preserve factory defaults, providers, environments, and every existing pod/);
+
+    const add = (id) => {
+      const next = structuredClone(current);
+      next.products.push({ id, name: id.toUpperCase(), providerId: 'codex', environmentId: 'local', authority: structuredClone(current.products[0].authority) });
+      const proposal = proposalFor(next, { change: { kind: 'add-product', productId: id, previousResolvedConfig: current } });
+      return { proposal, approval: approve(proposal), resolvedConfig: next, previousResolvedConfig: current, root };
+    };
+    provisionApprovedNewProduct(add('api'));
+    expect(() => provisionApprovedNewProduct(add('worker'))).toThrow(/configuration changed/);
+    expect(execFileSync('git', ['-C', join(root, 'products/web'), 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
+    expect(execFileSync('git', ['-C', join(root, 'products/api'), 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
+    expect(() => provisionApprovedNewProduct({ proposal: initial, approval: approve(initial), resolvedConfig: current, root }))
+      .toThrow(/requires an add-product proposal/);
+  });
+
+  it('admits only one of two concurrent product additions from the same approved revision', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-product-race-'));
+    roots.push(root);
+    const current = resolvedConfig();
+    const initial = proposalFor(current);
+    provisionApprovedProposal({ proposal: initial, approval: approve(initial), resolvedConfig: current, root });
+    const addition = (id) => {
+      const next = structuredClone(current);
+      next.products.push({ id, name: id.toUpperCase(), providerId: 'codex', environmentId: 'local', authority: structuredClone(current.products[0].authority) });
+      const proposal = proposalFor(next, { change: { kind: 'add-product', productId: id, previousResolvedConfig: current } });
+      return { proposal, approval: approve(proposal), resolvedConfig: next, previousResolvedConfig: current, root };
+    };
+    const api = addition('api');
+    const worker = addition('worker');
+    let raced = false;
+    const loser = provisionApprovedNewProduct({
+      ...api,
+      onBeforeProductRegistrationWrite() {
+        if (!raced) {
+          raced = true;
+          provisionApprovedNewProduct(worker);
+        }
+      },
+    });
+
+    expect(loser.operations).toEqual([
+      expect.objectContaining({
+        effectId: 'local:product-registration:api',
+        status: 'blocked',
+        reason: expect.stringContaining('different product addition claimed'),
+      }),
+    ]);
+    expect(readApprovedConfigurationRevision(root)).toBe(worker.proposal.configurationRevision);
+    await expect(access(join(root, 'products/api'))).rejects.toThrow();
+    expect(execFileSync('git', ['-C', join(root, 'products/worker'), 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
+    expect(execFileSync('git', ['-C', join(root, 'products/web'), 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
+  });
+
+  it('keeps a registered product visibly blocked and resumable when its approved source import fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-product-resume-'));
+    const source = await mkdtemp(join(tmpdir(), 'faktori-product-source-'));
+    roots.push(root, source);
+    const current = resolvedConfig();
+    const initial = proposalFor(current);
+    provisionApprovedProposal({ proposal: initial, approval: approve(initial), resolvedConfig: current, root });
+    await writeFile(join(source, 'app.mjs'), 'export const version = 1;\n');
+    const next = structuredClone(current);
+    next.products.push({ id: 'api', name: 'API', providerId: 'codex', environmentId: 'local', authority: structuredClone(current.products[0].authority) });
+    const proposal = proposalFor(next, {
+      change: { kind: 'add-product', productId: 'api', previousResolvedConfig: current },
+      localProductSources: { api: source },
+    });
+    const bundle = { proposal, approval: approve(proposal), resolvedConfig: next, previousResolvedConfig: current, root };
+    await writeFile(join(source, 'app.mjs'), 'export const version = 2;\n');
+
+    const blocked = provisionApprovedNewProduct(bundle);
+    expect(blocked.operations).toEqual([
+      expect.objectContaining({ effectId: 'local:product-registration:api', status: 'completed' }),
+      expect.objectContaining({ effectId: 'local:product-repository:api', status: 'blocked', reason: expect.stringContaining('source snapshot changed') }),
+    ]);
+    expect(readApprovedConfigurationRevision(root)).toBe(proposal.configurationRevision);
+    expect(() => execFileSync('git', ['-C', join(root, 'products/api'), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: 'pipe' })).toThrow();
+
+    await writeFile(join(source, 'app.mjs'), 'export const version = 1;\n');
+    const resumed = provisionApprovedNewProduct(bundle);
+    expect(resumed.operations).toEqual([
+      expect.objectContaining({ effectId: 'local:product-registration:api', status: 'reconciled' }),
+      expect.objectContaining({ effectId: 'local:product-repository:api', status: 'completed' }),
+    ]);
+    expect(execFileSync('git', ['-C', join(root, 'products/api'), 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
   });
 });
 

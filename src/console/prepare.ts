@@ -4,6 +4,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
 import { resolveFactoryConfig, type FactoryConfiguration } from '../config/index.ts';
+import { readApprovedConfigurationRevision } from '../provisioning/index.ts';
 import { providerContextPayloadDigest, type ProviderCurrentContext } from '../providers/contracts.ts';
 import type { RunIntent } from '../runtime/contracts.ts';
 
@@ -55,7 +56,7 @@ export function prepareLocalCodexConsole(value: unknown): Record<string, unknown
   if (!existsSync(profilePath)) throw new Error('approved factory profile is missing; run provision apply first');
   const profile = object(JSON.parse(readFileSync(profilePath, 'utf8')), 'approved factory profile');
   if (object(profile.factory, 'approved factory profile.factory').id !== resolved.factory.id
-    || profile.configurationRevision !== sha(stable(resolved))) {
+    || readApprovedConfigurationRevision(factoryRoot) !== sha(stable(resolved))) {
     throw new Error('approved factory profile does not match the supplied configuration');
   }
 

@@ -58,3 +58,32 @@ success.
 `previewNewProduct` shows factory-default inheritance and incremental cost; it
 always reports `podsCreated: 0`. Pod assignment remains an explicit later
 configuration decision.
+
+## Add a product to an existing factory
+
+`faktori product new` is the mutation half of the same discover, propose,
+approve, and apply workflow. Resolve a next configuration containing exactly
+one additional product and no other change, then create its proposal with an
+explicit previous configuration. The complete runnable
+[`product-addition-proposal-request.json`](../../examples/provisioning/product-addition-proposal-request.json)
+starts from the public solo configuration, adds only an `api` product, and
+retains the existing pod unchanged. Run `faktori provision proposal`, review its rendered
+incremental costs, workload, effects, and authority risks, then run `faktori
+provision approve`. Put that approval beside the emitted `proposal`,
+`resolvedConfig`, and `previousResolvedConfig`, and apply it with:
+
+```sh
+faktori product new approved-product-bundle.json /absolute/existing-factory
+```
+
+The proposal is rejected unless factory defaults, providers, environments,
+every existing product, repository, and pod remain unchanged and exactly one
+named product is added. Its registration is an exclusive append-only revision
+claim, so two additions from the same approved configuration cannot both win.
+The winning operation creates only the named exact-root repository; it never
+creates a pod. Replaying the same bundle reconciles the receipt and repository.
+A stale proposal, different registration, changed owner profile/component
+locks, or competing addition blocks without overwrite. Console preparation
+accepts the supplied full configuration only when its digest follows the
+approved registration chain, making the new product usable rather than merely
+writing a fragment.

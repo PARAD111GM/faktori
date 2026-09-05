@@ -35,13 +35,15 @@ function fakeTransport(responses = {}, options = {}) {
   const calls = [];
   const notifications = [];
   let handler;
+  let notificationHandler;
   const connection = {
     worker: options.worker,
     setRequestHandler(value) { handler = value; },
+    setNotificationHandler(value) { notificationHandler = value; },
     async request(request, timeoutMs) {
       calls.push({ request, timeoutMs });
       const response = responses[request.method];
-      if (typeof response === 'function') return response(request, { handler, notifications });
+      if (typeof response === 'function') return response(request, { handler, notificationHandler, notifications });
       if (response instanceof Error) throw response;
       return response ?? {};
     },
@@ -142,6 +144,23 @@ describe('bounded Cursor ACP adapter', () => {
     expect(result.final.outcome).toBe('completed');
     expect(seen).toEqual(['session/request_permission', 'session/request_question', 'session/request_plan']);
     expect(result.events.filter((event) => event.type.startsWith('acp.session/request_'))).toHaveLength(3);
+  });
+
+  it('records id-less session/update and unknown notifications as bounded observations, never authority or outcomes', async () => {
+    const result = await adapter(fakeTransport(standardResponses({
+      'session/prompt': async (_request, state) => {
+        await state.notificationHandler({ method: 'session/update', params: { text: 'provider progress', nested: { detail: 'x'.repeat(500) } } });
+        await state.notificationHandler({ method: 'cursor/unknown_observation', params: { sequence: 1 } });
+        return { stopReason: 'completed' };
+      },
+    }))).start(intent(), context());
+
+    expect(result.final.outcome).toBe('completed');
+    expect(result.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'acp.session/update', raw: expect.objectContaining({ notification: true, method: 'session/update' }) }),
+      expect.objectContaining({ type: 'acp.cursor/unknown_observation', raw: expect.objectContaining({ notification: true, method: 'cursor/unknown_observation' }) }),
+    ]));
+    expect(result.events.some((event) => Object.hasOwn(event.raw, 'authority') || Object.hasOwn(event.raw, 'outcome'))).toBe(false);
   });
 
   it('fails closed for unsupported, malformed, and conflicting duplicate provider requests', async () => {

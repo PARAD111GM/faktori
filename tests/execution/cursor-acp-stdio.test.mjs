@@ -76,6 +76,23 @@ describe('Cursor ACP stdio transport', () => {
     ]);
   });
 
+  it('accepts id-less session/update notifications from the live ACP flow without replying or closing the session', async () => {
+    const child = fakeChild();
+    const connection = await transport(child).provider.connect(connectRequest());
+    const seen = [];
+    connection.setNotificationHandler(async (notification) => { seen.push(notification); });
+    child.stdout.emit('data', `${JSON.stringify({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'cursor-session-77', update: { text: 'progress' } } })}\n${JSON.stringify({ jsonrpc: '2.0', method: 'cursor/unknown_observation', params: { step: 2 } })}\n`);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual([
+      { method: 'session/update', params: { sessionId: 'cursor-session-77', update: { text: 'progress' } } },
+      { method: 'cursor/unknown_observation', params: { step: 2 } },
+    ]);
+    expect(child.writes).toEqual([]);
+    const pending = connection.request({ id: 'after-update', method: 'initialize', params: {} }, 100);
+    child.stdout.emit('data', `${JSON.stringify({ jsonrpc: '2.0', id: 'after-update', result: {} })}\n`);
+    await expect(pending).resolves.toEqual({});
+  });
+
   it('fails pending calls closed on malformed, duplicate, or orphan protocol messages', async () => {
     const malformedChild = fakeChild();
     const malformed = await transport(malformedChild).provider.connect(connectRequest());

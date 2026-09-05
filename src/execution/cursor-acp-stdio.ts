@@ -1,6 +1,6 @@
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 
-import type { CursorAcpConnection, CursorAcpConnectRequest, CursorAcpInboundReply, CursorAcpRpcRequest, CursorAcpTransport } from '../providers/cursor.ts';
+import type { CursorAcpConnection, CursorAcpConnectRequest, CursorAcpInboundReply, CursorAcpNotification, CursorAcpRpcRequest, CursorAcpTransport } from '../providers/cursor.ts';
 import type { NativeIdentityObservation } from './index.ts';
 import type { NativeWorkerIdentity, WorkerIdentity } from '../runtime/contracts.ts';
 
@@ -40,6 +40,7 @@ export interface CursorAcpStdioTransportOptions {
 }
 
 const DEFAULT_MAX_LINE_BYTES = 1024 * 1024;
+const MAX_METHOD_LENGTH = 160;
 
 function record(value: unknown): value is JsonRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -91,7 +92,9 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
   readonly #pending = new Map<string, PendingRequest>();
   readonly #completed = new Set<string>();
   #handler?: (request: CursorAcpRpcRequest) => Promise<CursorAcpInboundReply>;
+  #notificationHandler?: (notification: CursorAcpNotification) => Promise<void>;
   #inboundTail: Promise<void> = Promise.resolve();
+  #notificationTail: Promise<void> = Promise.resolve();
   #buffer = Buffer.alloc(0);
   #closed = false;
   #termination?: Promise<void>;
@@ -110,6 +113,11 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
   setRequestHandler(handler: (request: CursorAcpRpcRequest) => Promise<CursorAcpInboundReply>): void {
     if (this.#handler !== undefined) throw new Error('Cursor ACP inbound request handler is already set');
     this.#handler = handler;
+  }
+
+  setNotificationHandler(handler: (notification: CursorAcpNotification) => Promise<void>): void {
+    if (this.#notificationHandler !== undefined) throw new Error('Cursor ACP notification handler is already set');
+    this.#notificationHandler = handler;
   }
 
   async request(request: CursorAcpRpcRequest, timeoutMs: number): Promise<JsonRecord> {
@@ -179,7 +187,11 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
   #onMessage(message: unknown): void {
     if (!record(message) || message.jsonrpc !== '2.0') { this.#protocolFailure('Cursor ACP emitted malformed JSON-RPC envelope'); return; }
     if (typeof message.method === 'string') {
-      this.#inboundTail = this.#inboundTail.then(() => this.#handleInbound(message)).catch(() => undefined);
+      if (!Object.hasOwn(message, 'id')) {
+        this.#notificationTail = this.#notificationTail.then(() => this.#handleNotification(message)).catch(() => undefined);
+      } else {
+        this.#inboundTail = this.#inboundTail.then(() => this.#handleInbound(message)).catch(() => undefined);
+      }
       return;
     }
     if (!('id' in message) || (!('result' in message) && !('error' in message))) { this.#protocolFailure('Cursor ACP emitted out-of-order or malformed response'); return; }
@@ -202,7 +214,7 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
 
   async #handleInbound(message: JsonRecord): Promise<void> {
     const request: CursorAcpRpcRequest | undefined = (typeof message.id === 'string' || typeof message.id === 'number')
-      && typeof message.method === 'string' && (message.params === undefined || record(message.params))
+      && typeof message.method === 'string' && message.method.trim().length > 0 && message.method.length <= MAX_METHOD_LENGTH && (message.params === undefined || record(message.params))
       ? { id: message.id, method: message.method, ...(record(message.params) ? { params: message.params } : {}) } : undefined;
     if (request === undefined) { this.#protocolFailure('Cursor ACP emitted malformed inbound request'); return; }
     let reply: CursorAcpInboundReply;
@@ -225,9 +237,25 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
     }
   }
 
+  async #handleNotification(message: JsonRecord): Promise<void> {
+    const notification: CursorAcpNotification | undefined = typeof message.method === 'string'
+      && message.method.trim().length > 0 && message.method.length <= MAX_METHOD_LENGTH && (message.params === undefined || record(message.params))
+      ? { method: message.method, ...(record(message.params) ? { params: message.params } : {}) } : undefined;
+    if (notification === undefined) { this.#protocolFailure('Cursor ACP emitted malformed notification'); return; }
+    if (this.#notificationHandler === undefined) {
+      this.#protocolFailure('Cursor ACP emitted notification before an observation handler was registered');
+      return;
+    }
+    try {
+      await this.#notificationHandler(notification);
+    } catch {
+      this.#protocolFailure('Cursor ACP notification handler failed');
+    }
+  }
+
   #validRequest(request: CursorAcpRpcRequest): boolean {
     return (typeof request.id === 'string' || (typeof request.id === 'number' && Number.isFinite(request.id)))
-      && typeof request.method === 'string' && request.method.trim().length > 0
+      && typeof request.method === 'string' && request.method.trim().length > 0 && request.method.length <= MAX_METHOD_LENGTH
       && (request.params === undefined || record(request.params));
   }
 

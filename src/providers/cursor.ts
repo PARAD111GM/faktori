@@ -38,11 +38,19 @@ export interface CursorAcpRpcRequest {
   params?: JsonRecord;
 }
 
+/** ACP notifications have no id and never receive a JSON-RPC reply. */
+export interface CursorAcpNotification {
+  method: string;
+  params?: JsonRecord;
+}
+
 export interface CursorAcpConnection {
   request(request: CursorAcpRpcRequest, timeoutMs: number): Promise<JsonRecord>;
   notify(method: string, params: JsonRecord): Promise<void>;
   /** The transport must deliver every inbound JSON-RPC request exactly as received. */
   setRequestHandler?(handler: (request: CursorAcpRpcRequest) => Promise<CursorAcpInboundReply>): void;
+  /** The transport must deliver id-less ACP observations separately from requests. */
+  setNotificationHandler?(handler: (notification: CursorAcpNotification) => Promise<void>): void;
   close?(): Promise<void>;
   /** Present only when the transport has an exact, durable worker identity. */
   worker?: WorkerIdentity;
@@ -92,6 +100,7 @@ const CAPABILITIES: CursorAcpCapabilities = Object.freeze({
 });
 
 const MAX_EVIDENCE = 320;
+const MAX_NOTIFICATION_METHOD_LENGTH = 160;
 const SUCCESS_STOPS = new Set(['completed', 'end_turn', 'finished']);
 
 function record(value: unknown): value is JsonRecord {
@@ -199,6 +208,30 @@ function sameInbound(left: CursorAcpRpcRequest, right: CursorAcpRpcRequest): boo
   }
 }
 
+function boundedNotificationValue(value: unknown, depth = 0): unknown {
+  if (depth > 4) return '[truncated]';
+  if (typeof value === 'string') return sanitize(value) ?? '';
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
+  if (Array.isArray(value)) return value.slice(0, 32).map((entry) => boundedNotificationValue(entry, depth + 1));
+  if (record(value)) {
+    const output: JsonRecord = {};
+    for (const key of Object.keys(value).sort().slice(0, 32)) output[key] = boundedNotificationValue(value[key], depth + 1);
+    return output;
+  }
+  return '[unsupported]';
+}
+
+function normalizedNotification(notification: CursorAcpNotification): CursorNormalizedEvent {
+  return {
+    type: `acp.${notification.method}`,
+    raw: {
+      notification: true,
+      method: notification.method,
+      ...(notification.params === undefined ? {} : { params: boundedNotificationValue(notification.params) }),
+    },
+  };
+}
+
 interface ActiveTurn {
   connection: CursorAcpConnection;
   sessionId: string;
@@ -301,6 +334,15 @@ export class CursorAcpAdapter implements ProviderTurnAdapter {
         inbound.set(key, { request, reply });
         events.push({ type: `acp.${request.method}`, raw: { id: request.id, method: request.method, ...(request.params === undefined ? {} : { params: request.params }) } });
         return reply;
+      });
+      connection.setNotificationHandler?.(async (notification) => {
+        // session/update and every other valid notification are observations
+        // only. Their payload cannot alter authority, scope, or final outcome.
+        if (!record(notification) || !nonEmpty(notification.method) || notification.method.length > MAX_NOTIFICATION_METHOD_LENGTH || (notification.params !== undefined && !record(notification.params))) {
+          malformedEventCount += 1;
+          return;
+        }
+        events.push(normalizedNotification(notification));
       });
 
       const initialize = await this.#request(connection, intent.runId, 'initialize', 'initialize', {

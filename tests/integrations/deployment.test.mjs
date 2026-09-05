@@ -20,11 +20,14 @@ async function fixture() {
   const smokeMarker = join(directory, 'smoke.json');
   await writeFile(script, `
     import { readFile, writeFile } from 'node:fs/promises';
+    import { spawn } from 'node:child_process';
     const [mode, marker] = process.argv.slice(2);
     if (mode === 'deploy') await writeFile(marker, JSON.stringify({ secret: process.env.DEPLOY_CREDENTIAL, revision: process.env.REVISION, ambient: process.env.AMBIENT_SENTINEL }));
     if (mode === 'smoke') { const deployed = JSON.parse(await readFile(marker, 'utf8')); await writeFile(marker + '.smoke', JSON.stringify({ deploySecret: process.env.DEPLOY_CREDENTIAL, smokeSecret: process.env.SMOKE_CREDENTIAL, ambient: process.env.AMBIENT_SENTINEL })); process.exit(deployed.revision === 'rev-7' && process.env.SMOKE === 'pass' ? 0 : 13); }
     if (mode === 'slow') await new Promise((resolve) => setTimeout(resolve, 2_000));
     if (mode === 'recover') await writeFile(marker, 'recovered');
+    if (mode === 'deploy-server') { const serverSource = "const { createServer } = require('node:http'); const { writeFileSync } = require('node:fs'); const marker = process.env.MARKER; const revision = process.env.REVISION; const server = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ revision })); }); server.on('error', (error) => { writeFileSync(marker, JSON.stringify({ error: String(error) })); process.exit(16); }); server.listen(0, '127.0.0.1', () => { const address = server.address(); writeFileSync(marker, JSON.stringify({ pid: process.pid, port: address.port, revision })); });"; const child = spawn(process.execPath, ['-e', serverSource], { detached: true, stdio: 'ignore', env: { MARKER: marker, REVISION: process.env.REVISION } }); child.unref(); for (let index = 0; index < 200; index += 1) { try { if (JSON.parse(await readFile(marker, 'utf8')).port) process.exit(0); } catch {} await new Promise((resolve) => setTimeout(resolve, 25)); } process.exit(14); }
+    if (mode === 'http-smoke') { const deployed = JSON.parse(await readFile(marker, 'utf8')); const response = await fetch('http://127.0.0.1:' + deployed.port + '/'); const body = await response.json(); process.exit(response.status === 200 && body.revision === process.env.REVISION ? 0 : 15); }
   `);
   const command = (mode, environment = {}) => ({ executable: process.execPath, args: [script, mode, marker], cwd: directory, environment });
   return { directory, marker, smokeMarker: `${marker}.smoke`, command };
@@ -74,6 +77,36 @@ describe('deployment and maintenance controller adapter', () => {
       expect((await records.records()).filter((receipt) => receipt.status === 'failed')).toHaveLength(2);
     } finally { await rm(local.directory, { recursive: true, force: true }); }
   });
+
+  it('deploys a real localhost service and HTTP-smokes its exact revision, then cleans the server up', async () => {
+    const local = await fixture();
+    let serverPid;
+    try {
+      const records = new FileDeploymentRecordStore(join(local.directory, 'durable-records'));
+      const executor = new DeploymentMaintenanceExecutor({
+        targets: [{ operation: 'deploy.http', environment: 'local', revision: 'rev-7', approved: true, mode: 'local-command', command: local.command('deploy-server', { REVISION: 'rev-7' }), smoke: local.command('http-smoke', { REVISION: 'rev-7' }) }],
+      }, new InMemoryFollowUpStore(), records);
+      expect(await executor.execute(action('deploy.http'), async () => undefined)).toEqual({ outcome: 'completed', detail: 'deployment_and_smoke_verified' });
+      const deployed = JSON.parse(await readFile(local.marker, 'utf8'));
+      expect(deployed).toEqual(expect.objectContaining({ revision: 'rev-7', port: expect.any(Number), pid: expect.any(Number) }));
+      expect(await records.records()).toEqual([expect.objectContaining({ environment: 'local', revision: 'rev-7', status: 'deployed' })]);
+      serverPid = deployed.pid;
+    } finally {
+      if (serverPid === undefined) {
+        try { serverPid = JSON.parse(await readFile(local.marker, 'utf8')).pid; } catch {}
+      }
+      if (serverPid !== undefined) {
+        try { process.kill(serverPid, 'SIGTERM'); } catch {}
+        let exited = false;
+        for (let index = 0; index < 20; index += 1) {
+          try { process.kill(serverPid, 0); await new Promise((resolve) => setTimeout(resolve, 25)); }
+          catch { exited = true; break; }
+        }
+        expect(exited).toBe(true);
+      }
+      await rm(local.directory, { recursive: true, force: true });
+    }
+  }, 10_000);
 
   it('bounds local command runtime through the shared detached-process runner and persists the failed observation', async () => {
     const local = await fixture();

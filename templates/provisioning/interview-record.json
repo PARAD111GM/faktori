@@ -1,0 +1,38 @@
+{
+  "format": "faktori.interview/v1",
+  "recordRevision": "unresolved",
+  "discovery": {
+    "sources": [],
+    "sourceRevisions": [],
+    "repositories": [],
+    "providerCliCapabilities": [],
+    "hardware": [],
+    "environments": [],
+    "existingOwnership": []
+  },
+  "recommendedProfile": {
+    "owner": null,
+    "products": 1,
+    "pods": 1,
+    "provider": "existing-preferred-provider",
+    "repositoryHost": "github",
+    "execution": "local",
+    "resourceStrategy": "existing-resources"
+  },
+  "answers": {
+    "productScope": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "products[].scope"},
+    "stack": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "discovery.metadata.stack"},
+    "organizationAndOwners": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.owner, products[].owner"},
+    "hierarchyTerminology": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "discovery.metadata.hierarchyTerminology"},
+    "providerPreference": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.defaults.providerId"},
+    "financialBudget": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.defaults.budget"},
+    "humanAttention": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "proposal.humanWorkload"},
+    "approvalMergeReleaseAuthority": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.authority"},
+    "environments": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "environments[]"},
+    "incidentNotificationRecovery": {"status": "unresolved", "value": null, "source": null, "revision": null, "mapsTo": "factory.incidentPreferences"}
+  },
+  "unknowns": [],
+  "mappingReview": {"unmappedPreferences": [], "laterPhasePending": []},
+  "proposalInputs": {"cost": null, "humanWorkload": null, "tradeoffs": [], "risks": []},
+  "productInheritanceNote": "A new product inherits factory defaults, reports incremental cost/workload, and creates zero pods unless explicitly assigned."
+}

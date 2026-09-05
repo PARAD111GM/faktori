@@ -1,0 +1,16 @@
+{
+  "format": "faktori.discovery/v1",
+  "factoryId": "replace-with-factory-id",
+  "inventory": {
+    "repositories": [],
+    "availableProviders": [],
+    "environments": []
+  },
+  "interview": {
+    "productScope": "",
+    "owner": "",
+    "budget": "",
+    "approvalAuthority": ""
+  },
+  "unknowns": []
+}

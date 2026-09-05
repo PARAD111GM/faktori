@@ -5,20 +5,56 @@
   "description": "A self-hosted, vendor-neutral software factory for small teams.",
   "license": "Apache-2.0",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "faktori": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "examples",
+    "provider-entrymaps/generated",
+    "skills",
+    "templates",
+    "LICENSE",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "import": "./dist/config/index.js"
+    },
+    "./context": {
+      "types": "./dist/context/index.d.ts",
+      "import": "./dist/context/index.js"
+    },
+    "./provisioning": {
+      "types": "./dist/provisioning/index.d.ts",
+      "import": "./dist/provisioning/index.js"
+    }
+  },
   "engines": {
     "node": ">=24 <25",
     "npm": ">=12 <13"
   },
   "packageManager": "npm@12.0.2",
   "scripts": {
-    "build": "tsc --noEmit",
+    "faktori": "node src/cli.ts",
+    "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm test",
+    "check": "npm run typecheck && npm test && npm run build && npm run pack:verify",
+    "pack:verify": "node scripts/verify-packed-cli.mjs",
+    "prepack": "npm run build",
     "build:status": "node scripts/update-build-status.mjs",
     "build:dashboard": "node scripts/render-build-dashboard.mjs --checklist construction/checklist.json --summary construction/phase-summary.json --output construction/dashboard.html",
-    "build:usage": "node scripts/build-usage.mjs summarize --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 360000 --phase 0",
-    "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 360000 --phase 0"
+    "build:usage": "node scripts/build-usage.mjs summarize --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 1600000 --phase 1",
+    "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 1600000 --phase 1"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

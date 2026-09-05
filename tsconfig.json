@@ -4,14 +4,17 @@
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
     "allowJs": true,
     "checkJs": false,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["scripts/**/*.mjs", "tests/**/*.mjs"],
+  "include": ["scripts/**/*.mjs", "src/**/*.ts", "tests/**/*.mjs"],
   "exclude": ["node_modules", "fixtures", ".build"]
 }

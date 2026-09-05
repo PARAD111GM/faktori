@@ -88,6 +88,7 @@ export class DurableCoordinator {
   #beforeStaleLockDelete?: () => void | Promise<void>;
   #claimed = false;
   #admissionTail: Promise<unknown> = Promise.resolve();
+  #messageTail: Promise<unknown> = Promise.resolve();
 
   private constructor(options: CoordinatorOptions, journal: AppendOnlyJournal, projection: SqliteProjection) {
     if (!isValidLimits(options.limits)) throw new Error('Coordinator limits must be bounded non-negative integers');
@@ -175,7 +176,25 @@ export class DurableCoordinator {
   }
 
   async queueMessage(message: QueuedMessage): Promise<void> {
+    const task = async (): Promise<void> => this.queueMessageExclusive(message);
+    const next = this.#messageTail.then(task, task);
+    this.#messageTail = next.catch(() => undefined);
+    return next;
+  }
+
+  private async queueMessageExclusive(message: QueuedMessage): Promise<void> {
     this.assertClaimed();
+    const semantic = { messageId: message.messageId, runId: message.runId, delivery: message.delivery, body: message.body };
+    const prior = this.journal.events().find((event) => event.kind === 'message.queued'
+      && (event.data.message as Partial<QueuedMessage> | undefined)?.messageId === message.messageId);
+    if (prior !== undefined) {
+      const recorded = prior.data.message as Partial<QueuedMessage> | undefined;
+      const recordedSemantic = recorded === undefined ? undefined : {
+        messageId: recorded.messageId, runId: recorded.runId, delivery: recorded.delivery, body: recorded.body,
+      };
+      if (stable(recordedSemantic) !== stable(semantic)) throw new Error(`Message id ${message.messageId} conflicts with an existing durable message`);
+      return;
+    }
     const snapshot = this.snapshot(message.runId);
     if (snapshot === undefined) throw new Error(`Cannot queue a message for unknown run ${message.runId}`);
     if (isTerminalRunState(snapshot.state)) throw new Error(`Cannot queue a message for terminal run ${message.runId}`);

@@ -287,7 +287,7 @@ export class DurableDelegationService {
 
   private async admitExclusive(request: DelegationRequest): Promise<ChildAdmissionResult> {
     const parent = this.requireActiveParent(request.parentRunId);
-    if (request.artifactReferences?.some((artifact) => !parent.intent.execution.approvedInputDigests.includes(artifact.digest))) {
+    if (request.artifactReferences?.some((artifact) => !this.artifactAllowedForParent(parent, artifact))) {
       return { accepted: false, reason: 'artifact_reference_not_approved_for_parent' };
     }
     const existing = this.children(request.parentRunId).find((child) => child.delegationId === request.delegationId);
@@ -343,7 +343,10 @@ export class DurableDelegationService {
       execution: {
         profile: allocation.profile, workspaceId: allocation.workspaceId, workspacePath,
         providerId: allocation.providerId, model: allocation.model,
-        approvedInputDigests: [...parent.intent.execution.approvedInputDigests],
+        // A handoff digest enters the child only after its exact artifact pair
+        // has been durably submitted by a prior child and forwarded to this
+        // parent.  This is not an authority grant from the new child payload.
+        approvedInputDigests: [...new Set([...parent.intent.execution.approvedInputDigests, ...(request.artifactReferences ?? []).map((artifact) => artifact.digest)])],
       },
       budget: { reservationId: `delegation:${childRunId}`, maxRuntimeMinutes: allocation.maxRuntimeMinutes, estimatedTokens: allocation.estimatedTokens, status: 'held' },
       authority: { ...parent.intent.authority, policy: { ...parent.intent.authority.policy } }, attempt: 1,
@@ -386,6 +389,23 @@ export class DurableDelegationService {
       throw new DelegationPreconditionError('conflicting durable result submissions for delegated child');
     }
     return submitted[0];
+  }
+
+  private artifactAllowedForParent(parent: RunSnapshot, artifact: { artifactId: string; digest: string }): boolean {
+    // RunIntent presently represents owner-approved input material by digest,
+    // so the parent-origin branch cannot carry an artifact id to compare. New
+    // child-produced material requires the stronger id-and-digest pairing.
+    if (parent.intent.execution.approvedInputDigests.includes(artifact.digest)) return true;
+    for (const event of this.#coordinator.journal.events()) {
+      if (event.runId !== parent.intent.runId) continue;
+      const forwarded = messageEnvelope(event);
+      if (forwarded?.kind !== 'child.result' || forwarded.parentRunId !== parent.intent.runId) continue;
+      if (!forwarded.artifactReferences.some((candidate) => candidate.artifactId === artifact.artifactId && candidate.digest === artifact.digest)) continue;
+      const submitted = this.submittedResult(forwarded.childRunId);
+      if (submitted !== undefined && submitted.parentRunId === parent.intent.runId && submitted.payloadDigest === forwarded.payloadDigest
+        && submitted.artifactReferences.some((candidate) => candidate.artifactId === artifact.artifactId && candidate.digest === artifact.digest)) return true;
+    }
+    return false;
   }
 
   private children(parentRunId: string): DelegatedChild[] {

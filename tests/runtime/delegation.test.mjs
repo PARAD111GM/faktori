@@ -117,6 +117,41 @@ describe('durable delegation', () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it('admits a later provider child from an exact durable parent handoff, while rejecting forged output references', async () => {
+    const root = await directory();
+    try {
+      const owner = await coordinator(root);
+      const delegation = service(owner);
+      const plan = await delegation.admit(request({ delegationId: 'plan', workstreamId: 'planning', ownership: { paths: ['docs/plan.md'], mode: 'exclusive' } }));
+      await owner.record('provider.final', plan.child.childRunId, { result: { outcome: 'completed', summary: 'plan complete', usage: { availability: 'reported', outputTokens: 5 }, nativeCancellationReceipt: false } });
+      await delegation.handoff('parent', plan.child.childRunId, [{ artifactId: 'implementation-plan', digest: 'plan-output-digest' }]);
+
+      const implementation = await delegation.admit(request({ delegationId: 'implementation', workstreamId: 'implementation', ownership: { paths: ['src/feature.ts'], mode: 'exclusive' }, artifactReferences: [{ artifactId: 'implementation-plan', digest: 'plan-output-digest' }] }));
+      expect(implementation).toEqual(expect.objectContaining({ accepted: true }));
+      expect(implementation.child.snapshot.intent.execution.approvedInputDigests).toContain('plan-output-digest');
+      expect(await delegation.admit(request({ delegationId: 'forged', workstreamId: 'forged', ownership: { paths: ['src/forged.ts'], mode: 'exclusive' }, artifactReferences: [{ artifactId: 'implementation-plan', digest: 'forged-digest' }] }))).toEqual({ accepted: false, reason: 'artifact_reference_not_approved_for_parent' });
+      await close(owner);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('rejects an otherwise durable artifact handoff that belongs to another parent run', async () => {
+    const root = await directory();
+    try {
+      const owner = await coordinator(root);
+      const delegation = service(owner);
+      const foreignParent = parentIntent();
+      foreignParent.runId = 'foreign-parent';
+      foreignParent.admissionKey = 'foreign-parent-admission';
+      foreignParent.budget.reservationId = 'foreign-parent-reservation';
+      await owner.admit(foreignParent);
+      const foreign = await delegation.admit(request({ parentRunId: 'foreign-parent', delegationId: 'foreign-plan', workstreamId: 'foreign-planning', ownership: { paths: ['docs/foreign.md'], mode: 'exclusive' } }));
+      await owner.record('provider.final', foreign.child.childRunId, { result: { outcome: 'completed', usage: { availability: 'unavailable', unavailableReason: 'fixture' }, nativeCancellationReceipt: false } });
+      await delegation.handoff('foreign-parent', foreign.child.childRunId, [{ artifactId: 'foreign-plan', digest: 'foreign-output-digest' }]);
+      expect(await delegation.admit(request({ delegationId: 'cross-parent', workstreamId: 'cross-parent', ownership: { paths: ['src/cross-parent.ts'], mode: 'exclusive' }, artifactReferences: [{ artifactId: 'foreign-plan', digest: 'foreign-output-digest' }] }))).toEqual({ accepted: false, reason: 'artifact_reference_not_approved_for_parent' });
+      await close(owner);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('replays a durable child final handoff after restart without duplicating the parent result message', async () => {
     const root = await directory();
     try {

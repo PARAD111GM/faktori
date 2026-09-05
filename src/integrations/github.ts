@@ -65,15 +65,19 @@ export class GitHubRepositoryObserver {
   async observeChecks(target: Pick<GitHubPublisherTarget, 'repository' | 'expectedRevision'>): Promise<readonly GitHubCheckObservation[]> {
     // `gh pr checks <sha>` selects a PR heuristically. The commit API is
     // explicitly bound to the admitted object and returns each check's head SHA.
-    const result = await this.command(['api', `repos/${target.repository}/commits/${target.expectedRevision}/check-runs`, '--method', 'GET', '--header', 'Accept: application/vnd.github+json']);
+    const result = await this.command(['api', `repos/${target.repository}/commits/${target.expectedRevision}/check-runs?per_page=100`, '--method', 'GET', '--header', 'Accept: application/vnd.github+json', '--paginate', '--slurp']);
     if (result.exitCode !== 0) throw new Error(bounded(`gh_check_observation_failed:${result.stderr || result.stdout}`));
-    const value = parseObject(result.stdout, 'gh_check_observation_invalid_json');
-    if (!Array.isArray(value.check_runs)) throw new Error('gh_check_observation_invalid_json');
-    return value.check_runs.map((item) => {
+    const pages = objects(result.stdout, 'gh_check_observation_invalid_json');
+    const runs = pages.flatMap((page) => Array.isArray(page.check_runs) ? page.check_runs : []);
+    if (runs.length === 0 && pages.some((page) => !Array.isArray(page.check_runs))) throw new Error('gh_check_observation_invalid_json');
+    const statuses = await this.command(['api', `repos/${target.repository}/commits/${target.expectedRevision}/status`, '--method', 'GET', '--paginate', '--slurp']);
+    if (statuses.exitCode !== 0) throw new Error(bounded(`gh_status_observation_failed:${statuses.stderr || statuses.stdout}`));
+    const contexts = objects(statuses.stdout, 'gh_status_observation_invalid_json').flatMap((page) => Array.isArray(page.statuses) ? page.statuses : []);
+    return [...runs.map((item) => {
       const record = parseObject(JSON.stringify(item), 'gh_check_observation_invalid_shape');
       if (typeof record.name !== 'string' || record.head_sha !== target.expectedRevision || typeof record.status !== 'string' || (record.details_url !== null && record.details_url !== undefined && typeof record.details_url !== 'string')) throw new Error('gh_check_observation_invalid_shape');
       return { name: record.name, state: checkState(record.status, record.conclusion), ...(typeof record.details_url === 'string' ? { link: record.details_url } : {}) };
-    });
+    }), ...contexts.map((item) => statusContext(item))];
   }
 
   async observeMerge(repository: string, number: number): Promise<{ merged: boolean; mergeCommit?: string }> {
@@ -163,8 +167,9 @@ export class GitHubDraftPullRequestExecutor implements ControllerActionExecutor 
     }
 
     await guard();
-    const transferred = await this.transferExpectedRevision();
+    const transferred = await this.transferExpectedRevision(guard);
     if (transferred !== undefined) return transferred;
+    await guard();
     const created = await this.command([
       'pr', 'create', '--repo', this.target.repository, '--head', this.target.branch,
       '--base', baseRefName(this.target), '--draft', '--title', `Faktori ${action.request.actionId}`,
@@ -186,13 +191,14 @@ export class GitHubDraftPullRequestExecutor implements ControllerActionExecutor 
    * configured publisher remote. Worker hooks, git config and remotes are
    * never consulted; a pre-push hook is disabled at the invocation boundary.
    */
-  private async transferExpectedRevision(): Promise<ActionExecutionResult | undefined> {
+  private async transferExpectedRevision(guard: () => Promise<void>): Promise<ActionExecutionResult | undefined> {
     const invocation = trustedGitInvocation(this.target);
     if (invocation === undefined) return { outcome: 'blocked', detail: 'trusted_git_publisher_configuration_required' };
     const object = await this.git([...invocation, 'rev-parse', '--verify', `${this.target.expectedRevision}^{commit}`]);
     if (object.exitCode !== 0 || object.stdout.trim() !== this.target.expectedRevision) {
       return { outcome: 'blocked', detail: 'trusted_local_expected_revision_missing_or_mismatched' };
     }
+    await guard();
     const push = await this.git([...invocation, 'push', this.target.publisherRemote, `${this.target.expectedRevision}:refs/heads/${this.target.branch}`]);
     return push.exitCode === 0 ? undefined : { outcome: 'failed', detail: bounded(`git_transfer_failed:${push.stderr || push.stdout}`) };
   }
@@ -297,6 +303,22 @@ function parseObject(value: string, error: string): Record<string, unknown> {
     if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
   } catch { /* fail below */ }
   throw new Error(error);
+}
+
+function objects(value: string, error: string): Record<string, unknown>[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed) && parsed.every((item) => item !== null && typeof item === 'object' && !Array.isArray(item))) return parsed as Record<string, unknown>[];
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) return [parsed as Record<string, unknown>];
+  } catch { /* fail below */ }
+  throw new Error(error);
+}
+
+function statusContext(value: unknown): GitHubCheckObservation {
+  const record = parseObject(JSON.stringify(value), 'gh_status_observation_invalid_shape');
+  if (typeof record.context !== 'string' || typeof record.state !== 'string' || (record.target_url !== null && record.target_url !== undefined && typeof record.target_url !== 'string')) throw new Error('gh_status_observation_invalid_shape');
+  const state = record.state === 'success' ? 'SUCCESS' : record.state === 'pending' ? 'PENDING' : ['failure', 'error'].includes(record.state) ? 'FAILURE' : (() => { throw new Error('gh_status_observation_invalid_shape'); })();
+  return { name: record.context, state, ...(typeof record.target_url === 'string' ? { link: record.target_url } : {}) };
 }
 
 function bounded(value: string): string { return value.slice(0, 512); }

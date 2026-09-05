@@ -47,7 +47,7 @@ describe('controller-owned GitHub draft publication', () => {
     const result = await executor.execute(action(), async () => { guarded += 1; });
 
     expect(result).toEqual({ outcome: 'completed', detail: expect.stringContaining('draft_pr:') });
-    expect(guarded).toBe(1);
+    expect(guarded).toBe(3);
     const create = test.calls.find((argv) => argv[1] === 'create');
     expect(create).toEqual(expect.arrayContaining(['--repo', target.repository, '--head', target.branch, '--base', target.baseRefName, '--draft']));
     expect(create).not.toContain(target.baseRevision);
@@ -135,15 +135,25 @@ describe('controller-owned GitHub draft publication', () => {
     const observer = new GitHubRepositoryObserver(async (argv) => {
       calls.push(argv);
       if (argv[0] === 'repo') return { exitCode: 0, stdout: JSON.stringify({ nameWithOwner: target.repository, viewerPermission: 'WRITE', isPrivate: true }), stderr: '' };
-      return { exitCode: 0, stdout: JSON.stringify({ check_runs: [
+      if (argv[1].endsWith('/status')) return { exitCode: 0, stdout: JSON.stringify([{ statuses: [{ context: 'legacy-security', state: 'failure', target_url: null }] }]), stderr: '' };
+      return { exitCode: 0, stdout: JSON.stringify([{ check_runs: [
         { name: 'unit', head_sha: target.expectedRevision, status: 'completed', conclusion: 'success', details_url: 'https://ci.example/1' },
         { name: 'deploy', head_sha: target.expectedRevision, status: 'in_progress', conclusion: null, details_url: null },
         { name: 'lint', head_sha: target.expectedRevision, status: 'completed', conclusion: 'skipped', details_url: null },
-      ] }), stderr: '' };
+      ] }]), stderr: '' };
     });
     await expect(observer.register(target.repository)).resolves.toEqual({ repository: target.repository, viewerPermission: 'WRITE', private: true });
-    await expect(observer.observeChecks(target)).resolves.toEqual([{ name: 'unit', state: 'SUCCESS', link: 'https://ci.example/1' }, { name: 'deploy', state: 'PENDING' }, { name: 'lint', state: 'SKIPPING' }]);
-    expect(calls[1]).toEqual(expect.arrayContaining(['api', `repos/${target.repository}/commits/${target.expectedRevision}/check-runs`]));
+    await expect(observer.observeChecks(target)).resolves.toEqual([{ name: 'unit', state: 'SUCCESS', link: 'https://ci.example/1' }, { name: 'deploy', state: 'PENDING' }, { name: 'lint', state: 'SKIPPING' }, { name: 'legacy-security', state: 'FAILURE' }]);
+    expect(calls[1]).toEqual(expect.arrayContaining(['api', expect.stringContaining(`repos/${target.repository}/commits/${target.expectedRevision}/check-runs`)]));
+  });
+
+  it('rechecks authority immediately before push and PR creation', async () => {
+    const test = fixture();
+    const executor = new GitHubDraftPullRequestExecutor(target, test.command, new InMemoryGitHubPublicationStore(), test.git);
+    let checks = 0;
+    await expect(executor.execute(action(), async () => { checks += 1; if (checks === 2) throw new Error('authority_changed_before_effect'); })).rejects.toThrow('authority_changed_before_effect');
+    expect(test.gitCalls.some((argv) => argv.includes('push'))).toBe(false);
+    expect(test.calls.some((argv) => argv[1] === 'create')).toBe(false);
   });
 
   it('reconciles controller-owned issue linkage and observes merge state without attempting a merge', async () => {

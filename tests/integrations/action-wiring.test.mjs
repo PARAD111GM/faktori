@@ -30,7 +30,9 @@ describe('Phase 4 integration wiring', () => {
         { ...scope, baseRefName: 'main', publisherRemote: 'controller-only', publisherWorktree: '/private/controller' },
         reconciledCommand,
         new InMemoryGitHubPublicationStore(),
-        async (argv) => argv.includes('rev-parse') ? { exitCode: 0, stdout: 'head-1\n', stderr: '' } : { exitCode: 0, stdout: '', stderr: '' },
+        async (argv) => argv.includes('rev-parse') ? { exitCode: 0, stdout: 'head-1\n', stderr: '' }
+          : argv.includes('ls-remote') ? { exitCode: 0, stdout: `${argv.at(-1).endsWith('/main') ? 'main' : 'head-1'}\t${argv.at(-1)}\n`, stderr: '' }
+            : { exitCode: 0, stdout: '', stderr: '' },
       ),
       random: { id: () => `id-${journal.records().length}`, secret: () => 'long-enough-private-verifier-secret-for-test' },
     });

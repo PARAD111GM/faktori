@@ -20,15 +20,18 @@ export interface ProgressionDecision {
   reasons: string[];
 }
 
+/** Trusted policy declares identities that must report on every admitted head. */
+export interface ProgressionRequirements { requiredCheckSources?: readonly string[]; }
+
 /**
  * Evaluates review and CI independently for one exact commit. Evidence for a
  * previous head is intentionally ignored rather than inherited on a rebase or
  * force-push. This records readiness; it never performs a merge.
  */
-export function evaluateCommitProgression(commit: string, evidence: readonly CommitEvidence[]): ProgressionDecision {
+export function evaluateCommitProgression(commit: string, evidence: readonly CommitEvidence[], requirements: ProgressionRequirements = {}): ProgressionDecision {
   const exact = evidence.filter((item) => item.commit === commit);
   const review = aggregate(exact, 'review');
-  const checks = aggregate(exact, 'check');
+  const checks = aggregate(exact, 'check', requirements.requiredCheckSources);
   const reviewVerdict = review?.verdict ?? 'pending';
   const checksVerdict = checks?.verdict ?? 'pending';
   const reasons: string[] = [];
@@ -50,7 +53,7 @@ export function evaluateCommitProgression(commit: string, evidence: readonly Com
   return decision(commit, 'ready_for_human_merge', reviewVerdict, checksVerdict, ['exact_commit_review_and_checks_passed']);
 }
 
-function aggregate(evidence: readonly CommitEvidence[], kind: EvidenceKind): CommitEvidence | undefined {
+function aggregate(evidence: readonly CommitEvidence[], kind: EvidenceKind, requiredSources: readonly string[] = []): CommitEvidence | undefined {
   const observations = evidence.filter((item) => item.kind === kind);
   if (observations.length === 0) return undefined;
   const latestBySource = new Map<string, CommitEvidence>();
@@ -59,6 +62,9 @@ function aggregate(evidence: readonly CommitEvidence[], kind: EvidenceKind): Com
     if (prior === undefined || prior.observedAt <= item.observedAt) latestBySource.set(item.source, item);
   }
   const values = [...latestBySource.values()];
+  if (kind === 'check' && requiredSources.some((source) => !latestBySource.has(source))) {
+    return { kind, commit: evidence[0]?.commit ?? '', verdict: 'pending', source: 'required-check-missing', observedAt: '' };
+  }
   const selected = values.find((item) => item.verdict === 'failed')
     ?? values.find((item) => item.verdict === 'pending')
     ?? values.find((item) => item.verdict === 'waived')

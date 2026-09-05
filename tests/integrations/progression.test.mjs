@@ -45,4 +45,12 @@ describe('commit-bound review and check progression', () => {
     ]);
     expect(result).toEqual(expect.objectContaining({ state: 'failed', checks: 'failed' }));
   });
+
+  it('keeps the exact head pending when a trusted required check identity is absent', () => {
+    const result = evaluateCommitProgression('head-b', [
+      evidence('review', 'head-b', 'passed', '2026-09-05T00:00:00Z', { source: 'reviewer-1' }),
+      evidence('check', 'head-b', 'passed', '2026-09-05T00:01:00Z', { source: 'build' }),
+    ], { requiredCheckSources: ['build', 'security'] });
+    expect(result).toEqual(expect.objectContaining({ state: 'waiting_for_checks', checks: 'pending' }));
+  });
 });

@@ -32,6 +32,11 @@ function fixture() {
   const gitCalls = [];
   const git = async (argv) => {
     gitCalls.push(argv);
+    if (argv.includes('ls-remote')) {
+      const ref = argv.at(-1).replace('refs/heads/', '');
+      const revision = ref === target.baseRefName ? target.baseRevision : target.expectedRevision;
+      return { exitCode: 0, stdout: `${revision}\trefs/heads/${ref}\n`, stderr: '' };
+    }
     if (argv.at(-3) === 'rev-parse') return { exitCode: 0, stdout: `${target.expectedRevision}\n`, stderr: '' };
     if (argv.at(-3) === 'push') return { exitCode: 0, stdout: '', stderr: '' };
     return { exitCode: 1, stdout: '', stderr: 'unexpected git command' };
@@ -54,7 +59,7 @@ describe('controller-owned GitHub draft publication', () => {
     expect(create).not.toContain(target.publisherRemote);
     expect(test.calls.filter((argv) => argv[1] === 'create')).toHaveLength(1);
     expect(test.gitCalls[0]).toEqual(expect.arrayContaining(['-C', target.publisherWorktree, 'rev-parse', '--verify', `${target.expectedRevision}^{commit}`]));
-    expect(test.gitCalls[1]).toEqual(expect.arrayContaining(['push', target.publisherRemote, `${target.expectedRevision}:refs/heads/${target.branch}`]));
+    expect(test.gitCalls.find((argv) => argv.includes('push'))).toEqual(expect.arrayContaining(['push', target.publisherRemote, `${target.expectedRevision}:refs/heads/${target.branch}`]));
   });
 
   it('reconciles a crash after the provider effect before retrying instead of creating a second pull request', async () => {
@@ -100,6 +105,7 @@ describe('controller-owned GitHub draft publication', () => {
     runGit(['-C', worktree, 'add', 'README.md']);
     runGit(['-C', worktree, 'commit', '-m', 'trusted object']);
     const expectedRevision = runGit(['-C', worktree, 'rev-parse', 'HEAD']).trim();
+    runGit(['-C', worktree, 'push', remote, `HEAD:refs/heads/develop`]);
     const hooks = join(worktree, '.git', 'untrusted-hooks');
     mkdirSync(hooks);
     writeFileSync(join(hooks, 'pre-push'), `#!/bin/sh\necho ran > '${hookMarker}'\n`);
@@ -112,7 +118,7 @@ describe('controller-owned GitHub draft publication', () => {
       if (argv[1] === 'create') { publications.push({ number: 3, url: 'https://github.example/pr/3', headRefName: 'faktori/controlled', headRefOid: expectedRevision, baseRefName: 'develop', isDraft: true }); return { exitCode: 0, stdout: 'https://github.example/pr/3\n', stderr: '' }; }
       return { exitCode: 1, stdout: '', stderr: 'unexpected gh command' };
     };
-    const controlled = { ...target, branch: 'faktori/controlled', expectedRevision, publisherRemote: remote, publisherWorktree: worktree };
+    const controlled = { ...target, branch: 'faktori/controlled', expectedRevision, baseRevision: expectedRevision, publisherRemote: remote, publisherWorktree: worktree };
     const controlledAction = action('controlled-operation', { request: { actionId: 'publish-controlled', scope: { ...action().request.scope, branch: controlled.branch, expectedRevision, baseRevision: controlled.baseRevision } } });
     const result = await new GitHubDraftPullRequestExecutor(controlled, gh, new InMemoryGitHubPublicationStore(), spawnGit).execute(controlledAction, async () => {});
 

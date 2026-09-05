@@ -182,6 +182,11 @@ export class BoundedCommandRunner {
     if (child.pid === undefined || child.pid < 1) {
       return { pid: -1, completion: Promise.resolve({ exitCode: null, signal: null, stdout: '', stderr: '', timedOut: false, outputLimitExceeded: false, spawnError: 'spawn did not return a child pid' }) };
     }
+    // Attach a listener before an asynchronous launch callback. In particular,
+    // a missing host command must resolve as a bounded failed observation rather
+    // than surface as an unhandled ChildProcess error event.
+    let earlySpawnError: string | undefined;
+    child.on('error', (error) => { earlySpawnError ??= errorMessage(error); });
     const pid = child.pid;
     if (input.onLaunched !== undefined) {
       try {
@@ -196,7 +201,7 @@ export class BoundedCommandRunner {
       let stderr: Buffer<ArrayBufferLike> = Buffer.alloc(0);
       let timedOut = false;
       let outputLimitExceeded = false;
-      let spawnError: string | undefined;
+      let spawnError: string | undefined = earlySpawnError;
       let closed = false;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let termination: Promise<void> | undefined;
@@ -241,6 +246,7 @@ export class BoundedCommandRunner {
       });
       child.on('error', (error) => { spawnError = errorMessage(error); finish(null, null); });
       child.on('close', finish);
+      if (earlySpawnError !== undefined) finish(null, null);
     });
     return { pid, completion };
   }

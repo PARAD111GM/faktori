@@ -133,6 +133,20 @@ describe('argv-only execution transports', () => {
     });
   });
 
+  it('reports a missing ps executable as an unknown identity without an unhandled process error', async () => {
+    const commands = new BoundedCommandRunner({
+      spawn: () => {
+        const child = new FakeChild(75);
+        queueMicrotask(() => child.emit('error', new Error('spawn ps ENOENT')));
+        return child;
+      },
+    });
+    const probe = new NativeIdentityProbe({ commands, cwd: CWD, env: ENV });
+
+    expect(await probe.inspect(process.pid)).toEqual({ status: 'unknown' });
+    expect(await probe.inspectAll()).toEqual({ status: 'unknown' });
+  });
+
   it('uses exact Docker argv, explicit env, and validates run/inspect output without invoking Docker', async () => {
     const calls = [];
     const id = 'a'.repeat(64);

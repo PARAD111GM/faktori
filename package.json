@@ -104,7 +104,7 @@
     "console:build": "vite build --config console/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm test && npm run build && npm run pack:verify",
+    "check": "npm run typecheck && npm run build && npm test && npm run pack:verify",
     "pack:verify": "node scripts/verify-packed-cli.mjs",
     "prepack": "npm run build",
     "build:status": "node scripts/update-build-status.mjs",

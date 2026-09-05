@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, realpath, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -10,6 +11,7 @@ import {
   cancelNativeExecution,
   launchDockerExecution,
   launchNativeExecution,
+  defaultSharedScratchRoot,
   profileTrustDisclosure,
   isValidatedDockerExecutionPlan,
 } from '../../src/execution/index.ts';
@@ -23,7 +25,7 @@ afterEach(async () => {
 });
 
 async function stagedJob() {
-  const scratch = await mkdtemp('/private/tmp/faktori-execution-');
+  const scratch = await mkdtemp(join(await realpath(tmpdir()), 'faktori-execution-'));
   roots.push(scratch);
   const workspace = join(scratch, 'job', 'workspace');
   const input = join(scratch, 'job', 'input');
@@ -51,6 +53,11 @@ function request(staged) {
 }
 
 describe('execution profiles', () => {
+  it('uses the Docker-shared macOS scratch root and the OS temporary root elsewhere', () => {
+    expect(defaultSharedScratchRoot('darwin', '/var/folders/example/T')).toBe('/private/tmp');
+    expect(defaultSharedScratchRoot('linux', '/tmp')).toBe('/tmp');
+  });
+
   it('makes native trust explicit and builds an allowlist-only environment with its exact cwd', async () => {
     const staged = await stagedJob();
     const plan = buildNativeExecutionPlan(request(staged), {
@@ -153,7 +160,7 @@ describe('execution profiles', () => {
 
   it('rejects traversal, symlink escapes, control storage, and Docker socket mounts', async () => {
     const staged = await stagedJob();
-    const outside = await mkdtemp('/private/tmp/faktori-outside-');
+    const outside = await mkdtemp(join(await realpath(tmpdir()), 'faktori-outside-'));
     roots.push(outside);
     await symlink(outside, join(staged.scratch, 'job', 'escape'));
 

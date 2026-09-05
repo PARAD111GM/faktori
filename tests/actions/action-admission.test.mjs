@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -26,6 +26,10 @@ const scope = Object.freeze({
 
 function clone(value) {
   return structuredClone(value);
+}
+
+async function temporaryDirectory() {
+  return realpath(tmpdir());
 }
 
 function authorityState(overrides = {}) {
@@ -90,7 +94,7 @@ async function grantedRequest(test, overrides = {}, nonce = 'nonce-1') {
 
 describe('controller-owned action admission', () => {
   it('uses one durable action claim across two controllers, so concurrent identical requests perform one effect', async () => {
-    const directory = await mkdtemp(join('/private/tmp', 'faktori-action-claim-'));
+    const directory = await mkdtemp(join(await temporaryDirectory(), 'faktori-action-claim-'));
     try {
       const path = join(directory, 'operations.jsonl');
       const authority = { current: async () => authorityState() };
@@ -118,7 +122,7 @@ describe('controller-owned action admission', () => {
   });
 
   it('restores a private file-backed verifier after a controller restart without placing it in the journal', async () => {
-    const directory = await mkdtemp(join('/private/tmp', 'faktori-action-vault-'));
+    const directory = await mkdtemp(join(await temporaryDirectory(), 'faktori-action-vault-'));
     try {
       const path = join(directory, 'operations.jsonl');
       const vaultPath = join(directory, 'controller-vault');

@@ -4,13 +4,21 @@
  * profile is a selected, pre-staged directory managed by the caller.
  */
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 
 import type { ExecutionProfile } from '../config/index.ts';
 import type { ContainerWorkerIdentity, NativeWorkerIdentity, WorkerIdentity } from '../runtime/contracts.ts';
 
-export const DEFAULT_SHARED_SCRATCH_ROOT = '/private/tmp';
+/**
+ * Docker Desktop commonly shares /private/tmp on macOS. Other supported hosts
+ * use Node's actual temporary-directory root instead of a macOS-only path.
+ */
+export function defaultSharedScratchRoot(platform = process.platform, temporaryDirectory = tmpdir()): string {
+  return platform === 'darwin' ? '/private/tmp' : temporaryDirectory;
+}
+
+export const DEFAULT_SHARED_SCRATCH_ROOT = defaultSharedScratchRoot();
 export const SAFE_ENVIRONMENT_KEYS = ['LANG', 'LC_ALL', 'PATH', 'TERM', 'TMPDIR'] as const;
 
 const FORBIDDEN_ENVIRONMENT_KEY = /^(?:GITHUB|GH|JIRA|ATLASSIAN|AWS|AZURE|GOOGLE|VERCEL|NETLIFY|CLOUDFLARE|DEPLOY|DOCKER|SSH|GIT_ASKPASS|GIT_CONFIG|NPM_TOKEN|NODE_AUTH_TOKEN)(?:_|$)/i;
@@ -184,10 +192,13 @@ export function buildNativeExecutionPlan(request: ExecutionRequest, inheritedEnv
 export function buildDockerExecutionPlan(request: ExecutionRequest, options: DockerProfileOptions): DockerExecutionPlan {
   validateRequest(request);
   validateDockerImage(options.image);
-  const scratchRoot = assertRealDirectory(options.scratchRoot ?? DEFAULT_SHARED_SCRATCH_ROOT, 'scratchRoot');
+  const configuredScratchRoot = options.scratchRoot ?? DEFAULT_SHARED_SCRATCH_ROOT;
+  const scratchRoot = assertRealDirectory(configuredScratchRoot, 'scratchRoot');
   const networkMode = request.networkMode ?? 'none';
   if (networkMode !== 'none' && networkMode !== 'bridge') throw new ExecutionPolicyError('networkMode must be "none" or explicit "bridge"');
-  const allowedSharedScratchRoots = (options.allowedSharedScratchRoots ?? [DEFAULT_SHARED_SCRATCH_ROOT])
+  // Naming scratchRoot is itself an explicit coordinator policy decision. When
+  // no broader allowlist is supplied, admit only that canonical root.
+  const allowedSharedScratchRoots = (options.allowedSharedScratchRoots ?? [configuredScratchRoot])
     .map((path) => assertRealDirectory(path, 'allowedSharedScratchRoots'));
   if (!allowedSharedScratchRoots.some((allowedRoot) => isWithin(allowedRoot, scratchRoot))) {
     throw new ExecutionPolicyError('scratchRoot is not within an explicitly allowed shared scratch root');

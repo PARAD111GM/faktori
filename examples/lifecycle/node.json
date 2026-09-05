@@ -1,0 +1,8 @@
+{
+  "workItem": "node-feature-001",
+  "stack": "Node.js",
+  "lifecycle": ["plan", "design", "build", "test", "deploy", "maintain"],
+  "package": "normal",
+  "acceptance": "HTTP behavior matches the accepted contract",
+  "evidence": {"test": "npm test (observed result recorded)", "deploy": "approved workflow receipt"}
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "sharedSource": "docs/lifecycle/contract.md",
+  "skills": ["bootstrap", "product-creation", "shaping", "plan", "design", "build", "test", "deploy", "maintain", "factory-operation", "factory-improvement"],
+  "providers": {
+    "codex": {"entry": "Read the public Faktori skill matching this request, then follow its linked lifecycle contract."},
+    "claude": {"entry": "Read the public Faktori skill matching this request, then follow its linked lifecycle contract."},
+    "cursor": {"entry": "Read the public Faktori skill matching this request, then follow its linked lifecycle contract."}
+  }
+}

@@ -8,24 +8,52 @@ function worker() {
   return { kind: 'native', pid: 4242, processStartedAt: '2026-09-05T01:00:01.000Z', processGroupId: 4242, runNonce: 'cursor-nonce' };
 }
 
-function fakeChild(pid = 4242) {
+function fakeChild(pid = 4242, options = {}) {
   const process = new EventEmitter();
   process.pid = pid;
+  process.running = true;
   process.stdout = new EventEmitter();
   process.stderr = new EventEmitter();
   process.writes = [];
-  process.stdin = { write(line) { process.writes.push(line); return true; }, end() { process.ended = true; } };
+  process.stdin = {
+    write(line) { process.writes.push(line); return true; },
+    end() {
+      process.ended = true;
+      if (options.exitOnEnd !== false && process.running) {
+        process.running = false;
+        queueMicrotask(() => process.emit('close', 0, null));
+      }
+    },
+  };
   return process;
 }
 
 function transport(child, options = {}) {
   const spawns = [];
+  const group = () => child.running
+    ? { processGroupId: child.pid, members: [{ pid: child.pid, processStartedAt: '2026-09-05T01:00:01.000Z', processGroupId: child.pid, running: true }] }
+    : { status: 'absent' };
   const provider = new CursorAcpStdioTransport({
     environment: { PATH: '/controlled/bin', CURSOR_PROFILE: 'selected-profile' },
     runNonce: 'cursor-nonce',
-    identityProbe: { async inspect(pid) { return options.identity ?? { pid, processStartedAt: '2026-09-05T01:00:01.000Z', processGroupId: pid, running: true }; } },
+    identityProbe: {
+      async inspect(pid) {
+        if (options.identityError) throw options.identityError;
+        return options.identity ?? (child.running ? { pid, processStartedAt: '2026-09-05T01:00:01.000Z', processGroupId: pid, running: true } : { status: 'absent' });
+      },
+      async inspectProcessGroup() { return options.group ?? group(); },
+    },
+    killProcessGroup(processGroupId, signal) {
+      options.killProcessGroup?.(processGroupId, signal);
+      if (options.killProcessGroup === undefined && signal === 'SIGTERM') {
+        child.running = false;
+        queueMicrotask(() => child.emit('close', null, 'SIGTERM'));
+      }
+    },
     spawn(command, args, spawnOptions) { spawns.push({ command, args, spawnOptions }); if (options.spawnError) throw options.spawnError; return child; },
     maxLineBytes: options.maxLineBytes,
+    closeGraceMs: options.closeGraceMs,
+    terminationGraceMs: options.terminationGraceMs,
   });
   return { provider, spawns };
 }
@@ -120,26 +148,125 @@ describe('Cursor ACP stdio transport', () => {
     expect(termination).toEqual([{ identity: worker(), reason: 'timeout' }]);
   });
 
-  it('safely supports only the documented cancel notification and closes stdin without ambient process signaling', async () => {
+  it('confirms a normal terminal child and process-group exit before releasing the connection', async () => {
     const child = fakeChild();
-    const connection = await transport(child).provider.connect(connectRequest());
+    const termination = [];
+    const { provider } = transport(child);
+    const connection = await provider.connect(connectRequest({ lifecycle: {
+      async onStarted() {},
+      async onTerminationRequired(identity, reason) { termination.push({ identity, reason }); },
+    } }));
     await connection.notify('session/cancel', { sessionId: 'cursor-session-77' });
     await expect(connection.notify('made/up', {})).rejects.toThrow(/unsupported/);
     await connection.close();
     expect(parseWrites(child)).toEqual([{ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: 'cursor-session-77' } }]);
     expect(child.ended).toBe(true);
+    expect(termination).toEqual([]);
+    child.running = true;
+    await expect(provider.connect(connectRequest({ runId: 'run-after-confirmed-exit' }))).resolves.toBeDefined();
   });
 
-  it('refuses missing identities and duplicate active transport connections before sending ACP messages', async () => {
-    const identityChild = fakeChild();
+  it('revokes durably before identity-checked cleanup when EOF leaves a Cursor ACP child running', async () => {
+    const child = fakeChild(4242, { exitOnEnd: false });
+    const order = [];
+    const { provider } = transport(child, {
+      closeGraceMs: 1,
+      terminationGraceMs: 1,
+      killProcessGroup(processGroupId, signal) {
+        order.push(`signal:${processGroupId}:${signal}`);
+        if (signal === 'SIGTERM') {
+          child.running = false;
+          queueMicrotask(() => child.emit('close', null, 'SIGTERM'));
+        }
+      },
+    });
+    const connection = await provider.connect(connectRequest({ lifecycle: {
+      async onStarted() { order.push('started'); },
+      async onTerminationRequired(identity, reason) { order.push(`revoke:${identity.pid}:${reason}`); },
+    } }));
+
+    await connection.close();
+    expect(order).toEqual(['started', 'revoke:4242:cancelled', 'signal:4242:SIGTERM']);
+    child.running = true;
+    await expect(provider.connect(connectRequest({ runId: 'run-after-cleanup' }))).resolves.toBeDefined();
+  });
+
+  it('does not release a lingering active identity when process-group exit cannot be confirmed', async () => {
+    const child = fakeChild(4242, { exitOnEnd: false });
+    const signals = [];
+    const { provider } = transport(child, {
+      closeGraceMs: 1,
+      terminationGraceMs: 1,
+      killProcessGroup(processGroupId, signal) { signals.push([processGroupId, signal]); },
+    });
+    const connection = await provider.connect(connectRequest({ lifecycle: {
+      async onStarted() {},
+      async onTerminationRequired() {},
+    } }));
+
+    await expect(connection.close()).rejects.toThrow(/could not be confirmed/);
+    expect(signals).toEqual([[4242, 'SIGTERM'], [4242, 'SIGKILL']]);
+    await expect(provider.connect(connectRequest({ runId: 'still-active' }))).rejects.toThrow(/one active/);
+  });
+
+  it('orders protocol-failure revocation before identity-checked termination and releases only after confirmed exit', async () => {
+    const child = fakeChild(4242, { exitOnEnd: false });
+    const order = [];
+    const { provider } = transport(child, {
+      terminationGraceMs: 1,
+      killProcessGroup(processGroupId, signal) {
+        order.push(`signal:${processGroupId}:${signal}`);
+        if (signal === 'SIGTERM') {
+          child.running = false;
+          queueMicrotask(() => child.emit('close', null, 'SIGTERM'));
+        }
+      },
+    });
+    const connection = await provider.connect(connectRequest({ lifecycle: {
+      async onStarted() { order.push('started'); },
+      async onTerminationRequired(identity, reason) { order.push(`revoke:${identity.pid}:${reason}`); },
+    } }));
+    const pending = connection.request({ id: 'one', method: 'initialize', params: {} }, 100);
+    child.stdout.emit('data', '{not-json}\n');
+    await expect(pending).rejects.toThrow(/malformed/);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(order).toEqual(['started', 'revoke:4242:output_limit', 'signal:4242:SIGTERM']);
+    child.running = true;
+    await expect(provider.connect(connectRequest({ runId: 'run-after-protocol-cleanup' }))).resolves.toBeDefined();
+  });
+
+  it('quarantines missing identities and refuses duplicate active transport connections before sending ACP messages', async () => {
+    const identityChild = fakeChild(4242, { exitOnEnd: false });
     const noIdentity = transport(identityChild, { identity: { status: 'unknown' } });
     await expect(noIdentity.provider.connect(connectRequest())).rejects.toThrow(/identity/);
     expect(identityChild.writes).toEqual([]);
+    await expect(noIdentity.provider.connect(connectRequest({ runId: 'quarantined' }))).rejects.toThrow(/one active/);
 
     const child = fakeChild();
     const { provider } = transport(child);
     await provider.connect(connectRequest());
     await expect(provider.connect(connectRequest({ runId: 'run-78' }))).rejects.toThrow(/one active/);
+  });
+
+  it('quarantines mismatched and failed identity probes without signaling an unproven worker', async () => {
+    for (const options of [
+      { identity: { pid: 9999, processStartedAt: 'other', processGroupId: 9999, running: true } },
+      { identityError: new Error('probe internals must not escape') },
+    ]) {
+      const child = fakeChild(4242, { exitOnEnd: false });
+      const signals = [];
+      const { provider } = transport(child, {
+        ...options,
+        killProcessGroup(processGroupId, signal) { signals.push([processGroupId, signal]); },
+      });
+
+      await expect(provider.connect(connectRequest())).rejects.toThrow(/identity/);
+      expect(child.ended).toBe(true);
+      expect(child.writes).toEqual([]);
+      expect(signals).toEqual([]);
+      await expect(provider.connect(connectRequest({ runId: 'blocked-by-unproven-worker' }))).rejects.toThrow(/one active/);
+    }
   });
 
   it('closes stdin when durable worker-start recording fails, without sending any ACP message', async () => {
@@ -148,5 +275,22 @@ describe('Cursor ACP stdio transport', () => {
     await expect(provider.connect(connectRequest({ lifecycle: { async onStarted() { throw new Error('journal unavailable'); } } }))).rejects.toThrow(/journal unavailable/);
     expect(child.ended).toBe(true);
     expect(child.writes).toEqual([]);
+  });
+
+  it('retains the transport slot when worker-start persistence fails and EOF cannot prove exit', async () => {
+    const child = fakeChild(4242, { exitOnEnd: false });
+    const signals = [];
+    const { provider } = transport(child, {
+      closeGraceMs: 1,
+      terminationGraceMs: 1,
+      killProcessGroup(processGroupId, signal) { signals.push([processGroupId, signal]); },
+    });
+    await expect(provider.connect(connectRequest({ lifecycle: {
+      async onStarted() { throw new Error('journal unavailable'); },
+      async onTerminationRequired() { throw new Error('worker identity was not durably recorded'); },
+    } }))).rejects.toThrow(/journal unavailable/);
+    expect(child.ended).toBe(true);
+    expect(signals).toEqual([]);
+    await expect(provider.connect(connectRequest({ runId: 'blocked-by-unrecorded-survivor' }))).rejects.toThrow(/one active/);
   });
 });

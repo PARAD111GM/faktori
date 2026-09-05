@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
-import { CoordinatorCodexDelivery, CoordinatorProviderDelivery, DeliveryPreconditionError } from '../../src/runtime/delivery.ts';
+import { CoordinatorCodexDelivery, CoordinatorProviderDelivery, DeliveryPreconditionError, providerDeliveryOperationRequestDigest } from '../../src/runtime/delivery.ts';
 
 async function fixtureDirectory() {
   return mkdtemp(join(tmpdir(), 'faktori-delivery-'));
@@ -18,7 +19,10 @@ function intent(runId = 'run-delivery') {
     workItem: { id: 'F2-03', revision: 'work@1' },
     target: { factoryId: 'factory', productId: 'product', repository: 'org/repo', branch: 'build/phase-2', baseRevision: 'base', expectedRevision: 'expected' },
     context: { packetRevision: 'packet@4', digest: 'packet-digest' },
-    execution: { profile: 'native', workspaceId: `workspace-${runId}`, workspacePath: '/private/tmp/faktori-job', providerId: 'codex', model: 'gpt-5.5', approvedInputDigests: ['input-digest'] },
+    execution: {
+      profile: 'native', workspaceId: `workspace-${runId}`, workspacePath: '/private/tmp/faktori-job', providerId: 'codex', model: 'gpt-5.5',
+      approvedInputDigests: ['input-digest', providerContextPayloadDigest({ packetRevision: 'packet@4', digest: 'packet-digest', prompt: 'Current bounded context.' })],
+    },
     budget: { reservationId: `reservation-${runId}`, maxRuntimeMinutes: 3, estimatedTokens: 100, status: 'held' },
     authority: { authorityRevision: 'authority@1', epoch: 1, scopeDigest: 'scope', policy: { requireIntentApproval: true, requireSpecificationApproval: true, requireIndependentReview: true, mergeAuthority: 'human', productionReleaseAuthority: 'human', allowPreviewDeployment: false, allowLocalDeployment: false, allowSeparateBilling: false } },
     attempt: 1,
@@ -105,6 +109,9 @@ describe('coordinator-owned Codex delivery', () => {
       expect(kinds.indexOf('effect.receipt')).toBeLessThan(kinds.indexOf('worker.started'));
       expect(kinds.indexOf('worker.started')).toBeLessThan(kinds.indexOf('provider.event'));
       expect(kinds.indexOf('provider.event')).toBeLessThan(kinds.indexOf('provider.final'));
+      const launch = owner.journal.events().find((event) => event.runId === 'run-delivery' && event.kind === 'effect.intended')?.data.effect;
+      expect(launch.requestDigest).toBe(providerDeliveryOperationRequestDigest(intent(), request().context, 'start', undefined));
+      expect(launch.requestDigest).not.toBe(providerDeliveryOperationRequestDigest(intent(), { ...request().context, prompt: 'A different executed prompt.' }, 'start', undefined));
       expect(owner.snapshot('run-delivery')).toEqual(expect.objectContaining({ state: 'succeeded', reservation: expect.objectContaining({ status: 'consumed' }) }));
       await owner.release();
       owner.close();
@@ -113,13 +120,15 @@ describe('coordinator-owned Codex delivery', () => {
     }
   });
 
-  it('rejects mismatched context and revoked authority before lifecycle or adapter effects', async () => {
+  it('rejects mismatched or unapproved exact prompt content and revoked authority before lifecycle or adapter effects', async () => {
     const directory = await fixtureDirectory();
     try {
       const owner = await coordinator(directory);
       await owner.admit(intent());
       const { service, calls } = delivery(owner);
       await expect(service.deliver(request('run-delivery', { context: { packetRevision: 'wrong', digest: 'packet-digest', prompt: 'wrong' } }))).rejects.toBeInstanceOf(DeliveryPreconditionError);
+      await expect(service.deliver(request('run-delivery', { context: { packetRevision: 'packet@4', digest: 'packet-digest', prompt: 'Caller substituted a different prompt.' } }))).rejects.toThrow(/exact .*prompt and context payload/);
+      await expect(service.deliver(request('run-delivery', { context: { packetRevision: 'packet@4', digest: 'packet-digest', prompt: ' Current bounded context.' } }))).rejects.toThrow(/exact .*prompt and context payload/);
       await owner.record('authority.revoked', 'run-delivery', { epoch: 2 });
       await expect(service.deliver(request())).rejects.toBeInstanceOf(DeliveryPreconditionError);
       expect(calls.start).toEqual([]);
@@ -237,6 +246,46 @@ describe('coordinator-owned Codex delivery', () => {
       const result = await service.deliver(request());
       expect(result.final.outcome).toBe('interrupted_uncertain');
       expect(owner.snapshot('run-delivery')).toEqual(expect.objectContaining({ state: 'interrupted_uncertain', reservation: expect.objectContaining({ status: 'uncertain' }) }));
+      await owner.release();
+      owner.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('coalesces only an exact concurrent delivery and rejects a prompt-conflicting race before another launch', async () => {
+    const directory = await fixtureDirectory();
+    try {
+      const owner = await coordinator(directory);
+      const run = intent();
+      const conflictingContext = { packetRevision: 'packet@4', digest: 'packet-digest', prompt: 'A separately approved but different prompt.' };
+      run.execution.approvedInputDigests.push(providerContextPayloadDigest(conflictingContext));
+      await owner.admit(run);
+      let started;
+      let release;
+      let launches = 0;
+      const entered = new Promise((resolve) => { started = resolve; });
+      const hold = new Promise((resolve) => { release = resolve; });
+      const { service } = delivery(owner, {
+        adapter: {
+          async start(_run, _context, lifecycle) {
+            launches += 1;
+            await lifecycle.onStarted({ kind: 'native', pid: 771, processStartedAt: 'concurrent-worker', processGroupId: 771, runNonce: 'concurrent-nonce' });
+            started();
+            await hold;
+            return { command: 'start', events: [], malformedEventCount: 0, final: final() };
+          },
+        },
+      });
+      const first = service.deliver(request());
+      await entered;
+      const exactReplay = service.deliver(request());
+      await expect(service.deliver(request('run-delivery', { context: conflictingContext }))).rejects.toThrow(/active Codex delivery with conflicting executed content/);
+      expect(launches).toBe(1);
+      release();
+      expect((await first).final.outcome).toBe('completed');
+      expect(await exactReplay).toEqual(expect.objectContaining({ status: 'delivered', final: expect.objectContaining({ outcome: 'completed' }) }));
+      expect(launches).toBe(1);
       await owner.release();
       owner.close();
     } finally {

@@ -7,6 +7,7 @@ import type {
   ProviderTurnAdapter,
   ProviderTurnLifecycle,
 } from './contracts.ts';
+import { providerContextIsAuthorized, providerContextPayloadDigest } from './contracts.ts';
 
 type JsonRecord = Record<string, unknown>;
 type Outcome = ProviderFinalResult['outcome'];
@@ -160,6 +161,7 @@ function validIntent(intent: RunIntent, limits: CursorAcpLimits): string | undef
 function validContext(intent: RunIntent, current: CursorCurrentContext): string | undefined {
   if (current.packetRevision !== intent.context.packetRevision || current.digest !== intent.context.digest) return 'current context reference does not match the run intent';
   if (!nonEmpty(current.prompt)) return 'current context packet and prompt are required';
+  if (!providerContextIsAuthorized(intent, current)) return 'current context prompt payload is not authorized by the run intent';
   return undefined;
 }
 
@@ -371,7 +373,7 @@ export class CursorAcpAdapter implements ProviderTurnAdapter {
       this.#active.set(intent.runId, { connection, sessionId: establishedSession, lifecycle, worker: connection.worker });
       const prompt = await this.#request(connection, intent.runId, 'session-prompt', 'session/prompt', {
         sessionId: establishedSession,
-        prompt: [{ type: 'text', text: current.prompt.trim() }],
+        prompt: [{ type: 'text', text: current.prompt }],
       });
       events.push({ type: 'acp.session.prompt', raw: prompt });
       if (rpcError(prompt)) return this.#result(command, events, malformedEventCount, this.#errorFinal(rpcError(prompt) as string, establishedSession));
@@ -389,8 +391,22 @@ export class CursorAcpAdapter implements ProviderTurnAdapter {
         nativeCancellationReceipt: false,
       }, evidence);
     } finally {
-      this.#active.delete(intent.runId);
-      await connection?.close?.().catch(() => undefined);
+      try {
+        // A clean ACP terminal response is not enough when the transport
+        // cannot confirm that its worker has exited.  The transport's close
+        // boundary owns that observation and must fail closed.
+        await connection?.close?.();
+      } catch (error) {
+        const evidence = sanitize(error instanceof Error ? error.message : 'Cursor ACP worker exit could not be confirmed');
+        return this.#result(command, events, malformedEventCount, {
+          outcome: 'interrupted_uncertain',
+          summary: evidence ?? 'Cursor ACP worker exit could not be confirmed',
+          usage: usageUnavailable('Cursor ACP worker exit could not be confirmed'),
+          nativeCancellationReceipt: false,
+        }, evidence);
+      } finally {
+        this.#active.delete(intent.runId);
+      }
     }
   }
 
@@ -408,7 +424,7 @@ export class CursorAcpAdapter implements ProviderTurnAdapter {
   }
 
   #deduplicated(command: 'start' | 'resume', intent: RunIntent, current: CursorCurrentContext, binding: CursorSessionBinding | undefined, lifecycle?: ProviderTurnLifecycle): Promise<CursorRunResult> {
-    const signature = JSON.stringify({ command, packetRevision: current.packetRevision, digest: current.digest, sessionId: binding?.sessionId });
+    const signature = JSON.stringify({ command, packetRevision: current.packetRevision, digest: current.digest, payloadDigest: providerContextPayloadDigest(current), sessionId: binding?.sessionId });
     const prior = this.#inFlight.get(intent.runId);
     if (prior !== undefined) {
       return prior.signature === signature

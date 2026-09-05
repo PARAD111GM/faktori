@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ClaudeAdapter } from '../../src/providers/claude.ts';
+import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 
 function intent(overrides = {}) {
   const execution = {
@@ -9,7 +10,11 @@ function intent(overrides = {}) {
     workspacePath: '/job-workspaces/job-77',
     providerId: 'claude',
     model: 'claude-sonnet-test',
-    approvedInputDigests: ['sha256:input'],
+    approvedInputDigests: ['sha256:input', ...[
+      'Context packet packet@4. Execute only the admitted bounded work.',
+      'Context packet packet@4. Edit only src/example.ts.',
+      'Context packet packet@4. Continue from current references.',
+    ].map((prompt) => providerContextPayloadDigest({ packetRevision: 'packet@4', digest: 'sha256:packet', prompt }))],
     ...(overrides.execution ?? {}),
   };
   return {
@@ -128,6 +133,19 @@ describe('bounded Claude print adapter', () => {
     expect(runner.calls[0].cwd).toBe('/job-workspaces/job-77');
   });
 
+  it('executes the exact authorized prompt bytes and rejects substituted content', async () => {
+    const runner = fakeRunner({ exitCode: 0, stdout: jsonl(
+      { type: 'system', subtype: 'init', session_id: '22222222-2222-4222-8222-222222222222' },
+      { type: 'result', subtype: 'success', session_id: '22222222-2222-4222-8222-222222222222', result: 'done' },
+    ) });
+    const exact = context({ prompt: '  exact Claude prompt\n' });
+    const target = intent({ execution: { approvedInputDigests: [providerContextPayloadDigest(exact)] } });
+    expect((await adapter(runner).start(target, exact)).final.outcome).toBe('completed');
+    expect(runner.calls[0].args.at(-1)).toBe(exact.prompt);
+    expect((await adapter(runner).start(target, { ...exact, prompt: exact.prompt.trim() })).final.outcome).toBe('unavailable');
+    expect(runner.calls).toHaveLength(1);
+  });
+
   it.each([
     ['factory', intent({ target: { ...intent().target, factoryId: 'other-factory' } }), binding()],
     ['product', intent({ target: { ...intent().target, productId: 'other-product' } }), binding()],
@@ -146,6 +164,7 @@ describe('bounded Claude print adapter', () => {
   it.each([
     ['missing current prompt', intent(), context({ prompt: '' })],
     ['mismatched current digest', intent(), context({ digest: 'sha256:other' })],
+    ['unapproved prompt content', intent(), context({ prompt: 'Caller substituted unapproved content.' })],
     ['unapproved model', intent({ execution: { model: 'other-model' } }), context()],
     ['runtime bound exceeded', intent({ budget: { ...intent().budget, maxRuntimeMinutes: 6 } }), context()],
     ['token bound exceeded', intent({ budget: { ...intent().budget, estimatedTokens: 1_001 } }), context()],

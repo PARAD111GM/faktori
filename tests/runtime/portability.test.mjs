@@ -64,4 +64,9 @@ describe('cross-provider artifact handoff', () => {
     expect(() => createPortableHandoff(handoff({ artifacts: [{ ...handoff().artifacts[0], reference: '/Users/person/.claude/session.json' }] }))).toThrow(/private paths/i);
     expect(() => createPortableHandoff({ ...handoff(), publisherCredential: 'forbidden' })).toThrow(/unsupported private/);
   });
+
+  it('rejects nested scope and artifact fields rather than carrying provider-native state or authority through copies', () => {
+    expect(() => createPortableHandoff(handoff({ scope: { ...handoff().scope, sessionId: 'native-session', authority: { merge: true } } }))).toThrow(/scope contains unsupported/i);
+    expect(() => createPortableHandoff(handoff({ artifacts: [{ ...handoff().artifacts[0], providerEnvelope: { credential: 'secret' } }] }))).toThrow(/artifact contains unsupported/i);
+  });
 });

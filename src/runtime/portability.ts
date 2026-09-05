@@ -47,6 +47,7 @@ export interface PortableHandoff {
 const ROLES: readonly PortableRole[] = ['planning', 'implementation', 'independent_review'];
 const PROVIDERS = new Set<SupportedProviderId>(['codex', 'claude', 'cursor']);
 const PRIVATE_REFERENCE = /(^|[/\\])(Users|home)([/\\])|\.codex|\.claude|session|credential|token/i;
+const ARTIFACT_KINDS = new Set<PortableArtifactReference['kind']>(['intent', 'specification', 'plan', 'implementation', 'verification', 'review', 'summary']);
 
 function nonempty(value: unknown, label: string): string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\u0000')) throw new Error(`${label} must be a non-empty safe string`);
@@ -62,6 +63,14 @@ function stable(value: unknown): string {
 
 function digest(value: unknown): string {
   return createHash('sha256').update(stable(value)).digest('hex');
+}
+
+function exactObject(value: unknown, label: string, allowed: readonly string[]): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object`);
+  const record = value as Record<string, unknown>;
+  const unexpected = Object.keys(record).filter((key) => !allowed.includes(key));
+  if (unexpected.length > 0) throw new Error(`${label} contains unsupported private or authority-bearing fields: ${unexpected.join(', ')}`);
+  return record;
 }
 
 /** Assigns every V1 role while preserving distinct session purposes for independent review. */
@@ -88,28 +97,41 @@ export type PortableHandoffInput = Omit<PortableHandoff, 'format' | 'handoffId' 
  */
 export function createPortableHandoff(input: PortableHandoffInput): PortableHandoff {
   const allowed = new Set(['handoffKey', 'sourceRunId', 'sourceProviderId', 'targetProviderId', 'role', 'scope', 'artifacts', 'verification', 'summary', 'createdAt']);
-  const unexpected = Object.keys(input as Record<string, unknown>).filter((key) => !allowed.has(key));
+  const inputRecord = exactObject(input, 'Portable handoff', [...allowed]);
+  const unexpected = Object.keys(inputRecord).filter((key) => !allowed.has(key));
   if (unexpected.length > 0) throw new Error(`Portable handoff contains unsupported private or authority-bearing fields: ${unexpected.join(', ')}`);
   const handoffKey = nonempty(input.handoffKey, 'handoffKey');
   nonempty(input.sourceRunId, 'sourceRunId');
   if (!PROVIDERS.has(input.sourceProviderId) || !PROVIDERS.has(input.targetProviderId)) throw new Error('Handoff providers must be supported');
   if (input.sourceProviderId === input.targetProviderId) throw new Error('Cross-provider handoff requires different source and target providers');
   if (!ROLES.includes(input.role)) throw new Error('Handoff role is unsupported');
-  for (const [key, value] of Object.entries(input.scope)) {
-    if (key === 'authorityEpoch') {
-      if (!Number.isInteger(value) || Number(value) < 0) throw new Error('authorityEpoch must be a non-negative integer');
-    } else nonempty(value, `scope.${key}`);
-  }
-  if (input.artifacts.length === 0) throw new Error('Portable handoff requires at least one accepted artifact');
+  const scopeRecord = exactObject(input.scope, 'scope', ['factoryId', 'productId', 'repository', 'workItemId', 'workItemRevision', 'contextRevision', 'authorityRevision', 'authorityEpoch']);
+  const authorityEpoch = scopeRecord.authorityEpoch;
+  if (!Number.isInteger(authorityEpoch) || Number(authorityEpoch) < 0) throw new Error('authorityEpoch must be a non-negative integer');
+  const scope = {
+    factoryId: nonempty(scopeRecord.factoryId, 'scope.factoryId'),
+    productId: nonempty(scopeRecord.productId, 'scope.productId'),
+    repository: nonempty(scopeRecord.repository, 'scope.repository'),
+    workItemId: nonempty(scopeRecord.workItemId, 'scope.workItemId'),
+    workItemRevision: nonempty(scopeRecord.workItemRevision, 'scope.workItemRevision'),
+    contextRevision: nonempty(scopeRecord.contextRevision, 'scope.contextRevision'),
+    authorityRevision: nonempty(scopeRecord.authorityRevision, 'scope.authorityRevision'),
+    authorityEpoch: authorityEpoch as number,
+  };
+  if (!Array.isArray(input.artifacts) || input.artifacts.length === 0) throw new Error('Portable handoff requires at least one accepted artifact');
   const artifactIds = new Set<string>();
-  for (const artifact of input.artifacts) {
-    if (artifactIds.has(artifact.artifactId)) throw new Error(`Duplicate artifactId ${artifact.artifactId}`);
-    artifactIds.add(nonempty(artifact.artifactId, 'artifactId'));
-    nonempty(artifact.revision, 'artifact.revision');
-    nonempty(artifact.digest, 'artifact.digest');
+  const artifacts: PortableArtifactReference[] = input.artifacts.map((candidate) => {
+    const artifact = exactObject(candidate, 'artifact', ['artifactId', 'kind', 'revision', 'digest', 'reference']);
+    const artifactId = nonempty(artifact.artifactId, 'artifactId');
+    if (artifactIds.has(artifactId)) throw new Error(`Duplicate artifactId ${artifactId}`);
+    artifactIds.add(artifactId);
+    if (!ARTIFACT_KINDS.has(artifact.kind as PortableArtifactReference['kind'])) throw new Error('artifact.kind is unsupported');
+    const revision = nonempty(artifact.revision, 'artifact.revision');
+    const artifactDigest = nonempty(artifact.digest, 'artifact.digest');
     const reference = nonempty(artifact.reference, 'artifact.reference');
     if (PRIVATE_REFERENCE.test(reference) || reference.startsWith('/')) throw new Error('Artifact references must not expose private paths, sessions, credentials or tokens');
-  }
+    return { artifactId, kind: artifact.kind as PortableArtifactReference['kind'], revision, digest: artifactDigest, reference };
+  });
   if (!Array.isArray(input.verification) || input.verification.some((item) => typeof item !== 'string' || item.trim().length === 0)) throw new Error('Verification must contain only non-empty evidence summaries');
   nonempty(input.summary, 'summary');
   nonempty(input.createdAt, 'createdAt');
@@ -119,8 +141,8 @@ export function createPortableHandoff(input: PortableHandoffInput): PortableHand
     sourceProviderId: input.sourceProviderId,
     targetProviderId: input.targetProviderId,
     role: input.role,
-    scope: input.scope,
-    artifacts: input.artifacts,
+    scope,
+    artifacts,
   };
   const idempotencyKey = digest(identity);
   return {
@@ -131,8 +153,8 @@ export function createPortableHandoff(input: PortableHandoffInput): PortableHand
     sourceProviderId: input.sourceProviderId,
     targetProviderId: input.targetProviderId,
     role: input.role,
-    scope: { ...input.scope },
-    artifacts: input.artifacts.map((artifact) => ({ ...artifact })),
+    scope,
+    artifacts,
     verification: [...input.verification],
     summary: input.summary,
     createdAt: input.createdAt,

@@ -56,6 +56,38 @@ async function close(owner) {
 }
 
 describe('durable delegation', () => {
+  it('admits independent workstreams concurrently with distinct ownership/workspaces and retains both results', async () => {
+    const root = await directory();
+    try {
+      const owner = await coordinator(root);
+      const delegation = service(owner);
+      const [implementation, docs] = await Promise.all([
+        delegation.admit(request()),
+        delegation.admit(request({ delegationId: 'docs', workstreamId: 'docs', ownership: { paths: ['docs/guide.md'], mode: 'exclusive' }, artifactReferences: [] })),
+      ]);
+      expect(implementation.accepted).toBe(true);
+      expect(docs.accepted).toBe(true);
+      expect(implementation.child.childRunId).not.toBe(docs.child.childRunId);
+      expect(implementation.child.snapshot.intent.execution.workspaceId).not.toBe(docs.child.snapshot.intent.execution.workspaceId);
+      expect(implementation.child.snapshot.intent.execution.workspacePath).not.toBe(docs.child.snapshot.intent.execution.workspacePath);
+
+      await Promise.all([
+        owner.record('provider.final', implementation.child.childRunId, { result: { outcome: 'completed', usage: { availability: 'reported', outputTokens: 10 }, nativeCancellationReceipt: false } }),
+        owner.record('provider.final', docs.child.childRunId, { result: { outcome: 'completed', usage: { availability: 'reported', outputTokens: 5 }, nativeCancellationReceipt: false } }),
+      ]);
+      await Promise.all([
+        delegation.handoff('parent', implementation.child.childRunId, [{ artifactId: 'implementation', digest: 'implementation-digest' }]),
+        delegation.handoff('parent', docs.child.childRunId, [{ artifactId: 'guide', digest: 'guide-digest' }]),
+      ]);
+      const resultMessages = owner.snapshot('parent').messages
+        .map((message) => JSON.parse(message.body))
+        .filter((message) => message.kind === 'child.result');
+      expect(resultMessages).toHaveLength(2);
+      expect(resultMessages.map((message) => message.artifactReferences[0].artifactId).sort()).toEqual(['guide', 'implementation']);
+      await close(owner);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('serializes duplicate/racing child admission through the coordinator and never queues a duplicate writer message', async () => {
     const root = await directory();
     try {
@@ -70,6 +102,22 @@ describe('durable delegation', () => {
       await delegation.message('parent', first.child.childRunId, 'Continue with the approved artifact.');
       await delegation.message('parent', first.child.childRunId, 'Continue with the approved artifact.');
       expect(owner.journal.events().filter((event) => event.runId === first.child.childRunId && event.kind === 'message.queued')).toHaveLength(2);
+      await close(owner);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('serializes admissions across delegation-service instances before checking ownership', async () => {
+    const root = await directory();
+    try {
+      const owner = await coordinator(root);
+      const firstService = service(owner);
+      const secondService = service(owner);
+      const [first, second] = await Promise.all([
+        firstService.admit(request()),
+        secondService.admit(request({ delegationId: 'review', workstreamId: 'review', ownership: { paths: ['src'], mode: 'exclusive' } })),
+      ]);
+      expect([first.accepted, second.accepted].filter(Boolean)).toHaveLength(1);
+      expect([first, second].find((result) => !result.accepted)).toEqual({ accepted: false, reason: 'ownership_conflicts_with_active_child' });
       await close(owner);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -171,6 +219,35 @@ describe('durable delegation', () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  it('forwards only exact portable child result evidence, never native session state or untrusted nested fields', async () => {
+    const root = await directory();
+    try {
+      const owner = await coordinator(root);
+      const delegation = service(owner);
+      const admitted = await delegation.admit(request());
+      await owner.record('provider.final', admitted.child.childRunId, {
+        result: {
+          outcome: 'completed', sessionId: 'provider-session-should-not-cross', nativeCancellationReceipt: true,
+          summary: 'safe portable summary', revision: 'artifact@1', verification: ['safe verification', '/Users/nathan/private-proof'],
+          usage: { availability: 'reported', outputTokens: 10, reportedBy: 'provider-native-meter', nested: { secret: 'do-not-forward' } },
+          secret: 'do-not-forward', nested: { sessionId: 'do-not-forward', authority: 'do-not-forward' },
+        },
+      });
+      await delegation.handoff('parent', admitted.child.childRunId, [{ artifactId: 'patch', digest: 'output-digest' }]);
+      const submitted = owner.journal.events().find((event) => event.runId === admitted.child.childRunId && event.kind === 'provider.event' && event.data.type === 'delegation.result-submitted');
+      const forwarded = owner.snapshot('parent').messages.find((message) => JSON.parse(message.body).kind === 'child.result');
+      expect(submitted).toBeDefined();
+      expect(forwarded).toBeDefined();
+      const serialized = `${JSON.stringify(submitted.data.event)}\n${forwarded.body}`;
+      expect(serialized).not.toMatch(/sessionId|nativeCancellationReceipt|secret|nested|reportedBy|authority|\/Users/i);
+      expect(JSON.parse(forwarded.body).result).toEqual({
+        format: 'faktori.delegated-result-evidence/v1', outcome: 'completed', summary: 'safe portable summary', revision: 'artifact@1',
+        verification: ['safe verification'], usage: { availability: 'reported', outputTokens: 10 },
+      });
+      await close(owner);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('recovers an admission interrupted before its initial message using only the identical request', async () => {
     const root = await directory();
     try {
@@ -194,6 +271,39 @@ describe('durable delegation', () => {
       expect(recovered).toEqual(expect.objectContaining({ accepted: true }));
       expect(allocations).toBe(1);
       expect(owner.journal.events().filter((event) => event.runId === recovered.child.childRunId && event.kind === 'run.admitted')).toHaveLength(1);
+      expect(owner.journal.events().filter((event) => event.runId === recovered.child.childRunId && event.kind === 'message.queued')).toHaveLength(1);
+      await close(owner);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('fails closed on a crash-orphan until its exact retry durably restores ownership, including after restart', async () => {
+    const root = await directory();
+    try {
+      let owner = await coordinator(root);
+      let delegation = service(owner);
+      const originalRecord = owner.record.bind(owner);
+      let interruptAdmissionEnvelope = true;
+      owner.record = async (kind, runId, data) => {
+        if (interruptAdmissionEnvelope && kind === 'provider.event' && data.type === 'delegation.child-admitted') {
+          interruptAdmissionEnvelope = false;
+          throw new Error('simulated crash after run admission');
+        }
+        return originalRecord(kind, runId, data);
+      };
+      await expect(delegation.admit(request())).rejects.toThrow('simulated crash after run admission');
+      const orphan = owner.snapshots().find((snapshot) => snapshot.intent.admissionKey.startsWith('delegation:parent:implement:'));
+      expect(orphan?.intent.execution.workspacePath).toMatch(/delegated-/);
+      await close(owner);
+
+      owner = await DurableCoordinator.open({ factoryId: 'factory', journalPath: join(root, 'operations.jsonl'), projectionPath: join(root, 'projection-orphan-restart.sqlite'), identity: { instanceId: 'orphan-restart', pid: 3, processStartedAt: 'restart' }, limits: { maxConcurrentRuns: 8, maxRetries: 1, maxRuntimeMinutes: 10, maxTokens: 1_000, strictSpending: false, strictSpendingSupported: false } });
+      await owner.claim();
+      delegation = service(owner, { allocate: () => ({ workspaceId: orphan.intent.execution.workspaceId, workspacePath: orphan.intent.execution.workspacePath, profile: 'native', providerId: 'codex', model: 'trusted-model', maxRuntimeMinutes: 4, estimatedTokens: 200 }) });
+      // This request has independent paths, so without durable/orphan discovery
+      // it would be admitted into the crashed child's exact workspace.
+      expect(await delegation.admit(request({ delegationId: 'docs', workstreamId: 'docs', ownership: { paths: ['docs/readme.md'], mode: 'exclusive' }, artifactReferences: [] }))).toEqual({ accepted: false, reason: 'orphaned_delegated_child_admission_requires_identical_recovery' });
+      const recovered = await delegation.admit(request());
+      expect(recovered).toEqual(expect.objectContaining({ accepted: true }));
+      expect(owner.journal.events().filter((event) => event.runId === recovered.child.childRunId && event.kind === 'provider.event' && event.data.type === 'delegation.child-admitted')).toHaveLength(1);
       expect(owner.journal.events().filter((event) => event.runId === recovered.child.childRunId && event.kind === 'message.queued')).toHaveLength(1);
       await close(owner);
     } finally { await rm(root, { recursive: true, force: true }); }

@@ -11,6 +11,7 @@ import {
   NativeProcessRunner,
 } from '../../src/execution/transports.ts';
 import { CodexAdapter } from '../../src/providers/codex.ts';
+import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 
 const CWD = process.cwd();
 const ENV = { PATH: process.env.PATH ?? '' };
@@ -265,6 +266,7 @@ describe('argv-only execution transports', () => {
       environment: { PATH: '/controlled/bin' },
       compatibleModels: ['gpt-5.5'],
     });
+    const currentContext = { packetRevision: 'packet@1', digest: 'packet-digest', prompt: 'Wait for explicit cancellation.' };
     const runIntent = {
       format: 'faktori.run-intent/v1',
       runId: 'explicit-cancel-run',
@@ -272,7 +274,7 @@ describe('argv-only execution transports', () => {
       workItem: { id: 'F2-03', revision: 'work@1' },
       target: { factoryId: 'factory', productId: 'product', repository: 'owner/repo', branch: 'build/f2', baseRevision: 'base', expectedRevision: 'expected' },
       context: { packetRevision: 'packet@1', digest: 'packet-digest' },
-      execution: { profile: 'isolated', workspaceId: 'workspace', workspacePath: CWD, providerId: 'codex', model: 'gpt-5.5', approvedInputDigests: [] },
+      execution: { profile: 'isolated', workspaceId: 'workspace', workspacePath: CWD, providerId: 'codex', model: 'gpt-5.5', approvedInputDigests: [providerContextPayloadDigest(currentContext)] },
       budget: { reservationId: 'reservation', maxRuntimeMinutes: 5, estimatedTokens: 100, status: 'held' },
       authority: { authorityRevision: 'authority@1', epoch: 1, scopeDigest: 'scope', policy: { requireIntentApproval: true, requireSpecificationApproval: true, requireIndependentReview: true, mergeAuthority: 'human', productionReleaseAuthority: 'human', allowPreviewDeployment: false, allowLocalDeployment: false, allowSeparateBilling: false } },
       attempt: 1,
@@ -280,7 +282,7 @@ describe('argv-only execution transports', () => {
     };
     let started;
     const observedStart = new Promise((resolve) => { started = resolve; });
-    const running = adapter.start(runIntent, { ...runIntent.context, prompt: 'Wait for explicit cancellation.' }, {
+    const running = adapter.start(runIntent, currentContext, {
       async onStarted() { order.push('started'); started(); },
     });
     await observedStart;

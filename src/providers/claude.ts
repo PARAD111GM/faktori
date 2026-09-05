@@ -8,6 +8,7 @@ import type {
   ProviderSessionBinding,
   ProviderTurnLifecycle,
 } from './contracts.ts';
+import { providerContextIsAuthorized } from './contracts.ts';
 
 /** The small, injected boundary around the vendor-owned Claude executable. */
 export interface ClaudeProcessRunner {
@@ -234,8 +235,7 @@ function validateIntent(intent: RunIntent, limits: ClaudeAdapterLimits, compatib
 
 function contextPrompt(intent: RunIntent, currentContext: ClaudeCurrentContext): string | undefined {
   if (currentContext.packetRevision !== intent.context.packetRevision || currentContext.digest !== intent.context.digest) return undefined;
-  const prompt = currentContext.prompt.trim();
-  return prompt.length > 0 ? prompt : undefined;
+  return currentContext.prompt.trim().length > 0 ? currentContext.prompt : undefined;
 }
 
 function validSessionBinding(intent: RunIntent, binding: ClaudeSessionBinding): boolean {
@@ -391,7 +391,8 @@ export class ClaudeAdapter {
       ?? (validEnvironment(this.#environment) ? undefined : 'a nonempty controlled execution environment is required')
       ?? (validToolNames(this.#allowedTools) ? undefined : 'configured Claude tool names are invalid')
       ?? (sessionId ? undefined : 'Claude session creation did not return an explicit session ID')
-      ?? (prompt ? undefined : 'current context packet and prompt are required');
+      ?? (prompt ? undefined : 'current context packet and prompt are required')
+      ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('start', invalid);
     return this.#execute('start', intent, sessionId as string, this.#baseArgs(intent.execution.model, ['--session-id', sessionId as string], prompt as string), lifecycle);
   }
@@ -402,7 +403,8 @@ export class ClaudeAdapter {
       ?? (validEnvironment(this.#environment) ? undefined : 'a nonempty controlled execution environment is required')
       ?? (validToolNames(this.#allowedTools) ? undefined : 'configured Claude tool names are invalid')
       ?? (validSessionBinding(intent, sessionBinding) ? undefined : 'an explicit coordinator-recorded session binding is required for resume; --continue is forbidden')
-      ?? (prompt ? undefined : 'current context packet and prompt are required');
+      ?? (prompt ? undefined : 'current context packet and prompt are required')
+      ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('resume', invalid);
     const sessionId = sessionBinding.sessionId as string;
     return this.#execute('resume', intent, sessionId, this.#baseArgs(intent.execution.model, ['--resume', sessionId], prompt as string), lifecycle);

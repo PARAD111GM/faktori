@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "phase": 2,
-  "generatedAt": "2026-09-05T05:15:08.426Z",
+  "phase": 3,
+  "generatedAt": "2026-09-05T06:22:09.153Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 2078333,
-    "excludedChildCount": 7,
+    "total": 1588601,
+    "excludedChildCount": 3,
     "kind": "overlap-safe-lower-bound"
   },
   "estimated": {
@@ -23,82 +23,49 @@
   ],
   "unknown": [
     {
-      "ticket": "F2-01",
+      "ticket": "F3-01",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F2-02",
+      "ticket": "F3-02",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F2-03",
+      "ticket": "F3-03",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F2-04",
-      "reason": "telemetry:unknown"
-    },
-    {
-      "ticket": "F2-03",
-      "reason": "telemetry:unknown"
-    },
-    {
-      "ticket": "F2-01",
+      "ticket": "F3-01",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F2-02",
+      "ticket": "F3-02",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F2-03",
+      "ticket": "F3-03",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F2-04",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "F2-03",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "F2-03",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "F2-03",
-      "reason": "parent-child-overlap:unknown"
-    },
-    {
-      "ticket": "phase-2-manager",
+      "ticket": "phase-3-manager",
       "reason": "coverage-overlap:unknown"
     }
   ],
   "coverageGaps": [
     {
-      "group": "phase-2-construction",
-      "retainedTotal": 2078333,
+      "group": "phase-3-construction",
+      "retainedTotal": 1588601,
       "excludedMeasurements": 1
     }
   ],
   "records": {
-    "accepted": 18,
+    "accepted": 9,
     "duplicates": 0
   },
   "budget": {
-    "estimate": 2200000,
-    "remaining": 121667,
-    "percentUsed": 94.47
+    "estimate": 2400000,
+    "remaining": 811399,
+    "percentUsed": 66.19
   },
-  "notices": [
-    {
-      "threshold": 70,
-      "type": "budget-threshold"
-    },
-    {
-      "threshold": 90,
-      "type": "budget-threshold"
-    }
-  ]
+  "notices": []
 }

@@ -8,6 +8,7 @@ import type {
   ProviderTurnLifecycle,
   SupportedProviderId,
 } from '../providers/contracts.ts';
+import { providerContextIsAuthorized, providerContextPayloadDigest } from '../providers/contracts.ts';
 import type { DurableEffectIntent, ProviderFinalResult, RunIntent, RunSnapshot, UsageTelemetry, WorkerIdentity } from './contracts.ts';
 import { isTerminalRunState } from './contracts.ts';
 import type { DurableCoordinator } from './coordinator.ts';
@@ -40,6 +41,27 @@ function stable(value: unknown): string {
 
 function digest(value: unknown): string {
   return createHash('sha256').update(stable(value)).digest('hex');
+}
+
+/**
+ * Canonical durable binding for a provider worker operation.  Prompt material
+ * itself stays out of the journal; its canonical payload digest is included in
+ * the signed-by-content request digest instead.
+ */
+export function providerDeliveryOperationRequestDigest(
+  intent: RunIntent,
+  currentContext: ProviderCurrentContext,
+  command: 'start' | 'resume',
+  sessionId: string | undefined,
+): string {
+  return digest({
+    runId: intent.runId,
+    command,
+    sessionId,
+    context: { ...intent.context, payloadDigest: providerContextPayloadDigest(currentContext) },
+    execution: intent.execution,
+    attempt: intent.attempt,
+  });
 }
 
 function unavailable(outcome: ProviderFinalResult['outcome'], summary: string): ProviderFinalResult {
@@ -80,7 +102,7 @@ export class CoordinatorProviderDelivery {
   readonly #adapter: ProviderTurnAdapter;
   readonly #providerId: SupportedProviderId;
   readonly #terminateWorker: (worker: WorkerIdentity, reason: string) => Promise<void>;
-  #tails = new Map<string, Promise<ProviderDeliveryResult>>();
+  #tails = new Map<string, { requestDigest: string; result: Promise<ProviderDeliveryResult> }>();
 
   constructor(options: {
     coordinator: DurableCoordinator;
@@ -95,14 +117,20 @@ export class CoordinatorProviderDelivery {
   }
 
   async deliver(request: ProviderDeliveryRequest): Promise<ProviderDeliveryResult> {
+    const requestDigest = this.deliveryRequestDigest(request);
     const previous = this.#tails.get(request.runId);
-    if (previous !== undefined) return previous;
+    if (previous !== undefined) {
+      if (previous.requestDigest !== requestDigest) {
+        throw new DeliveryPreconditionError(`Run ${request.runId} already has an active ${this.providerLabel()} delivery with conflicting executed content`);
+      }
+      return previous.result;
+    }
     const run = this.deliverExclusive(request);
-    this.#tails.set(request.runId, run);
+    this.#tails.set(request.runId, { requestDigest, result: run });
     try {
       return await run;
     } finally {
-      if (this.#tails.get(request.runId) === run) this.#tails.delete(request.runId);
+      if (this.#tails.get(request.runId)?.result === run) this.#tails.delete(request.runId);
     }
   }
 
@@ -137,7 +165,7 @@ export class CoordinatorProviderDelivery {
     const snapshot = this.exactSnapshot(request, true);
     const command = request.resume === undefined ? 'start' : 'resume';
     const sessionId = command === 'resume' ? this.requireResumeBinding(snapshot.intent, request.resume as ProviderSessionBinding) : undefined;
-    const operation = this.operation(snapshot.intent, command, sessionId);
+    const operation = this.operation(snapshot.intent, request.context, command, sessionId);
     const replay = this.priorDelivery(snapshot.intent.runId, operation);
     if (replay !== undefined) return replay;
     if (isTerminalRunState(snapshot.state)) throw new DeliveryPreconditionError(`Run ${request.runId} is terminal and cannot receive a Codex turn`);
@@ -197,6 +225,9 @@ export class CoordinatorProviderDelivery {
       throw new DeliveryPreconditionError(`Run ${request.runId} current context does not match the admitted packet revision and digest`);
     }
     if (request.context.prompt.trim().length === 0) throw new DeliveryPreconditionError(`Current ${this.#providerId} context prompt is required`);
+    if (!providerContextIsAuthorized(snapshot.intent, request.context)) {
+      throw new DeliveryPreconditionError(`Run ${request.runId} does not authorize the exact ${this.#providerId} prompt and context payload`);
+    }
     return snapshot;
   }
 
@@ -234,9 +265,10 @@ export class CoordinatorProviderDelivery {
     return binding.sessionId;
   }
 
-  private operation(intent: RunIntent, command: 'start' | 'resume', sessionId: string | undefined): DurableEffectIntent {
-    const request = { runId: intent.runId, command, sessionId, context: intent.context, execution: intent.execution, attempt: intent.attempt };
-    const requestDigest = digest(request);
+  private operation(intent: RunIntent, currentContext: ProviderCurrentContext, command: 'start' | 'resume', sessionId: string | undefined): DurableEffectIntent {
+    // Persist only the digest of private prompt contents, while binding the
+    // worker effect to precisely what the adapter will execute.
+    const requestDigest = providerDeliveryOperationRequestDigest(intent, currentContext, command, sessionId);
     return {
       operationId: `${this.#providerId}-turn-${requestDigest}`,
       kind: command === 'start' ? 'worker.launch' : 'worker.resume',
@@ -287,6 +319,18 @@ export class CoordinatorProviderDelivery {
 
   private providerLabel(): string {
     return `${this.#providerId[0]?.toUpperCase() ?? ''}${this.#providerId.slice(1)}`;
+  }
+
+  private deliveryRequestDigest(request: ProviderDeliveryRequest): string {
+    return digest({
+      runId: request.runId,
+      context: {
+        packetRevision: request.context.packetRevision,
+        digest: request.context.digest,
+        payloadDigest: providerContextPayloadDigest(request.context),
+      },
+      ...(request.resume === undefined ? {} : { resume: request.resume }),
+    });
   }
 }
 

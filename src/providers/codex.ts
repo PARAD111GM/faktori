@@ -6,6 +6,7 @@ import type {
   ProviderSessionBinding,
   ProviderTurnLifecycle,
 } from './contracts.ts';
+import { providerContextIsAuthorized } from './contracts.ts';
 
 /** The small, injected boundary around the vendor-owned Codex executable. */
 export interface CodexProcessRunner {
@@ -241,8 +242,7 @@ function contextPrompt(intent: RunIntent, currentContext: CodexCurrentContext): 
   if (currentContext.packetRevision !== intent.context.packetRevision || currentContext.digest !== intent.context.digest) {
     return undefined;
   }
-  const value = currentContext.prompt.trim();
-  return value.length > 0 ? value : undefined;
+  return currentContext.prompt.trim().length > 0 ? currentContext.prompt : undefined;
 }
 
 function contextMatchesIntent(intent: RunIntent, currentContext: CodexCurrentContext): boolean {
@@ -422,7 +422,8 @@ export class CodexAdapter {
     const invalid = validateIntent(intent, this.#limits, this.#compatibleModels)
       ?? (validEnvironment(this.#environment) ? undefined : 'a nonempty controlled execution environment is required')
       ?? (contextMatchesIntent(intent, currentContext) ? undefined : 'current context reference does not match the run intent')
-      ?? (prompt ? undefined : 'current context packet and prompt are required');
+      ?? (prompt ? undefined : 'current context packet and prompt are required')
+      ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('start', invalid);
     return this.#execute('start', intent, ['exec', ...baseArgs(intent.execution.model), prompt as string], lifecycle);
   }
@@ -433,7 +434,8 @@ export class CodexAdapter {
       ?? (validEnvironment(this.#environment) ? undefined : 'a nonempty controlled execution environment is required')
       ?? (contextMatchesIntent(intent, currentContext) ? undefined : 'current context reference does not match the run intent')
       ?? (validSessionBinding(intent, sessionBinding) ? undefined : 'an explicit coordinator-recorded session binding is required for resume; --last is forbidden')
-      ?? (prompt ? undefined : 'current context packet and prompt are required');
+      ?? (prompt ? undefined : 'current context packet and prompt are required')
+      ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('resume', invalid);
     return this.#execute('resume', intent, ['exec', 'resume', ...baseArgs(intent.execution.model), sessionBinding.sessionId, prompt as string], lifecycle);
   }

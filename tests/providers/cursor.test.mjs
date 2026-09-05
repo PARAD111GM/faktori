@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { CursorAcpAdapter } from '../../src/providers/cursor.ts';
+import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 
 function intent(overrides = {}) {
   const execution = {
-    profile: 'native', workspaceId: 'job-77', workspacePath: '/job-workspaces/job-77', providerId: 'cursor', model: 'cursor-default', approvedInputDigests: ['sha256:input'], ...(overrides.execution ?? {}),
+    profile: 'native', workspaceId: 'job-77', workspacePath: '/job-workspaces/job-77', providerId: 'cursor', model: 'cursor-default',
+    approvedInputDigests: ['sha256:input', providerContextPayloadDigest(context())], ...(overrides.execution ?? {}),
   };
   return {
     format: 'faktori.run-intent/v1', runId: 'run-77', admissionKey: 'admission-77', workItem: { id: 'F3-02', revision: 'work@1' },
@@ -215,9 +217,11 @@ describe('bounded Cursor ACP adapter', () => {
     const gate = new Promise((resolve) => { release = resolve; });
     const transport = fakeTransport(standardResponses({ 'session/prompt': async () => { await gate; return { stopReason: 'completed' }; } }));
     const provider = adapter(transport);
-    const first = provider.start(intent(), context());
-    const duplicate = provider.start(intent(), context());
-    const conflicting = await provider.resume(intent(), binding(), context());
+    const changedPrompt = context({ prompt: 'A separately admitted different Cursor prompt.' });
+    const admitted = intent({ execution: { approvedInputDigests: ['sha256:input', providerContextPayloadDigest(context()), providerContextPayloadDigest(changedPrompt)] } });
+    const first = provider.start(admitted, context());
+    const duplicate = provider.start(admitted, context());
+    const conflicting = await provider.start(admitted, changedPrompt);
     release();
     expect(await first).toEqual(await duplicate);
     expect(conflicting.final.outcome).toBe('unavailable');

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CodexAdapter } from '../../src/providers/codex.ts';
+import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 
 function intent(overrides = {}) {
   const execution = {
@@ -9,7 +10,13 @@ function intent(overrides = {}) {
     workspacePath: '/job-workspaces/job-77',
     providerId: 'codex',
     model: 'gpt-5.5',
-    approvedInputDigests: ['sha256:input'],
+    approvedInputDigests: ['sha256:input', ...[
+      { packetRevision: 'packet@4', digest: 'sha256:packet', prompt: 'Context packet packet@4. Execute only the admitted bounded work.' },
+      { packetRevision: 'packet@4', digest: 'sha256:packet', prompt: 'Context packet packet@4. Launch the bounded job.' },
+      { packetRevision: 'packet@4', digest: 'sha256:packet', prompt: 'Context packet packet@4. Edit only src/example.ts.' },
+      { packetRevision: 'packet@4', digest: 'sha256:packet', prompt: 'Context packet packet@4. Run npm test only.' },
+      { packetRevision: 'packet@4', digest: 'sha256:packet', prompt: 'Context packet packet@5 replaces all stale assumptions.' },
+    ].map(providerContextPayloadDigest)],
     ...(overrides.execution ?? {}),
   };
   return {
@@ -124,18 +131,29 @@ describe('bounded Codex exec adapter', () => {
     expect(result.final.usage).toEqual(expect.objectContaining({ availability: 'partially_reported', inputTokens: 1, outputTokens: 2 }));
   });
 
+  it('executes the exact authorized prompt bytes and rejects substituted content', async () => {
+    const runner = fakeRunner({ exitCode: 0, stdout: jsonl({ type: 'thread.started', thread_id: 'thread-exact' }, { type: 'turn.completed' }) });
+    const exact = context({ prompt: '  exact Codex prompt\n' });
+    const target = intent({ execution: { approvedInputDigests: [providerContextPayloadDigest(exact)] } });
+    expect((await adapter(runner).start(target, exact)).final.outcome).toBe('completed');
+    expect(runner.calls[0].args.at(-1)).toBe(exact.prompt);
+    expect((await adapter(runner).start(target, { ...exact, prompt: exact.prompt.trim() })).final.outcome).toBe('unavailable');
+    expect(runner.calls).toHaveLength(1);
+  });
+
   it('rejects missing context, implicit sessions, incompatible models, and runtime/token/retry bound breaches before process launch', async () => {
     const runner = fakeRunner();
     const provider = adapter(runner);
 
     const missingContext = await provider.start(intent(), context({ prompt: '  ' }));
+    const substitutedPrompt = await provider.start(intent(), context({ prompt: 'Caller substituted unapproved content.' }));
     const implicitSession = await provider.resume(intent(), binding({ sessionId: '' }), context());
     const incompatibleModel = await provider.start(intent({ execution: { model: 'gpt-6' } }), context());
     const tooLong = await provider.start(intent({ budget: { reservationId: 'reserve-77', maxRuntimeMinutes: 6, estimatedTokens: 500, status: 'held' } }), context());
     const tooManyTokens = await provider.start(intent({ budget: { reservationId: 'reserve-77', maxRuntimeMinutes: 3, estimatedTokens: 1_001, status: 'held' } }), context());
     const retryExceeded = await provider.start(intent({ attempt: 3 }), context());
 
-    for (const result of [missingContext, implicitSession, incompatibleModel, tooLong, tooManyTokens, retryExceeded]) {
+    for (const result of [missingContext, substitutedPrompt, implicitSession, incompatibleModel, tooLong, tooManyTokens, retryExceeded]) {
       expect(result.final.outcome).toBe('unavailable');
     }
     expect(implicitSession.final.summary).toMatch(/coordinator-recorded session binding/);

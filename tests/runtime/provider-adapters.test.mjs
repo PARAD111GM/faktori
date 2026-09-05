@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { ClaudeAdapter } from '../../src/providers/claude.ts';
 import { CodexAdapter } from '../../src/providers/codex.ts';
 import { CursorAcpAdapter } from '../../src/providers/cursor.ts';
+import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
 import { CoordinatorProviderDelivery } from '../../src/runtime/delivery.ts';
 
@@ -15,7 +16,10 @@ function intent(providerId) {
     workItem: { id: 'F3-common', revision: 'work@1' },
     target: { factoryId: 'factory', productId: 'product', repository: 'org/repo', branch: 'build/phase-3', baseRevision: 'base', expectedRevision: 'expected' },
     context: { packetRevision: 'packet@1', digest: 'packet-digest' },
-    execution: { profile: 'native', workspaceId: `${providerId}-workspace`, workspacePath: `/private/tmp/${providerId}-workspace`, providerId, model: `${providerId}-model`, approvedInputDigests: [] },
+    execution: {
+      profile: 'native', workspaceId: `${providerId}-workspace`, workspacePath: `/private/tmp/${providerId}-workspace`, providerId, model: `${providerId}-model`,
+      approvedInputDigests: [providerContextPayloadDigest({ packetRevision: 'packet@1', digest: 'packet-digest', prompt: 'Use only this current scoped packet.' })],
+    },
     budget: { reservationId: `${providerId}-reservation`, maxRuntimeMinutes: 2, estimatedTokens: 100, status: 'held' },
     authority: { authorityRevision: 'authority@1', epoch: 1, scopeDigest: 'scope', policy: { requireIntentApproval: true, requireSpecificationApproval: true, requireIndependentReview: true, mergeAuthority: 'human', productionReleaseAuthority: 'human', allowPreviewDeployment: false, allowLocalDeployment: false, allowSeparateBilling: false } },
     attempt: 1, createdAt: '2026-09-05T00:00:00.000Z',

@@ -1,8 +1,8 @@
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 
 import type { CursorAcpConnection, CursorAcpConnectRequest, CursorAcpInboundReply, CursorAcpNotification, CursorAcpRpcRequest, CursorAcpTransport } from '../providers/cursor.ts';
-import type { NativeIdentityObservation } from './index.ts';
-import type { NativeWorkerIdentity, WorkerIdentity } from '../runtime/contracts.ts';
+import type { NativeIdentityObservation, NativeProcessGroupObservation } from './index.ts';
+import type { NativeWorkerIdentity } from '../runtime/contracts.ts';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -28,18 +28,28 @@ export type CursorAcpStdioSpawn = (command: string, args: readonly string[], opt
 
 export interface CursorAcpNativeIdentityProbe {
   inspect(pid: number): Promise<NativeIdentityObservation | undefined>;
+  /** Required to prove that the detached group, not merely its leader, exited. */
+  inspectProcessGroup(processGroupId: number): Promise<NativeProcessGroupObservation | undefined>;
 }
 
 export interface CursorAcpStdioTransportOptions {
   /** Exact allowlisted process environment. Ambient environment is never merged. */
   environment: Readonly<Record<string, string>>;
   identityProbe: CursorAcpNativeIdentityProbe;
+  /** Injected by the trusted execution boundary; never signal a group blindly. */
+  killProcessGroup(processGroupId: number, signal: NodeJS.Signals): void;
   runNonce: string;
   spawn?: CursorAcpStdioSpawn;
   maxLineBytes?: number;
+  /** Bounded time for an EOF-initiated ACP child to exit without revocation. */
+  closeGraceMs?: number;
+  /** Bounded time after each identity-checked process-group signal. */
+  terminationGraceMs?: number;
 }
 
 const DEFAULT_MAX_LINE_BYTES = 1024 * 1024;
+const DEFAULT_CLOSE_GRACE_MS = 1_000;
+const DEFAULT_TERMINATION_GRACE_MS = 1_000;
 const MAX_METHOD_LENGTH = 160;
 
 function record(value: unknown): value is JsonRecord {
@@ -73,6 +83,19 @@ function sameNativeWorker(worker: NativeWorkerIdentity, observed: NativeIdentity
     && observed.processGroupId === worker.processGroupId;
 }
 
+function groupExited(observed: NativeProcessGroupObservation | undefined): boolean {
+  return observed !== undefined && (('status' in observed && observed.status === 'absent')
+    || ('members' in observed && observed.members.every((member) => !member.running)));
+}
+
+function observedGroup(observed: NativeProcessGroupObservation | undefined): observed is Extract<NativeProcessGroupObservation, { processGroupId: number }> {
+  return observed !== undefined && 'members' in observed;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 interface PendingRequest {
   resolve(value: JsonRecord): void;
   reject(error: Error): void;
@@ -84,10 +107,14 @@ interface PendingRequest {
  * does not inherit credentials, and never sends shell text instead of argv.
  */
 class StdioCursorAcpConnection implements CursorAcpConnection {
-  readonly worker: WorkerIdentity;
+  readonly worker: NativeWorkerIdentity;
   readonly #child: CursorAcpStdioChild;
   readonly #request: CursorAcpConnectRequest;
   readonly #maxLineBytes: number;
+  readonly #identityProbe: CursorAcpNativeIdentityProbe;
+  readonly #killProcessGroup: (processGroupId: number, signal: NodeJS.Signals) => void;
+  readonly #closeGraceMs: number;
+  readonly #terminationGraceMs: number;
   readonly #onClosed: () => void;
   readonly #pending = new Map<string, PendingRequest>();
   readonly #completed = new Set<string>();
@@ -97,17 +124,43 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
   #notificationTail: Promise<void> = Promise.resolve();
   #buffer = Buffer.alloc(0);
   #closed = false;
+  #closing = false;
+  #released = false;
+  #childClosed = false;
+  #childClose?: { code: number | null; signal: NodeJS.Signals | null };
+  #childExit: Promise<void>;
+  #resolveChildExit!: () => void;
+  #close?: Promise<void>;
+  #failure?: Promise<void>;
   #termination?: Promise<void>;
 
-  constructor(child: CursorAcpStdioChild, worker: NativeWorkerIdentity, request: CursorAcpConnectRequest, maxLineBytes: number, onClosed: () => void) {
+  constructor(
+    child: CursorAcpStdioChild,
+    worker: NativeWorkerIdentity,
+    request: CursorAcpConnectRequest,
+    options: Pick<CursorAcpStdioTransportOptions, 'identityProbe' | 'killProcessGroup' | 'maxLineBytes' | 'closeGraceMs' | 'terminationGraceMs'>,
+    onClosed: () => void,
+  ) {
     this.#child = child;
     this.worker = worker;
     this.#request = request;
-    this.#maxLineBytes = maxLineBytes;
+    this.#maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
+    this.#identityProbe = options.identityProbe;
+    this.#killProcessGroup = options.killProcessGroup;
+    this.#closeGraceMs = options.closeGraceMs ?? DEFAULT_CLOSE_GRACE_MS;
+    this.#terminationGraceMs = options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS;
     this.#onClosed = onClosed;
+    this.#childExit = new Promise((resolve) => { this.#resolveChildExit = resolve; });
     child.stdout?.on('data', (chunk) => this.#onData(chunk));
-    child.on('error', (error) => this.#lost(`Cursor ACP process error: ${errorMessage(error)}`));
-    child.on('close', (code, signal) => this.#lost(`Cursor ACP connection closed before a terminal receipt (exit ${code ?? 'null'}${signal ? `, ${signal}` : ''})`));
+    child.on('error', (error) => this.#startFailure(`Cursor ACP process error: ${errorMessage(error)}`, 'output_limit'));
+    child.on('close', (code, signal) => {
+      this.#childClosed = true;
+      this.#childClose = { code, signal };
+      this.#resolveChildExit();
+      if (!this.#closing && this.#failure === undefined) {
+        this.#startUnexpectedClose(`Cursor ACP connection closed before a terminal receipt (exit ${code ?? 'null'}${signal ? `, ${signal}` : ''})`);
+      }
+    });
   }
 
   setRequestHandler(handler: (request: CursorAcpRpcRequest) => Promise<CursorAcpInboundReply>): void {
@@ -129,7 +182,7 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
       const timeout = setTimeout(() => {
         this.#pending.delete(key);
         reject(new Error(`Cursor ACP ${request.method} request timed out`));
-        void this.#requireTermination('timeout').catch(() => undefined);
+        this.#startFailure(`Cursor ACP ${request.method} request timed out`, 'timeout');
       }, timeoutMs);
       this.#pending.set(key, { resolve, reject, timeout });
       try {
@@ -138,6 +191,7 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
         clearTimeout(timeout);
         this.#pending.delete(key);
         reject(new Error(errorMessage(error)));
+        this.#startFailure(`Cursor ACP stdin failed: ${errorMessage(error)}`, 'output_limit');
       }
     });
   }
@@ -151,17 +205,26 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
   }
 
   async close(): Promise<void> {
-    if (this.#closed) return;
+    if (this.#close !== undefined) return this.#close;
+    if (this.#failure !== undefined) return this.#failure;
+    if (this.#released) return;
+    this.#closing = true;
     this.#closed = true;
-    for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timeout);
-      pending.reject(new Error('Cursor ACP connection closed'));
-    }
-    this.#pending.clear();
-    // EOF is a safe local close. Process-group termination remains exclusively
-    // coordinator-authorized through lifecycle.onTerminationRequired.
-    try { this.#child.stdin?.end(); } catch { /* process may have already exited */ }
-    this.#onClosed();
+    this.#rejectPending('Cursor ACP connection closed');
+    this.#close = (async (): Promise<void> => {
+      // EOF is a non-authoritative local close. It is clean only if both the
+      // child and its detached group are observed to have exited within bound.
+      this.#endStdin();
+      if (await this.#waitForChildClose(this.#closeGraceMs) && await this.#confirmedExit()) {
+        this.#release();
+        return;
+      }
+      // A lingering EOF cleanup must be durable-revoke-first. It is process
+      // cleanup, not a provider-native `session/cancel` receipt.
+      await this.#terminate('cancelled');
+      this.#release();
+    })();
+    return this.#close;
   }
 
   #onData(chunk: Buffer | string): void {
@@ -233,7 +296,7 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
     try {
       this.#write({ jsonrpc: '2.0', id: request.id, ...reply });
     } catch {
-      this.#lost('Cursor ACP stdin failed while replying to provider request');
+      this.#startFailure('Cursor ACP stdin failed while replying to provider request', 'output_limit');
     }
   }
 
@@ -266,28 +329,115 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
   }
 
   #protocolFailure(message: string): void {
-    this.#lost(message);
-    void this.#requireTermination('output_limit').catch(() => undefined);
+    this.#startFailure(message, 'output_limit');
   }
 
-  #lost(message: string): void {
-    if (this.#closed) return;
+  #rejectPending(message: string): void {
     this.#closed = true;
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timeout);
       pending.reject(new Error(message));
     }
     this.#pending.clear();
+  }
+
+  #endStdin(): void {
+    try { this.#child.stdin?.end(); } catch { /* process may have already exited */ }
+  }
+
+  #release(): void {
+    if (this.#released) return;
+    this.#released = true;
     this.#onClosed();
   }
 
-  async #requireTermination(reason: 'timeout' | 'output_limit'): Promise<void> {
+  #startFailure(message: string, reason: 'timeout' | 'output_limit'): void {
+    if (this.#failure !== undefined || this.#released) return;
+    this.#rejectPending(message);
+    this.#failure = (async (): Promise<void> => {
+      await this.#terminate(reason);
+      this.#release();
+    })();
+    void this.#failure.catch(() => undefined);
+  }
+
+  #startUnexpectedClose(message: string): void {
+    if (this.#failure !== undefined || this.#released) return;
+    this.#rejectPending(message);
+    this.#failure = (async (): Promise<void> => {
+      // A child close can be a normal post-receipt exit, but it must still
+      // prove the detached group is gone before the active identity is freed.
+      if (await this.#confirmedExit()) {
+        this.#release();
+        return;
+      }
+      await this.#terminate('output_limit');
+      this.#release();
+    })();
+    void this.#failure.catch(() => undefined);
+  }
+
+  async #waitForChildClose(timeoutMs: number): Promise<boolean> {
+    if (this.#childClosed) return true;
+    return Promise.race([
+      this.#childExit.then(() => true),
+      wait(timeoutMs).then(() => false),
+    ]);
+  }
+
+  async #confirmedExit(): Promise<boolean> {
+    if (!this.#childClosed) return false;
+    return groupExited(await this.#identityProbe.inspectProcessGroup(this.worker.processGroupId));
+  }
+
+  async #terminate(reason: 'timeout' | 'output_limit' | 'cancelled'): Promise<void> {
     if (this.#termination !== undefined) return this.#termination;
     const lifecycle = this.#request.lifecycle;
-    this.#termination = lifecycle?.onTerminationRequired === undefined
-      ? Promise.resolve()
-      : lifecycle.onTerminationRequired(this.worker, reason);
-    return this.#termination;
+    this.#termination = (async (): Promise<void> => {
+      if (lifecycle?.onTerminationRequired === undefined) {
+        throw new Error('Cursor ACP worker has no durable termination authority hook');
+      }
+      // The coordinator persists authority revocation before any local EOF or
+      // process-group signal is used to clean up an unsafe transport state.
+      await lifecycle.onTerminationRequired(this.worker, reason);
+      this.#endStdin();
+
+      const beforeSignal = await this.#identityProbe.inspect(this.worker.pid);
+      const beforeGroup = await this.#identityProbe.inspectProcessGroup(this.worker.processGroupId);
+      if (!sameNativeWorker(this.worker, beforeSignal)) {
+        if (groupExited(beforeGroup) && await this.#waitForChildClose(this.#terminationGraceMs)) return;
+        throw new Error('Cursor ACP worker identity unavailable or changed before SIGTERM; no signal sent');
+      }
+      if (!observedGroup(beforeGroup)
+        || !beforeGroup.members.some((member) => member.pid === this.worker.pid
+          && member.processStartedAt === this.worker.processStartedAt
+          && member.processGroupId === this.worker.processGroupId
+          && member.running)) {
+        throw new Error('Cursor ACP process-group observation did not contain the exact worker leader; no signal sent');
+      }
+      this.#killProcessGroup(this.worker.processGroupId, 'SIGTERM');
+      await wait(this.#terminationGraceMs);
+      if (await this.#confirmedExit()) return;
+
+      const afterTermGroup = await this.#identityProbe.inspectProcessGroup(this.worker.processGroupId);
+      if (!observedGroup(afterTermGroup)
+        || !afterTermGroup.members.some((member) => member.pid === this.worker.pid
+          && member.processStartedAt === this.worker.processStartedAt
+          && member.processGroupId === this.worker.processGroupId
+          && member.running)) {
+        throw new Error('Cursor ACP process group has no continuous worker identity after SIGTERM; SIGKILL not sent');
+      }
+      this.#killProcessGroup(this.worker.processGroupId, 'SIGKILL');
+      await wait(this.#terminationGraceMs);
+      if (await this.#confirmedExit()) return;
+      throw new Error('Cursor ACP worker exit could not be confirmed after identity-checked SIGKILL');
+    })();
+    try {
+      await this.#termination;
+    } catch (error) {
+      if (this.#termination !== undefined) this.#termination = undefined;
+      throw error;
+    }
   }
 }
 
@@ -295,20 +445,33 @@ class StdioCursorAcpConnection implements CursorAcpConnection {
 export class CursorAcpStdioTransport implements CursorAcpTransport {
   readonly #environment: Readonly<Record<string, string>>;
   readonly #identityProbe: CursorAcpNativeIdentityProbe;
+  readonly #killProcessGroup: (processGroupId: number, signal: NodeJS.Signals) => void;
   readonly #runNonce: string;
   readonly #spawn: CursorAcpStdioSpawn;
   readonly #maxLineBytes: number;
+  readonly #closeGraceMs: number;
+  readonly #terminationGraceMs: number;
   #active = false;
 
   constructor(options: CursorAcpStdioTransportOptions) {
     if (!validEnvironment(options.environment)) throw new Error('Cursor ACP stdio transport requires a nonempty controlled environment');
     if (options.runNonce.trim().length === 0) throw new Error('Cursor ACP stdio transport requires a run nonce');
     if (!Number.isInteger(options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES) || (options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES) < 1) throw new Error('Cursor ACP stdio transport requires a positive line limit');
+    if (typeof options.identityProbe.inspectProcessGroup !== 'function' || typeof options.killProcessGroup !== 'function') {
+      throw new Error('Cursor ACP stdio transport requires process-group inspection and signaling dependencies');
+    }
+    if (!Number.isInteger(options.closeGraceMs ?? DEFAULT_CLOSE_GRACE_MS) || (options.closeGraceMs ?? DEFAULT_CLOSE_GRACE_MS) < 1
+      || !Number.isInteger(options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS) || (options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS) < 1) {
+      throw new Error('Cursor ACP stdio transport requires positive close and termination grace bounds');
+    }
     this.#environment = Object.freeze({ ...options.environment });
     this.#identityProbe = options.identityProbe;
+    this.#killProcessGroup = options.killProcessGroup;
     this.#runNonce = options.runNonce;
     this.#spawn = options.spawn ?? defaultSpawn;
     this.#maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
+    this.#closeGraceMs = options.closeGraceMs ?? DEFAULT_CLOSE_GRACE_MS;
+    this.#terminationGraceMs = options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS;
   }
 
   async connect(request: CursorAcpConnectRequest): Promise<CursorAcpConnection> {
@@ -320,8 +483,22 @@ export class CursorAcpStdioTransport implements CursorAcpTransport {
     } catch (error) {
       throw new Error(`Cursor ACP spawn failed: ${errorMessage(error)}`);
     }
-    if (child.pid === undefined || child.pid < 1 || child.stdin === null || child.stdin === undefined || child.stdout === null || child.stdout === undefined) throw new Error('Cursor ACP spawn did not provide stdio and pid');
-    const observed = await this.#identityProbe.inspect(child.pid);
+    // A successful spawn consumes the transport slot immediately. Until an
+    // exact native identity is observed, no signal is safe and EOF cannot
+    // prove which process (or process group) survived. Keep this instance
+    // quarantined on every pre-identity failure; an operator must recreate it.
+    this.#active = true;
+    if (child.pid === undefined || child.pid < 1 || child.stdin === null || child.stdin === undefined || child.stdout === null || child.stdout === undefined) {
+      try { child.stdin?.end(); } catch { /* process may already have exited */ }
+      throw new Error('Cursor ACP spawn did not provide stdio and pid');
+    }
+    let observed: Awaited<ReturnType<CursorAcpNativeIdentityProbe['inspect']>>;
+    try {
+      observed = await this.#identityProbe.inspect(child.pid);
+    } catch {
+      try { child.stdin.end(); } catch { /* process may already have exited */ }
+      throw new Error('Cursor ACP native worker identity could not be observed');
+    }
     if (observed === undefined || 'status' in observed || !observed.running || observed.pid !== child.pid) {
       try { child.stdin.end(); } catch { /* process may already have exited */ }
       throw new Error('Cursor ACP native worker identity could not be observed');
@@ -331,14 +508,24 @@ export class CursorAcpStdioTransport implements CursorAcpTransport {
       try { child.stdin.end(); } catch { /* process may already have exited */ }
       throw new Error('Cursor ACP native worker identity changed before lifecycle receipt');
     }
+    // The exact worker is now owned by the connection before asking the
+    // coordinator to persist it. If persistence fails, EOF cleanup must be
+    // observed before this transport can admit another worker; a lingering
+    // identity keeps the slot occupied.
+    const connection = new StdioCursorAcpConnection(child, worker, request, {
+      identityProbe: this.#identityProbe,
+      killProcessGroup: this.#killProcessGroup,
+      maxLineBytes: this.#maxLineBytes,
+      closeGraceMs: this.#closeGraceMs,
+      terminationGraceMs: this.#terminationGraceMs,
+    }, () => { this.#active = false; });
     // Coordinator persistence happens before any JSON-RPC message can be written.
     try {
       await request.lifecycle?.onStarted(worker);
     } catch (error) {
-      try { child.stdin.end(); } catch { /* process may already have exited */ }
+      await connection.close().catch(() => undefined);
       throw error;
     }
-    this.#active = true;
-    return new StdioCursorAcpConnection(child, worker, request, this.#maxLineBytes, () => { this.#active = false; });
+    return connection;
   }
 }

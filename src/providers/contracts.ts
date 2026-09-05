@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { ProviderFinalResult, RunIntent, WorkerIdentity } from '../runtime/contracts.ts';
 
 export type SupportedProviderId = 'codex' | 'claude' | 'cursor';
@@ -7,6 +9,26 @@ export interface ProviderCurrentContext {
   packetRevision: string;
   digest: string;
   prompt: string;
+}
+
+/**
+ * Digest the packet reference and the exact prompt bytes passed to a provider.
+ * Validation may reject a blank prompt, but authorization never trims or
+ * otherwise normalizes content before binding it to the admitted intent.
+ */
+export function providerContextPayloadDigest(context: ProviderCurrentContext): string {
+  const payload = JSON.stringify({
+    digest: context.digest,
+    packetRevision: context.packetRevision,
+    prompt: context.prompt,
+  });
+  return `sha256:${createHash('sha256').update(payload).digest('hex')}`;
+}
+
+/** A RunIntent authorizes provider input only through its durable allowlist. */
+export function providerContextIsAuthorized(intent: RunIntent, context: ProviderCurrentContext): boolean {
+  return Array.isArray(intent.execution.approvedInputDigests)
+    && intent.execution.approvedInputDigests.includes(providerContextPayloadDigest(context));
 }
 
 export interface ProviderSessionScope {

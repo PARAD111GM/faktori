@@ -124,6 +124,40 @@
         "Initial Phase 2 estimate and allocations supplied by the Build Manager.",
         "Revision 2 preserves the original 1.8m native goal counter separately; it is a revised planning forecast, not a goal reset, billing switch, hard ceiling, or scope expansion."
       ]
+    },
+    {
+      "phase": 3,
+      "hardCeiling": false,
+      "confidence": "low-to-medium",
+      "currentRevision": 1,
+      "estimateTokens": 2400000,
+      "revisions": [
+        {
+          "revision": 1,
+          "estimateTokens": 2400000,
+          "allocations": {
+            "managerCoordination": 200000,
+            "implementerOrchestrationAndIntegration": 450000,
+            "specialistDelivery": 900000,
+            "verificationAndRework": 600000,
+            "contingency": 250000
+          },
+          "rationale": "Calibrated after accepted Phase 2 delivery and recovery work; Phase 3 adds two transports, duplex request handling and shared delegation while reusing the accepted execution core."
+        }
+      ],
+      "assumptions": [
+        "The estimate includes manager, implementer, specialists, verification, rework and contingency.",
+        "It is advisory construction planning data, not a native goal cap, invoice, billing permission or completion criterion.",
+        "Only manager usage after the private Phase 3 baseline belongs to this phase.",
+        "Parent and child inclusion remains unknown unless telemetry establishes otherwise.",
+        "Unknown telemetry remains unknown rather than zero; overlapping measurements are never summed."
+      ],
+      "baseline": {
+        "manager": "Adjacent private .build/phase-3-manager-baseline.json; raw provenance is not committed."
+      },
+      "revisionNotes": [
+        "Initial Phase 3 estimate and allocations supplied by the Build Manager."
+      ]
     }
   ]
 }

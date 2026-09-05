@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { normalize } from 'node:path';
 
-import type { ProviderFinalResult, QueuedMessage, RunIntent, RunSnapshot, WorkerIdentity } from './contracts.ts';
+import type { ProviderOutcome, QueuedMessage, RunIntent, RunSnapshot, WorkerIdentity } from './contracts.ts';
 import { isTerminalRunState } from './contracts.ts';
 import type { DurableCoordinator } from './coordinator.ts';
 
@@ -49,8 +49,33 @@ export interface DelegationEnvelope {
   artifactReferences: Array<{ artifactId: string; digest: string }>;
   payloadDigest: string;
   message?: string;
-  result?: ProviderFinalResult;
+  /**
+   * Deliberately document/evidence-only. A provider final result can contain a
+   * native session id, cancellation receipt, or adapter-specific fields; none
+   * of those cross the child-to-parent boundary.
+   */
+  result?: DelegatedResultEvidence;
 }
+
+export interface DelegatedResultEvidence {
+  format: 'faktori.delegated-result-evidence/v1';
+  outcome: ProviderOutcome;
+  summary?: string;
+  revision?: string;
+  verification: string[];
+  usage: DelegatedUsageEvidence;
+}
+
+export type DelegatedUsageEvidence =
+  | { availability: 'unavailable'; unavailableReason: string }
+  | {
+      availability: 'reported' | 'partially_reported';
+      inputTokens?: number;
+      cachedInputTokens?: number;
+      outputTokens?: number;
+      reasoningTokens?: number;
+      unavailableReason?: string;
+    };
 
 export interface DelegatedChild {
   delegationId: string;
@@ -104,9 +129,71 @@ function object(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
+const OUTCOMES = new Set<ProviderOutcome>(['completed', 'unchanged_verified', 'denied', 'authentication_required', 'quota_exhausted', 'failed', 'cancelled', 'interrupted_uncertain', 'unavailable']);
+const PRIVATE_EVIDENCE = /(?:^|[^a-z0-9_])(session(?:[_ -]?id)?|credential|secret|api[_ -]?key|bearer|authorization|private[_ -]?(?:reasoning|path)|authority)(?:$|[^a-z0-9_])|(^|[\\/])(Users|home)([\\/])|\.codex|\.claude/i;
+
 function text(value: unknown, field: string, max = 256): string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > max) throw new DelegationPreconditionError(`${field} must be a bounded non-empty string`);
   return value;
+}
+
+/** Returns only bounded public evidence; unsafe provider text is omitted. */
+function publicEvidence(value: unknown, max = 16_000): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > max || PRIVATE_EVIDENCE.test(value)) return undefined;
+  return value;
+}
+
+function nonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+function portableUsage(value: unknown): DelegatedUsageEvidence {
+  const usage = object(value);
+  if (usage?.availability === 'unavailable') {
+    return { availability: 'unavailable', unavailableReason: publicEvidence(usage.unavailableReason) ?? 'provider did not supply portable usage evidence' };
+  }
+  if (usage?.availability !== 'reported' && usage?.availability !== 'partially_reported') {
+    return { availability: 'unavailable', unavailableReason: 'provider did not supply portable usage evidence' };
+  }
+  const result: Extract<DelegatedUsageEvidence, { availability: 'reported' | 'partially_reported' }> = { availability: usage.availability };
+  for (const key of ['inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningTokens'] as const) {
+    const count = nonNegativeInteger(usage[key]);
+    if (count !== undefined) result[key] = count;
+  }
+  const unavailableReason = publicEvidence(usage.unavailableReason);
+  if (unavailableReason !== undefined) result.unavailableReason = unavailableReason;
+  return result;
+}
+
+/** Exact allowlist conversion from a provider result to portable evidence. */
+function portableResult(value: unknown): DelegatedResultEvidence {
+  const result = object(value);
+  if (result === undefined || !OUTCOMES.has(result.outcome as ProviderOutcome)) {
+    throw new DelegationPreconditionError('child provider result has no recognized outcome');
+  }
+  const output: DelegatedResultEvidence = {
+    format: 'faktori.delegated-result-evidence/v1',
+    outcome: result.outcome as ProviderOutcome,
+    verification: Array.isArray(result.verification)
+      ? [...new Set(result.verification.map((item) => publicEvidence(item)).filter((item): item is string => item !== undefined))]
+      : [],
+    usage: portableUsage(result.usage),
+  };
+  const summary = publicEvidence(result.summary);
+  const revision = publicEvidence(result.revision, 512);
+  if (summary !== undefined) output.summary = summary;
+  if (revision !== undefined) output.revision = revision;
+  return output;
+}
+
+function parsedPortableResult(value: unknown): DelegatedResultEvidence | undefined {
+  try {
+    const parsed = portableResult(value);
+    const input = object(value);
+    // A persisted envelope must already be the exact portable shape. This
+    // rejects an appended session/native field instead of silently trusting it.
+    return input !== undefined && stable(parsed) === stable(input) ? parsed : undefined;
+  } catch { return undefined; }
 }
 
 function path(value: unknown): string {
@@ -168,7 +255,21 @@ function envelopeFrom(value: unknown): DelegationEnvelope | undefined {
     || !Array.isArray(record.artifactReferences)) return undefined;
   const references = record.artifactReferences.map((item) => object(item)).filter((item): item is Record<string, unknown> => item !== undefined);
   if (references.length !== record.artifactReferences.length || !references.every((item) => typeof item.artifactId === 'string' && typeof item.digest === 'string')) return undefined;
-  return record as unknown as DelegationEnvelope;
+  const result = record.result === undefined ? undefined : parsedPortableResult(record.result);
+  if ((record.result !== undefined && result === undefined) || (record.kind === 'child.result' && result === undefined)) return undefined;
+  const envelope: DelegationEnvelope = {
+    format: 'faktori.delegation-envelope/v1', kind: record.kind, delegationId: record.delegationId,
+    parentRunId: record.parentRunId, childRunId: record.childRunId, workstreamId: record.workstreamId,
+    ownership: { paths: [...ownership.paths], mode: ownership.mode, serializedAfter: [...ownership.serializedAfter] },
+    artifactReferences: references.map((item) => ({ artifactId: item.artifactId as string, digest: item.digest as string })),
+    payloadDigest: record.payloadDigest,
+  };
+  if (typeof record.message === 'string') envelope.message = record.message;
+  if (result !== undefined) envelope.result = result;
+  if (stable(envelope) !== stable(record)) return undefined;
+  const canonical = withoutUndefined({ ...envelope }) as Record<string, unknown>;
+  delete canonical.payloadDigest;
+  return digest(canonical) === envelope.payloadDigest ? envelope : undefined;
 }
 
 function messageEnvelope(event: { kind: string; data: Record<string, unknown> }): DelegationEnvelope | undefined {
@@ -176,6 +277,20 @@ function messageEnvelope(event: { kind: string; data: Record<string, unknown> })
   const message = object(event.data.message);
   if (message === undefined || typeof message.body !== 'string') return undefined;
   try { return envelopeFrom(JSON.parse(message.body)); } catch { return undefined; }
+}
+
+function admissionEnvelope(event: { kind: string; data: Record<string, unknown> }): DelegationEnvelope | undefined {
+  if (event.kind !== 'provider.event' || event.data.type !== 'delegation.child-admitted') return undefined;
+  return envelopeFrom(event.data.envelope);
+}
+
+const coordinatorTails = new WeakMap<DurableCoordinator, Promise<unknown>>();
+
+function serialCoordinator<T>(coordinator: DurableCoordinator, operation: () => Promise<T>): Promise<T> {
+  const tail = coordinatorTails.get(coordinator) ?? Promise.resolve();
+  const next = tail.then(operation, operation);
+  coordinatorTails.set(coordinator, next.catch(() => undefined));
+  return next;
 }
 
 /**
@@ -200,7 +315,7 @@ export class DurableDelegationService {
   }
 
   async admit(value: unknown): Promise<ChildAdmissionResult> {
-    return this.serial(() => this.admitExclusive(parseRequest(value)));
+    return this.serial(() => serialCoordinator(this.#coordinator, () => this.admitExclusive(parseRequest(value))));
   }
 
   /** Queue an exactly-scoped child message. Duplicate content is replay-safe. */
@@ -294,7 +409,8 @@ export class DurableDelegationService {
     if (existing !== undefined) {
       const expected = this.initialDigest(request, existing.childRunId);
       if (existing.envelope.payloadDigest !== expected) return { accepted: false, reason: 'delegation_id_conflicts_with_existing_request' };
-      return { accepted: true, child: existing };
+      await this.queueOnce(existing.childRunId, existing.envelope, `delegation-initial-${existing.childRunId}-${existing.envelope.payloadDigest}`);
+      return { accepted: true, child: { ...existing, snapshot: this.#coordinator.snapshot(existing.childRunId) as RunSnapshot } };
     }
     const childRunId = `delegated-${digest({ parentRunId: request.parentRunId, delegationId: request.delegationId })}`;
     const envelope = this.withDigest({
@@ -311,10 +427,18 @@ export class DurableDelegationService {
     if (alreadyAdmitted !== undefined) {
       const expectedKey = `delegation:${request.parentRunId}:${request.delegationId}:${envelope.payloadDigest}`;
       if (alreadyAdmitted.intent.admissionKey !== expectedKey) return { accepted: false, reason: 'child_run_id_conflicts_with_existing_intent' };
+      await this.recordAdmission(childRunId, envelope);
       await this.queueOnce(childRunId, envelope, `delegation-initial-${childRunId}-${envelope.payloadDigest}`);
-      return { accepted: true, child: { delegationId: request.delegationId, parentRunId: request.parentRunId, childRunId, envelope, snapshot: alreadyAdmitted } };
+      return { accepted: true, child: { delegationId: request.delegationId, parentRunId: request.parentRunId, childRunId, envelope, snapshot: this.#coordinator.snapshot(childRunId) as RunSnapshot } };
     }
     const siblings = this.children(request.parentRunId);
+    // A legacy/crash-window admission has a coordinator intent but no durable
+    // ownership envelope. Its exact retry may repair it above; a different
+    // child must fail closed because neither ownership nor workspace isolation
+    // can be safely reconstructed from a provider message that never landed.
+    if (this.orphanedAdmissions(request.parentRunId).length > 0) {
+      return { accepted: false, reason: 'orphaned_delegated_child_admission_requires_identical_recovery' };
+    }
     if (request.ownership.mode === 'serialized' && (request.ownership.serializedAfter ?? []).some((delegationId) => !siblings.some((child) => child.delegationId === delegationId))) {
       return { accepted: false, reason: 'serialized_predecessor_is_not_a_durable_sibling' };
     }
@@ -357,6 +481,10 @@ export class DurableDelegationService {
     };
     const admitted = await this.#coordinator.admit(intent);
     if (!admitted.accepted || admitted.snapshot === undefined) return { accepted: false, reason: admitted.reason };
+    // This event is the authoritative child ownership envelope. It is recorded
+    // before the first child message, so a restart can discover scope, parent,
+    // delegation and workspace identity without trusting provider output.
+    await this.recordAdmission(childRunId, envelope);
     await this.queueOnce(childRunId, envelope, `delegation-initial-${childRunId}-${envelope.payloadDigest}`);
     return { accepted: true, child: { delegationId: request.delegationId, parentRunId: request.parentRunId, childRunId, envelope, snapshot: this.#coordinator.snapshot(childRunId) as RunSnapshot } };
   }
@@ -366,7 +494,7 @@ export class DurableDelegationService {
     const child = this.requireChild(parentRunId, childRunId);
     if (child.snapshot.providerResult === undefined || !isTerminalRunState(child.snapshot.state)) throw new DelegationPreconditionError('child has no durable final result to hand off');
     const references = parseRequest({ ...this.asRequest(child.envelope), artifactReferences: artifacts }).artifactReferences ?? [];
-    const submitted = this.withDigest({ ...child.envelope, kind: 'child.result' as const, artifactReferences: references, result: child.snapshot.providerResult, message: undefined });
+    const submitted = this.withDigest({ ...child.envelope, kind: 'child.result' as const, artifactReferences: references, result: portableResult(child.snapshot.providerResult), message: undefined });
     const prior = this.submittedResult(childRunId);
     if (prior !== undefined && prior.payloadDigest !== submitted.payloadDigest) throw new DelegationPreconditionError('child result was already submitted with conflicting artifact handoff');
     if (prior === undefined) await this.#coordinator.record('provider.event', childRunId, { type: 'delegation.result-submitted', event: submitted });
@@ -411,7 +539,9 @@ export class DurableDelegationService {
   private children(parentRunId: string): DelegatedChild[] {
     const output: DelegatedChild[] = [];
     for (const event of this.#coordinator.journal.events()) {
-      const envelope = messageEnvelope(event);
+      // Read the admission event first; message parsing remains only for
+      // journals written before ownership envelopes were introduced.
+      const envelope = admissionEnvelope(event) ?? messageEnvelope(event);
       if (envelope?.kind !== 'child.initial' || envelope.parentRunId !== parentRunId || envelope.childRunId !== event.runId) continue;
       const snapshot = this.#coordinator.snapshot(event.runId);
       if (snapshot !== undefined) output.push({ delegationId: envelope.delegationId, parentRunId, childRunId: event.runId, envelope, snapshot });
@@ -423,6 +553,27 @@ export class DurableDelegationService {
       unique.set(child.childRunId, child);
     }
     return [...unique.values()];
+  }
+
+  private orphanedAdmissions(parentRunId: string): RunSnapshot[] {
+    const prefix = `delegation:${parentRunId}:`;
+    const attributed = new Set(this.children(parentRunId).map((child) => child.childRunId));
+    return this.#coordinator.snapshots().filter((snapshot) => !isTerminalRunState(snapshot.state)
+      && snapshot.intent.admissionKey.startsWith(prefix) && !attributed.has(snapshot.intent.runId));
+  }
+
+  private async recordAdmission(childRunId: string, envelope: DelegationEnvelope): Promise<void> {
+    const prior = this.#coordinator.journal.events()
+      .filter((event) => event.runId === childRunId)
+      .map((event) => admissionEnvelope(event))
+      .filter((event): event is DelegationEnvelope => event !== undefined);
+    if (prior.length > 0) {
+      if (prior.some((candidate) => candidate.payloadDigest !== envelope.payloadDigest)) {
+        throw new DelegationPreconditionError('conflicting durable child admission envelope');
+      }
+      return;
+    }
+    await this.#coordinator.record('provider.event', childRunId, { type: 'delegation.child-admitted', envelope });
   }
 
   private requireChild(parentRunId: string, childRunId: string): DelegatedChild {

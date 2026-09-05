@@ -2,12 +2,13 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 2,
+    "currentPhase": 3,
     "source": "docs/implementation-plan.md",
     "phaseBudgets": {
       "0": 360000,
       "1": 1600000,
-      "2": 2200000
+      "2": 2200000,
+      "3": 2400000
     }
   },
   "tickets": [
@@ -294,10 +295,22 @@
         "Append-only JSONL is authoritative; exclusive coordinator ownership, semantic run/effect identity, reservations, messages, exact worker identity, terminal outcomes, recovery, and disposable SQLite reconstruction are behavior-tested. Unknown workers and usage remain blocked or reserved rather than inferred away."
       ],
       "evidence": [
-        {"label":"Durable coordinator and journal","url":"src/runtime/coordinator.ts"},
-        {"label":"SQLite projection","url":"src/runtime/sqlite-projection.ts"},
-        {"label":"Recovery behavior tests","url":"tests/runtime/durable-state.test.mjs"},
-        {"label":"Interrupted-run rebuild fixture","url":"examples/runtime/interrupted-run.jsonl"}
+        {
+          "label": "Durable coordinator and journal",
+          "url": "src/runtime/coordinator.ts"
+        },
+        {
+          "label": "SQLite projection",
+          "url": "src/runtime/sqlite-projection.ts"
+        },
+        {
+          "label": "Recovery behavior tests",
+          "url": "tests/runtime/durable-state.test.mjs"
+        },
+        {
+          "label": "Interrupted-run rebuild fixture",
+          "url": "examples/runtime/interrupted-run.jsonl"
+        }
       ]
     },
     {
@@ -318,11 +331,26 @@
         "Digest-pinned isolated and explicit native plans, exact-env argv transports, PID/container identity probes, coalesced durable cancellation, continuous-identity native group escalation, output/runtime bounds, and Docker --rm log capture are implemented. Authenticated start, resume, and cancellation runs observed UID 65532, /workspace cwd, only the workspace and dedicated vendor-profile mounts, no Docker socket, host home, control storage, journal, or publisher credentials/environment, durable revocation before exactly one stop, and confirmed container absence. The owner-approved inner-sandbox override remained Docker-only, hardened-plan-bound, and disabled by default."
       ],
       "evidence": [
-        {"label":"Execution profiles","url":"src/execution/index.ts"},
-        {"label":"Production transports","url":"src/execution/transports.ts"},
-        {"label":"Execution boundary tests","url":"tests/execution"},
-        {"label":"Codex worker image","url":"docker/codex-worker.Dockerfile"},
-        {"label":"Authenticated conformance checkpoint","url":"docs/build/phase-2-authenticated-conformance.md"}
+        {
+          "label": "Execution profiles",
+          "url": "src/execution/index.ts"
+        },
+        {
+          "label": "Production transports",
+          "url": "src/execution/transports.ts"
+        },
+        {
+          "label": "Execution boundary tests",
+          "url": "tests/execution"
+        },
+        {
+          "label": "Codex worker image",
+          "url": "docker/codex-worker.Dockerfile"
+        },
+        {
+          "label": "Authenticated conformance checkpoint",
+          "url": "docs/build/phase-2-authenticated-conformance.md"
+        }
       ]
     },
     {
@@ -344,12 +372,30 @@
         "The adapter and coordinator-owned single-worker path bind exact environment, cwd, model, current packet, durable source session, source factory/product/repository/workspace/provider scope, worker identity, events, final result, usage, and reservation disposition. Live authenticated evidence now proves a bounded fixture edit plus provider/local tests, exact-session same-scope resume without --last plus a second edit/test, explicit durable cancellation of a started long command, truthful interrupted_uncertain provider cancellation, confirmed container exit, unchanged cancellation workspace state, and succeeded/succeeded/cancelled projection recovery. Earlier failed attempts remain retained and demonstrate that terminal provider events cannot invent a workspace effect."
       ],
       "evidence": [
-        {"label":"Codex adapter","url":"src/providers/codex.ts"},
-        {"label":"Coordinator delivery loop","url":"src/runtime/delivery.ts"},
-        {"label":"Codex outcome tests","url":"tests/providers/codex.test.mjs"},
-        {"label":"Durable delivery tests","url":"tests/runtime/delivery.test.mjs"},
-        {"label":"Authenticated conformance checkpoint","url":"docs/build/phase-2-authenticated-conformance.md"},
-        {"label":"Phase 2 checkpoint report","url":"docs/build/phase-2-report.md"}
+        {
+          "label": "Codex adapter",
+          "url": "src/providers/codex.ts"
+        },
+        {
+          "label": "Coordinator delivery loop",
+          "url": "src/runtime/delivery.ts"
+        },
+        {
+          "label": "Codex outcome tests",
+          "url": "tests/providers/codex.test.mjs"
+        },
+        {
+          "label": "Durable delivery tests",
+          "url": "tests/runtime/delivery.test.mjs"
+        },
+        {
+          "label": "Authenticated conformance checkpoint",
+          "url": "docs/build/phase-2-authenticated-conformance.md"
+        },
+        {
+          "label": "Phase 2 checkpoint report",
+          "url": "docs/build/phase-2-report.md"
+        }
       ]
     },
     {
@@ -371,48 +417,99 @@
         "Controller-minted per-run HMAC capabilities bind immutable scope, expected revisions, and current authority epoch. Durable cross-controller claims, restart-safe private verifier storage, effect-boundary revalidation, nonce/idempotency handling, and malformed/forged/stale/revoked denial are behavior-tested. No remote publication executor is present."
       ],
       "evidence": [
-        {"label":"Controller action admission","url":"src/actions/index.ts"},
-        {"label":"Action forgery and replay tests","url":"tests/actions/action-admission.test.mjs"},
-        {"label":"Runtime authority boundary","url":"docs/runtime/README.md"}
+        {
+          "label": "Controller action admission",
+          "url": "src/actions/index.ts"
+        },
+        {
+          "label": "Action forgery and replay tests",
+          "url": "tests/actions/action-admission.test.mjs"
+        },
+        {
+          "label": "Runtime authority boundary",
+          "url": "docs/runtime/README.md"
+        }
       ]
     },
     {
       "id": "F3-01",
       "phase": 3,
       "title": "Implement the Claude adapter",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-01",
         "F2-02",
         "F2-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "claude-adapter-specialist",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Claude transport, exact prompt authorization, explicit resume, native lifecycle, outcome normalization, and common delivery integration are implemented and deterministic tests pass. A pre-remediation live start/resume succeeded; the corrected live chain remains pending explicit approval to send its bounded prompt to external providers."
+      ],
+      "evidence": [
+        {
+          "label": "Claude provider adapter",
+          "url": "src/providers/claude.ts"
+        },
+        {
+          "label": "Claude process transport",
+          "url": "src/execution/claude-process.ts"
+        },
+        {
+          "label": "Claude adapter tests",
+          "url": "tests/providers/claude.test.mjs"
+        },
+        {
+          "label": "Phase 3 checkpoint report",
+          "url": "docs/build/phase-3-report.md"
+        }
+      ]
     },
     {
       "id": "F3-02",
       "phase": 3,
       "title": "Implement the Cursor adapter",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-01",
         "F2-02",
         "F2-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "cursor-acp-specialist",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Cursor ACP transport, exact prompt authorization, request and notification handling, explicit session load, and confirmed process-group exit are implemented and deterministic tests pass. Unknown or mismatched initial identities quarantine the transport without blind signaling. A corrected live chain remains pending explicit external-provider approval."
+      ],
+      "evidence": [
+        {
+          "label": "Cursor provider adapter",
+          "url": "src/providers/cursor.ts"
+        },
+        {
+          "label": "Cursor ACP stdio transport",
+          "url": "src/execution/cursor-acp-stdio.ts"
+        },
+        {
+          "label": "Cursor transport tests",
+          "url": "tests/execution/cursor-acp-stdio.test.mjs"
+        },
+        {
+          "label": "Phase 3 checkpoint report",
+          "url": "docs/build/phase-3-report.md"
+        }
+      ]
     },
     {
       "id": "F3-03",
       "phase": 3,
       "title": "Implement team delegation and handoffs",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-01",
         "F2-02",
@@ -421,16 +518,37 @@
         "F3-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "delegation-specialist",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Bounded durable delegation, ownership, per-workstream allocation, exact-schema portable result evidence, artifact transfer, restart recovery, concurrent admission, and orphaned-admission repair are implemented and deterministic tests pass. Phase completion remains gated by the corrected live chain."
+      ],
+      "evidence": [
+        {
+          "label": "Durable delegation service",
+          "url": "src/runtime/delegation.ts"
+        },
+        {
+          "label": "Delegation behavior tests",
+          "url": "tests/runtime/delegation.test.mjs"
+        },
+        {
+          "label": "Portable handoff contract",
+          "url": "src/runtime/portability.ts"
+        },
+        {
+          "label": "Phase 3 checkpoint report",
+          "url": "docs/build/phase-3-report.md"
+        }
+      ]
     },
     {
       "id": "F3-04",
       "phase": 3,
       "title": "Prove role portability and provider substitution",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-03",
         "F3-01",
@@ -438,10 +556,31 @@
         "F3-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase-3-orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "A historical Claude to Cursor to Codex artifact chain succeeded before consequential review remediation. Deterministic coverage now proves exact prompt binding, sanitized result handoffs, restart behavior, and fail-closed Cursor identity and exit boundaries. The one corrected live chain did not start because explicit user approval is required for external-provider transmission."
+      ],
+      "evidence": [
+        {
+          "label": "Provider compatibility and evidence boundary",
+          "url": "docs/build/phase-3-provider-compatibility.md"
+        },
+        {
+          "label": "Provider portability tests",
+          "url": "tests/runtime/portability.test.mjs"
+        },
+        {
+          "label": "Common adapter delivery tests",
+          "url": "tests/runtime/provider-adapters.test.mjs"
+        },
+        {
+          "label": "Phase 3 checkpoint report",
+          "url": "docs/build/phase-3-report.md"
+        }
+      ]
     },
     {
       "id": "F4-01",
@@ -963,6 +1102,39 @@
       "to": "complete",
       "reason": "The shipped coordinator, Codex adapter, and Docker transport completed a real edit/test, exact-session scoped resume with a second edit/test, explicit durable cancellation, and journal-to-SQLite recovery with truthful outcomes and usage.",
       "actor": "phase-2-orchestrator"
+    },
+    {
+      "eventId": "status-1788585730643-hvg0gv",
+      "at": "2026-09-05T05:22:10.644Z",
+      "ticketId": "F3-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Provider-neutral delivery contract verified; Claude adapter lane unblocked."
+    },
+    {
+      "eventId": "status-1788585731155-pnrnhn",
+      "at": "2026-09-05T05:22:11.156Z",
+      "ticketId": "F3-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Provider-neutral delivery contract verified; Cursor ACP adapter lane unblocked."
+    },
+    {
+      "eventId": "status-1788585892330-w6ex3o",
+      "at": "2026-09-05T05:24:52.332Z",
+      "ticketId": "F3-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Shared provider and delivery contracts are stable; bounded durable delegation lane started."
+    },
+    {
+      "eventId": "phase-3-start-f3-04-portability",
+      "at": "2026-09-05T05:40:00Z",
+      "ticketId": "F3-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "The assembled adapters and delegation path enabled bounded cross-provider artifact portability and independent-review evidence.",
+      "actor": "phase-3-orchestrator"
     }
   ]
 }

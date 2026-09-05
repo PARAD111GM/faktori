@@ -1,5 +1,22 @@
 # Build Manager acceptance
 
+## Phase 2
+
+- Accepted candidate: `34f63ac4deb4a443657fb24c2ebe8232ea8bb0ab`, integrated by local fast-forward. No remote publication or product deployment is authorized by this acceptance.
+- Manager independently ran the exact candidate's pinned Node24.20.0/npm12.0.2 full check: strict TypeScript, 18 files/158 tests, emitted build and real packed CLI passed. Runtime code matches reviewed checkpoint `fa23242`; final changes are construction records and evidence.
+- Manager independently inspected authenticated coordinator/adapter/Docker evidence and reran both scratch verifiers: bounded edit/test, exact-session same-scope resume with second edit/test, controlled long command followed by explicit cancellation, durable revocation and termination intent before one stop, observed container absence, unchanged cancellation workspace, and rebuilt succeeded/succeeded/cancelled projection.
+- The authorized inner-sandbox override applies only to the actual validated hardened Docker plan; native permissions remain unchanged. Observed worker UID was non-root, with only dedicated workspace and vendor profile mounts and no host home, Docker socket, controller journal or publishing credentials.
+- F2-01 through F2-04 are accepted: durable execution/recovery, execution profiles, Codex local delivery and controller-owned action admission. Remote publication remains Phase 4 work. Container exit is not a provider-native cancellation receipt: interrupted provider outcome and unavailable cancellation usage remain explicit.
+- Reported construction lower bound: 2,078,333 against initial 1,800,000 and revised 2,200,000 soft estimates. Manager and provider measurements are not added where overlap is unknown. This does not prove the complete phase stayed within the forecast. The mistaken native cap was removed without resetting history; estimates must never be copied into goal budgets.
+
+### Lessons applied to Phase 3
+
+- Establish a real coordinator/transport slice before adapter fan-out; reuse the accepted core and live harness patterns.
+- Bind sessions and cancellation to actual durable identity and scope. Wait on observed command events, not assumed model timing.
+- Preserve successful inference when a harness assertion fails; repair and resume the proof rather than rerunning accepted work.
+- Use bounded Terra specialist lanes and Sol integration; keep one scoped consequential review, avoid duplicate exploration, and reserve verification/rework explicitly in the forecast.
+- Reuse known toolchain and authentication evidence, while checking new isolated profiles through vendor-owned flows. No copying credentials or silent permission expansion.
+
 Phase acceptance records verified scope; it is not permission to publish source, deploy products, or bypass a later execution gate.
 
 ## Phase 0

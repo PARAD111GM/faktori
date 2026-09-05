@@ -195,8 +195,9 @@ Phase 2 planning revision 1 estimated 1,800,000 tokens. Revision 2 raised the
 soft forecast to 2,200,000 after observed integration and boundary rework. It is
 not an invoice, permission to spend, completion target, or native hard cap.
 
-At the pre-report checkpoint, the original goal's cumulative counter reported
-1,885,893 tokens. This is retained as the overlap-safe construction lower bound;
+At the latest pre-auth report checkpoint, the original goal's cumulative
+counter reported 1,917,828 tokens. This is retained as the overlap-safe
+construction lower bound;
 specialist totals are unavailable and parent/child coverage is unknown. The
 manager's separately baseline-derived sample is not added because overlap is
 unknown. Input, output, cached-input, reasoning, complete specialist
@@ -261,7 +262,9 @@ Other explicit limitations:
   toolchain; installed package behavior matters separately from source tests.
 - Keep soft construction forecasts in construction records. Never infer native
   goal limits, billing authority, or scope changes from them.
-- Retain raw identities and credentials only in private operational evidence;
-  public reports should contain sanitized outcomes and truthful unknowns.
+- Retain non-secret exact run identities only in private operational evidence;
+  credentials belong solely in the vendor credential store and must never be
+  copied into operational evidence. Public reports contain sanitized outcomes
+  and truthful unknowns.
 - Start Phase 3 only after Build Manager exact-head acceptance of the final
   Phase 2 candidate.

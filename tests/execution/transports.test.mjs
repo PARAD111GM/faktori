@@ -10,6 +10,7 @@ import {
   NativeCodexProcessRunner,
   NativeProcessRunner,
 } from '../../src/execution/transports.ts';
+import { CodexAdapter } from '../../src/providers/codex.ts';
 
 const CWD = process.cwd();
 const ENV = { PATH: process.env.PATH ?? '' };
@@ -168,7 +169,7 @@ describe('argv-only execution transports', () => {
         onTerminationRequired: async () => { order.push('termination'); },
     };
 
-    const result = await runner.run({ command: 'codex', args: ['exec', '--json'], cwd: CWD, environment: { CODEX_HOME: '/selected' }, timeoutMs: 500, lifecycle });
+    const result = await runner.run({ runId: 'native-run', command: 'codex', args: ['exec', '--json'], cwd: CWD, environment: { CODEX_HOME: '/selected' }, timeoutMs: 500, lifecycle });
 
     expect(result).toEqual({ exitCode: 0, stdout: '{"type":"turn.completed"}\n', stderr: '' });
     expect(order).toEqual(['started:native:81']);
@@ -193,10 +194,66 @@ describe('argv-only execution transports', () => {
         onTerminationRequired: async (_worker, reason) => { order.push(`termination:${reason}`); },
     };
 
-    const result = await runner.run({ command: 'codex', args: ['exec'], cwd: CWD, environment: { CODEX_HOME: '/selected' }, timeoutMs: 5, lifecycle });
+    const result = await runner.run({ runId: 'native-timeout-run', command: 'codex', args: ['exec'], cwd: CWD, environment: { CODEX_HOME: '/selected' }, timeoutMs: 5, lifecycle });
 
     expect(result).toEqual(expect.objectContaining({ terminated: true, exitCode: null }));
     expect(order).toEqual(['started', 'termination:timeout', 'signal:82:SIGTERM']);
+  });
+
+  it('composes explicit adapter cancellation with the exact active run and refuses a wrong run before signaling', async () => {
+    const order = [];
+    const child = new FakeChild(83);
+    const commands = new BoundedCommandRunner({
+      spawn: () => child,
+      killProcessGroup: (pid, signal) => {
+        order.push(`signal:${pid}:${signal}`);
+        if (signal === 'SIGTERM') queueMicrotask(() => child.emit('close', null, 'SIGTERM'));
+      },
+    });
+    const runner = new NativeCodexProcessRunner({
+      commands,
+      runNonce: 'native-explicit-cancel',
+      identityProbe: { inspect: async (pid) => ({ pid, processStartedAt: 'start-83', processGroupId: 83, running: true }) },
+    });
+    const adapter = new CodexAdapter({
+      runner,
+      limits: { maxRuntimeMinutes: 5, maxTokens: 1_000, maxRetries: 0 },
+      environment: { PATH: '/controlled/bin' },
+      compatibleModels: ['gpt-5.5'],
+    });
+    const runIntent = {
+      format: 'faktori.run-intent/v1',
+      runId: 'explicit-cancel-run',
+      admissionKey: 'explicit-cancel-admission',
+      workItem: { id: 'F2-03', revision: 'work@1' },
+      target: { factoryId: 'factory', productId: 'product', repository: 'owner/repo', branch: 'build/f2', baseRevision: 'base', expectedRevision: 'expected' },
+      context: { packetRevision: 'packet@1', digest: 'packet-digest' },
+      execution: { profile: 'native', workspaceId: 'workspace', workspacePath: CWD, providerId: 'codex', model: 'gpt-5.5', approvedInputDigests: [] },
+      budget: { reservationId: 'reservation', maxRuntimeMinutes: 5, estimatedTokens: 100, status: 'held' },
+      authority: { authorityRevision: 'authority@1', epoch: 1, scopeDigest: 'scope', policy: { requireIntentApproval: true, requireSpecificationApproval: true, requireIndependentReview: true, mergeAuthority: 'human', productionReleaseAuthority: 'human', allowPreviewDeployment: false, allowLocalDeployment: false, allowSeparateBilling: false } },
+      attempt: 1,
+      createdAt: '2026-09-05T00:00:00.000Z',
+    };
+    let started;
+    const observedStart = new Promise((resolve) => { started = resolve; });
+    const running = adapter.start(runIntent, { ...runIntent.context, prompt: 'Wait for explicit cancellation.' }, {
+      async onStarted() { order.push('started'); started(); },
+    });
+    await observedStart;
+    const cancellationLifecycle = {
+      async onStarted() { throw new Error('cancellation must not start a worker'); },
+      async onTerminationRequired(_worker, reason) { order.push(`durable:${reason}`); },
+    };
+
+    const wrongRun = await adapter.cancel({ ...runIntent, runId: 'wrong-run' }, cancellationLifecycle);
+    expect(wrongRun.outcome).toBe('failed');
+    expect(order).toEqual(['started']);
+
+    const cancelled = await adapter.cancel(runIntent, cancellationLifecycle);
+    const interrupted = await running;
+    expect(cancelled).toEqual(expect.objectContaining({ outcome: 'interrupted_uncertain', nativeCancellationReceipt: false }));
+    expect(interrupted.final.outcome).toBe('interrupted_uncertain');
+    expect(order).toEqual(['started', 'durable:cancelled', 'signal:83:SIGTERM']);
   });
 
   it('uses one detached Docker Codex plan and calls lifecycle before stopping after docker wait deadline', async () => {
@@ -231,7 +288,7 @@ describe('argv-only execution transports', () => {
         onTerminationRequired: async (_worker, reason) => { order.push(`termination:${reason}`); },
     };
 
-    const result = await runner.run({ command: 'codex', args: ['exec', '--json'], cwd: CWD, environment: { CODEX_HOME: '/selected' }, timeoutMs: 5, lifecycle });
+    const result = await runner.run({ runId: 'docker-timeout-run', command: 'codex', args: ['exec', '--json'], cwd: CWD, environment: { CODEX_HOME: '/selected' }, timeoutMs: 5, lifecycle });
 
     expect(result).toEqual(expect.objectContaining({ terminated: true, exitCode: null }));
     expect(order.slice(0, 4)).toEqual(['started:container', 'logs', 'termination:timeout', 'stop']);

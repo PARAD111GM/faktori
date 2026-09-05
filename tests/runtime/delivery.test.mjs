@@ -269,4 +269,48 @@ describe('coordinator-owned Codex delivery', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it('explicitly cancels only the active durable run and forwards the exact worker before transport stop', async () => {
+    const directory = await fixtureDirectory();
+    try {
+      const owner = await coordinator(directory);
+      await owner.admit(intent());
+      const worker = { kind: 'native', pid: 880, processStartedAt: 'explicit-cancel-worker', processGroupId: 880, runNonce: 'explicit-cancel-nonce' };
+      let started;
+      let release;
+      const observedStart = new Promise((resolve) => { started = resolve; });
+      const hold = new Promise((resolve) => { release = resolve; });
+      const terminations = [];
+      const { service } = delivery(owner, {
+        terminateWorker: async (identity, reason) => { terminations.push({ identity, reason }); },
+        adapter: {
+          async start(_run, _context, lifecycle) {
+            await lifecycle.onStarted(worker);
+            started();
+            await hold;
+            return { command: 'start', events: [], malformedEventCount: 0, final: final({ outcome: 'interrupted_uncertain', usage: { availability: 'unavailable', unavailableReason: 'explicit cancellation' } }) };
+          },
+          async cancel(_run, lifecycle) {
+            await lifecycle.onTerminationRequired(worker, 'cancelled');
+            release();
+            return final({ outcome: 'interrupted_uncertain', usage: { availability: 'unavailable', unavailableReason: 'explicit cancellation' } });
+          },
+        },
+      });
+
+      const active = service.deliver(request());
+      await observedStart;
+      await expect(service.cancel('different-run')).rejects.toThrow(/no active Codex delivery/);
+      const cancelled = await service.cancel('run-delivery');
+      const delivered = await active;
+
+      expect(cancelled.outcome).toBe('interrupted_uncertain');
+      expect(delivered.final.outcome).toBe('interrupted_uncertain');
+      expect(terminations).toEqual([{ identity: worker, reason: 'cancelled' }]);
+      await owner.release();
+      owner.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

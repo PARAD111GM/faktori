@@ -353,7 +353,7 @@ export class NativeCodexProcessRunner {
   readonly runNonce: string;
   readonly stdoutMaxBytes: number;
   readonly stderrMaxBytes: number;
-  #active?: NativeWorkerIdentity;
+  #active?: { worker: NativeWorkerIdentity; runId: string; cwd: string; cancelled: boolean };
 
   constructor(options: NativeCodexProcessRunnerOptions) {
     this.commands = options.commands ?? new BoundedCommandRunner();
@@ -364,9 +364,10 @@ export class NativeCodexProcessRunner {
   }
 
   async run(request: CodexTransportRequest): Promise<CodexProcessResult> {
-    if (request.command !== 'codex' || this.#active !== undefined) throw new Error('Native Codex runner permits exactly one active codex invocation');
+    if (request.command !== 'codex' || request.runId.trim().length === 0 || this.#active !== undefined) throw new Error('Native Codex runner permits exactly one active codex invocation');
     const lifecycle = request.lifecycle;
     let worker: NativeWorkerIdentity | undefined;
+    let active: { worker: NativeWorkerIdentity; runId: string; cwd: string; cancelled: boolean } | undefined;
     const result = await this.commands.run({
       command: 'codex', args: request.args, cwd: request.cwd, env: request.environment, timeoutMs: request.timeoutMs,
       stdoutMaxBytes: this.stdoutMaxBytes, stderrMaxBytes: this.stderrMaxBytes, detached: true,
@@ -374,7 +375,8 @@ export class NativeCodexProcessRunner {
         const observed = await this.identityProbe.inspect(pid);
         if (observed === undefined || 'status' in observed || !observed.running || observed.pid !== pid) throw new Error('native Codex worker identity could not be observed');
         worker = { kind: 'native', pid, processStartedAt: observed.processStartedAt, processGroupId: observed.processGroupId, runNonce: this.runNonce };
-        this.#active = worker;
+        active = { worker, runId: request.runId, cwd: request.cwd, cancelled: false };
+        this.#active = active;
         await lifecycle?.onStarted(worker);
       },
       onTerminationRequired: async (reason): Promise<void> => {
@@ -382,20 +384,21 @@ export class NativeCodexProcessRunner {
         await lifecycle?.onTerminationRequired(worker, reason);
       },
     });
+    const explicitlyCancelled = active?.cancelled === true;
     this.#active = undefined;
+    if (explicitlyCancelled) return interruptedResult(result);
     if (result.timedOut || result.outputLimitExceeded || result.spawnError !== undefined) return interruptedResult(result);
     return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
   }
 
   async terminate(request: CodexTerminationRequest & { lifecycle?: CodexTransportLifecycle }): Promise<CodexTerminationResult> {
-    const worker = this.#active;
-    if (worker === undefined) return { processTerminated: false };
-    // The ordinary adapter cancellation request carries no durable authority
-    // hook. Fail closed; coordinator-owned cancellation supplies the hook or
-    // calls cancelDurableNativeRun directly.
+    const active = this.#active;
+    if (active === undefined || active.cancelled || active.runId !== request.runId || active.cwd !== request.cwd) return { processTerminated: false };
+    // A request without the coordinator's durable authority hook fails closed.
     if (request.lifecycle === undefined) return { processTerminated: false };
-    await request.lifecycle.onTerminationRequired(worker, 'cancelled');
-    this.commands.killProcessGroup(worker.processGroupId, 'SIGTERM');
+    await request.lifecycle.onTerminationRequired(active.worker, 'cancelled');
+    active.cancelled = true;
+    this.commands.killProcessGroup(active.worker.processGroupId, 'SIGTERM');
     return { processTerminated: true, nativeCancellationReceipt: false };
   }
 }
@@ -409,7 +412,7 @@ export class DockerCodexProcessRunner {
   readonly planFor: (request: CodexProcessRequest) => DockerExecutionPlan;
   readonly stdoutMaxBytes: number;
   readonly stderrMaxBytes: number;
-  #active?: ContainerWorkerIdentity;
+  #active?: { worker: ContainerWorkerIdentity; runId: string; cwd: string; cancelled: boolean };
 
   constructor(options: DockerCodexProcessRunnerOptions) {
     this.docker = options.docker;
@@ -422,7 +425,7 @@ export class DockerCodexProcessRunner {
   }
 
   async run(request: CodexTransportRequest): Promise<CodexProcessResult> {
-    if (request.command !== 'codex' || this.#active !== undefined) throw new Error('Docker Codex runner permits exactly one active codex invocation');
+    if (request.command !== 'codex' || request.runId.trim().length === 0 || this.#active !== undefined) throw new Error('Docker Codex runner permits exactly one active codex invocation');
     const lifecycle = request.lifecycle;
     const plan = this.planFor(request);
     if (plan.profile !== 'isolated' || plan.args[0] !== 'run' || plan.args.filter((arg) => arg === 'codex').length !== 1) throw new Error('Docker Codex runner requires one validated detached Codex plan');
@@ -431,7 +434,8 @@ export class DockerCodexProcessRunner {
     const observed = await this.identityProbe.inspect(launched.containerId);
     if (observed === undefined || 'status' in observed || !observed.running || observed.containerId !== launched.containerId) throw new Error('Docker Codex container identity could not be observed');
     const worker: ContainerWorkerIdentity = { kind: 'container', containerId: observed.containerId, containerStartedAt: observed.containerStartedAt, runNonce: this.runNonce };
-    this.#active = worker;
+    const active = { worker, runId: request.runId, cwd: request.cwd, cancelled: false };
+    this.#active = active;
     await lifecycle?.onStarted(worker);
     const remaining = (): number => Math.max(1, request.timeoutMs - (Date.now() - startedAt));
     let stoppedForBound = false;
@@ -455,6 +459,7 @@ export class DockerCodexProcessRunner {
     });
     const logs = await logsLaunch.completion;
     this.#active = undefined;
+    if (active.cancelled) return interruptedResult(logs);
     if (wait.timedOut || wait.outputLimitExceeded || wait.spawnError !== undefined || logs.timedOut || logs.outputLimitExceeded || logs.spawnError !== undefined || stoppedForBound) {
       return interruptedResult(logs.timedOut || logs.outputLimitExceeded || logs.spawnError !== undefined ? logs : wait);
     }
@@ -464,15 +469,17 @@ export class DockerCodexProcessRunner {
   }
 
   async terminate(request: CodexTerminationRequest & { lifecycle?: CodexTransportLifecycle }): Promise<CodexTerminationResult> {
-    const worker = this.#active;
-    if (worker === undefined) return { processTerminated: false };
+    const active = this.#active;
+    if (active === undefined || active.cancelled || active.runId !== request.runId || active.cwd !== request.cwd) return { processTerminated: false };
     if (request.lifecycle === undefined) return { processTerminated: false };
-    await request.lifecycle.onTerminationRequired(worker, 'cancelled');
+    await request.lifecycle.onTerminationRequired(active.worker, 'cancelled');
+    active.cancelled = true;
     try {
-      await this.docker.stop(worker.containerId);
+      await this.docker.stop(active.worker.containerId);
       return { processTerminated: true, nativeCancellationReceipt: false };
-    } finally {
-      this.#active = undefined;
+    } catch (error) {
+      active.cancelled = false;
+      throw error;
     }
   }
 

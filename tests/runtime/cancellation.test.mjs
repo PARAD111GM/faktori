@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { cancelDurableNativeRun } from '../../src/runtime/cancellation.ts';
+import {
+  cancelDurableNativeRun,
+  observeDurableDockerTermination,
+  prepareDurableDockerTermination,
+} from '../../src/runtime/cancellation.ts';
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
 
 const roots = [];
@@ -56,7 +60,13 @@ function intent() {
   };
 }
 
-async function fixture() {
+async function fixture(identity = {
+  kind: 'native',
+  pid: 77,
+  processStartedAt: 'worker-start',
+  processGroupId: 77,
+  runNonce: 'run-nonce',
+}) {
   const root = await mkdtemp(join(tmpdir(), 'faktori-cancel-'));
   roots.push(root);
   const coordinator = await DurableCoordinator.open({
@@ -75,13 +85,6 @@ async function fixture() {
   });
   await coordinator.claim();
   await coordinator.admit(intent());
-  const identity = {
-    kind: 'native',
-    pid: 77,
-    processStartedAt: 'worker-start',
-    processGroupId: 77,
-    runNonce: 'run-nonce',
-  };
   await coordinator.record('worker.started', 'cancel-run', { worker: identity });
   return { coordinator, identity };
 }
@@ -151,6 +154,58 @@ describe('durable cancellation integration', () => {
       authorityRevoked: true,
       reservation: expect.objectContaining({ status: 'uncertain' }),
     }));
+    await coordinator.release();
+    coordinator.close();
+  });
+
+  it('supports a transport-owned single Docker stop with durable preparation and post-stop observation', async () => {
+    const identity = {
+      kind: 'container',
+      containerId: 'a'.repeat(64),
+      containerStartedAt: '2026-09-05T00:00:01.000000000Z',
+      runNonce: 'docker-run-nonce',
+    };
+    const { coordinator } = await fixture(identity);
+    let stopped = false;
+    const identityProbe = {
+      inspect: async () => stopped
+        ? { status: 'absent' }
+        : { containerId: identity.containerId, containerStartedAt: identity.containerStartedAt, running: true },
+    };
+
+    const preparation = await prepareDurableDockerTermination({
+      coordinator,
+      runId: 'cancel-run',
+      identity,
+      identityProbe,
+      reason: 'runtime_expired',
+      operationId: 'docker-timeout-operation',
+      now: () => new Date('2026-09-05T00:00:05.000Z'),
+    });
+    const beforeStop = coordinator.journal.events().map((event) => event.kind);
+    expect(beforeStop.indexOf('authority.revoked')).toBeGreaterThan(-1);
+    expect(beforeStop.indexOf('worker.termination.intended')).toBeGreaterThan(beforeStop.indexOf('authority.revoked'));
+    expect(beforeStop).not.toContain('worker.termination.observed');
+    expect(preparation).toEqual(expect.objectContaining({ operationId: 'docker-timeout-operation', identity }));
+
+    stopped = true;
+    const result = await observeDurableDockerTermination({
+      coordinator,
+      runId: 'cancel-run',
+      preparation,
+      identityProbe,
+      reason: 'runtime_expired',
+      operationId: 'docker-timeout-operation',
+      now: () => new Date('2026-09-05T00:00:06.000Z'),
+    });
+
+    expect(result.outcome).toBe('confirmed_exited');
+    expect(coordinator.snapshot('cancel-run')).toEqual(expect.objectContaining({
+      state: 'cancelled',
+      authorityRevoked: true,
+      reservation: expect.objectContaining({ status: 'uncertain' }),
+    }));
+    expect(coordinator.snapshot('cancel-run')?.providerResult).toBeUndefined();
     await coordinator.release();
     coordinator.close();
   });

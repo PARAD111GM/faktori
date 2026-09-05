@@ -21,6 +21,16 @@ export interface DurableCancellationOptions {
   now?: () => Date;
 }
 
+export interface DurableDockerTerminationPreparation {
+  operationId: string;
+  identity: Extract<WorkerIdentity, { kind: 'container' }>;
+  preflight: {
+    containerId: string;
+    containerStartedAt: string;
+    running: true;
+  };
+}
+
 function stable(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
@@ -96,6 +106,52 @@ async function recordCancellationResult(
     observedAt,
   });
   return result;
+}
+
+/**
+ * Durable pre-stop half of a Docker transport-owned termination. The caller
+ * returns from this hook without stopping the container; DockerCodexProcessRunner
+ * performs the single stop immediately afterward.
+ */
+export async function prepareDurableDockerTermination(
+  options: DurableCancellationOptions & {
+    identity: Extract<WorkerIdentity, { kind: 'container' }>;
+    identityProbe: ContainerIdentityProbe;
+  },
+): Promise<DurableDockerTerminationPreparation> {
+  const authority = new JournalCancellationAuthority(options);
+  await authority.revokeBeforeTermination(options.identity, options.reason);
+  const observed = await options.identityProbe.inspect(options.identity.containerId);
+  if (observed === undefined || 'status' in observed || !observed.running
+    || observed.containerId !== options.identity.containerId
+    || observed.containerStartedAt !== options.identity.containerStartedAt) {
+    throw new Error('Docker termination preflight could not prove the exact running container identity; no stop is authorized');
+  }
+  return {
+    operationId: authority.operationId,
+    identity: options.identity,
+    preflight: { ...observed, running: true },
+  };
+}
+
+/** Records the post-stop observation without inventing a provider receipt. */
+export async function observeDurableDockerTermination(
+  options: DurableCancellationOptions & {
+    preparation: DurableDockerTerminationPreparation;
+    identityProbe: ContainerIdentityProbe;
+  },
+): Promise<CancellationResult> {
+  const { identity, operationId } = options.preparation;
+  const observed = await options.identityProbe.inspect(identity.containerId);
+  const confirmed = observed === undefined
+    || ('status' in observed && observed.status === 'absent')
+    || ('containerId' in observed && !observed.running
+      && observed.containerId === identity.containerId
+      && observed.containerStartedAt === identity.containerStartedAt);
+  const result: CancellationResult = confirmed
+    ? { authorityRevoked: true, outcome: 'confirmed_exited', identity, detail: 'exact container identity absent after transport stop' }
+    : { authorityRevoked: true, outcome: 'interrupted_uncertain', identity, detail: 'container identity was unavailable, changed, or still running after transport stop' };
+  return recordCancellationResult(options, operationId, result);
 }
 
 export async function cancelDurableNativeRun(

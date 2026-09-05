@@ -8,6 +8,7 @@ import type { DurableCoordinator } from './coordinator.ts';
 export interface CodexTurnAdapter {
   start(intent: RunIntent, currentContext: CodexCurrentContext, lifecycle?: CodexTurnLifecycle): Promise<CodexRunResult>;
   resume(intent: RunIntent, sessionBinding: CodexSessionBinding, currentContext: CodexCurrentContext, lifecycle?: CodexTurnLifecycle): Promise<CodexRunResult>;
+  cancel?(intent: RunIntent, lifecycle?: CodexTurnLifecycle): Promise<ProviderFinalResult>;
 }
 
 /** Called by the actual Codex transport after it has observed its worker. */
@@ -102,6 +103,33 @@ export class CoordinatorCodexDelivery {
     } finally {
       if (this.#tails.get(request.runId) === run) this.#tails.delete(request.runId);
     }
+  }
+
+  /** Explicitly cancels only the currently delivering worker for this run. */
+  async cancel(runId: string): Promise<ProviderFinalResult> {
+    if (!this.#tails.has(runId)) throw new DeliveryPreconditionError(`Run ${runId} has no active Codex delivery to cancel`);
+    const snapshot = this.#coordinator.snapshot(runId);
+    if (snapshot === undefined || snapshot.worker === undefined) throw new DeliveryPreconditionError(`Run ${runId} has no durable active worker identity`);
+    if (snapshot.authorityRevoked) throw new DeliveryPreconditionError(`Run ${runId} authority is already revoked`);
+    if (this.#adapter.cancel === undefined) throw new DeliveryPreconditionError('Codex adapter does not expose explicit cancellation');
+    const expectedWorker = stable(snapshot.worker);
+    let authorized = false;
+    const result = await this.#adapter.cancel(snapshot.intent, {
+      async onStarted(): Promise<void> {
+        throw new DeliveryPreconditionError('Cancellation cannot start another worker');
+      },
+      onTerminationRequired: async (worker, reason): Promise<void> => {
+        if (reason !== 'cancelled' || stable(worker) !== expectedWorker) {
+          throw new DeliveryPreconditionError('Cancellation worker identity does not match the durable active run');
+        }
+        await this.#terminateWorker(worker, reason);
+        authorized = true;
+      },
+    });
+    if (!authorized || !snapshot.worker) {
+      return unavailable('interrupted_uncertain', 'Codex cancellation was not authorized by the durable worker boundary');
+    }
+    return result;
   }
 
   private async deliverExclusive(request: CodexDeliveryRequest): Promise<CodexDeliveryResult> {

@@ -7,6 +7,7 @@ export interface CodexProcessRunner {
 }
 
 export interface CodexProcessRequest {
+  runId: string;
   command: 'codex';
   args: string[];
   /** This is an operational path and must not be copied into public evidence. */
@@ -20,7 +21,7 @@ export interface CodexProcessRequest {
 
 export interface CodexProcessLifecycle {
   onStarted(worker: WorkerIdentity): Promise<void>;
-  onTerminationRequired?(worker: WorkerIdentity, reason: 'timeout' | 'output_limit'): Promise<void>;
+  onTerminationRequired?(worker: WorkerIdentity, reason: 'timeout' | 'output_limit' | 'cancelled'): Promise<void>;
 }
 
 export interface CodexProcessResult {
@@ -35,6 +36,8 @@ export interface CodexTerminationRequest {
   runId: string;
   /** The same private operational cwd used for launch. */
   cwd: string;
+  /** Required for coordinator-authorized termination of an active worker. */
+  lifecycle?: CodexProcessLifecycle;
 }
 
 export interface CodexTerminationResult {
@@ -314,7 +317,7 @@ function observedLifecycle(lifecycle: CodexProcessLifecycle): { lifecycle: Codex
         }
       },
       ...(lifecycle.onTerminationRequired === undefined ? {} : {
-        async onTerminationRequired(worker: WorkerIdentity, reason: 'timeout' | 'output_limit'): Promise<void> {
+        async onTerminationRequired(worker: WorkerIdentity, reason: 'timeout' | 'output_limit' | 'cancelled'): Promise<void> {
           try {
             await lifecycle.onTerminationRequired?.(worker, reason);
           } catch (error) {
@@ -463,7 +466,7 @@ export class CodexAdapter {
     return this.#execute('resume', intent, ['exec', 'resume', ...baseArgs(intent.execution.model), sessionBinding.sessionId, prompt as string], lifecycle);
   }
 
-  async cancel(intent: RunIntent): Promise<ProviderFinalResult> {
+  async cancel(intent: RunIntent, lifecycle?: CodexProcessLifecycle): Promise<ProviderFinalResult> {
     const invalid = validateIntent(intent, this.#limits, this.#compatibleModels)
       ?? (validEnvironment(this.#environment) ? undefined : 'a nonempty controlled execution environment is required');
     if (invalid) return boundedFailure(invalid);
@@ -476,7 +479,11 @@ export class CodexAdapter {
       };
     }
     try {
-      const result = await this.#runner.terminate({ runId: intent.runId, cwd: intent.execution.workspacePath });
+      const result = await this.#runner.terminate({
+        runId: intent.runId,
+        cwd: intent.execution.workspacePath,
+        ...(lifecycle === undefined ? {} : { lifecycle }),
+      });
       if (result.nativeCancellationReceipt) {
         return {
           outcome: 'cancelled',
@@ -505,6 +512,7 @@ export class CodexAdapter {
     try {
       const observed = suppliedLifecycle === undefined ? undefined : observedLifecycle(suppliedLifecycle);
       const result = await this.#runner.run({
+        runId: intent.runId,
         command: 'codex',
         args,
         // The actual OS cwd is part of the recovery identity. Do not substitute

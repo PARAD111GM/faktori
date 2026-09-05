@@ -94,6 +94,44 @@ describe('argv-only execution transports', () => {
     await expect(runner.terminateProcessGroup(999_999_999)).rejects.toThrow(/untracked/);
   });
 
+  it('treats every nonzero pid inspection as unknown and enumerates exact group members separately', async () => {
+    let response = 'permission';
+    const commands = new BoundedCommandRunner({
+      spawn: () => {
+        const child = new FakeChild(74);
+        queueMicrotask(() => {
+          if (response === 'permission') {
+            child.stderr.emit('data', 'ps: access denied\n');
+            child.emit('close', 1, null);
+          } else if (response === 'absent') {
+            child.emit('close', 1, null);
+          } else {
+            child.stdout.emit('data', [
+              '84 Thu Sep  4 21:00:00 2026 84 S',
+              '85 Thu Sep  4 21:00:01 2026 84 S',
+              '90 Thu Sep  4 21:00:02 2026 90 S',
+            ].join('\n'));
+            child.emit('close', 0, null);
+          }
+        });
+        return child;
+      },
+    });
+    const probe = new NativeIdentityProbe({ commands, cwd: CWD, env: ENV });
+
+    expect(await probe.inspect(84)).toEqual({ status: 'unknown' });
+    response = 'absent';
+    expect(await probe.inspect(84)).toEqual({ status: 'unknown' });
+    response = 'group';
+    expect(await probe.inspectProcessGroup(84)).toEqual({
+      processGroupId: 84,
+      members: [
+        { pid: 84, processStartedAt: 'Thu Sep  4 21:00:00 2026', processGroupId: 84, running: true },
+        { pid: 85, processStartedAt: 'Thu Sep  4 21:00:01 2026', processGroupId: 84, running: true },
+      ],
+    });
+  });
+
   it('uses exact Docker argv, explicit env, and validates run/inspect output without invoking Docker', async () => {
     const calls = [];
     const id = 'a'.repeat(64);
@@ -270,15 +308,17 @@ describe('argv-only execution transports', () => {
     expect(order).toEqual(['started', 'durable:cancelled', 'signal:83:SIGTERM']);
   });
 
-  it('identity-checks SIGKILL escalation and resolves a native bound when SIGTERM is ignored', async () => {
+  it('kills an anchored surviving child after the native leader exits on SIGTERM', async () => {
     const order = [];
     const child = new FakeChild(84);
-    let running = true;
+    let leaderRunning = true;
+    let childRunning = true;
     const commands = new BoundedCommandRunner({
       spawn: () => child,
       killProcessGroup: (pid, signal) => {
         order.push(`signal:${pid}:${signal}`);
-        if (signal === 'SIGKILL') queueMicrotask(() => { running = false; child.emit('close', null, 'SIGKILL'); });
+        if (signal === 'SIGTERM') queueMicrotask(() => { leaderRunning = false; child.emit('close', null, 'SIGTERM'); });
+        if (signal === 'SIGKILL') childRunning = false;
       },
       terminationGraceMs: 1,
     });
@@ -287,8 +327,16 @@ describe('argv-only execution transports', () => {
       runNonce: 'native-sigterm-ignored',
       identityProbe: {
         inspect: async (pid) => {
-          order.push(`inspect:${running ? 'running' : 'absent'}`);
-          return running ? { pid, processStartedAt: 'start-84', processGroupId: 84, running: true } : { status: 'absent' };
+          order.push(`inspect:${leaderRunning ? 'leader' : 'absent'}`);
+          return leaderRunning ? { pid, processStartedAt: 'start-84', processGroupId: 84, running: true } : { status: 'absent' };
+        },
+        inspectProcessGroup: async () => {
+          order.push(`group:${leaderRunning ? 'leader+' : ''}${childRunning ? 'child' : 'absent'}`);
+          const members = [
+            ...(leaderRunning ? [{ pid: 84, processStartedAt: 'start-84', processGroupId: 84, running: true }] : []),
+            ...(childRunning ? [{ pid: 85, processStartedAt: 'start-85', processGroupId: 84, running: true }] : []),
+          ];
+          return members.length === 0 ? { status: 'absent' } : { processGroupId: 84, members };
         },
       },
     });
@@ -301,9 +349,44 @@ describe('argv-only execution transports', () => {
 
     expect(result).toEqual(expect.objectContaining({ terminated: true, exitCode: null }));
     expect(order).toEqual([
-      'inspect:running', 'started', 'durable:timeout', 'inspect:running',
-      'signal:84:SIGTERM', 'inspect:running', 'signal:84:SIGKILL', 'inspect:absent',
+      'inspect:leader', 'started', 'durable:timeout', 'inspect:leader', 'group:leader+child',
+      'signal:84:SIGTERM', 'group:child', 'signal:84:SIGKILL', 'group:absent',
     ]);
+  });
+
+  it('does not SIGKILL a native group whose observed identity is no longer anchored', async () => {
+    const signals = [];
+    const child = new FakeChild(86);
+    let leaderRunning = true;
+    let groupChecks = 0;
+    const commands = new BoundedCommandRunner({
+      spawn: () => child,
+      killProcessGroup: (_pid, signal) => {
+        signals.push(signal);
+        if (signal === 'SIGTERM') queueMicrotask(() => { leaderRunning = false; child.emit('close', null, 'SIGTERM'); });
+      },
+      terminationGraceMs: 1,
+    });
+    const runner = new NativeCodexProcessRunner({
+      commands,
+      runNonce: 'native-reused-group',
+      identityProbe: {
+        inspect: async (pid) => leaderRunning ? { pid, processStartedAt: 'start-86', processGroupId: 86, running: true } : { status: 'absent' },
+        inspectProcessGroup: async () => {
+          groupChecks += 1;
+          return groupChecks === 1
+            ? { processGroupId: 86, members: [{ pid: 86, processStartedAt: 'start-86', processGroupId: 86, running: true }] }
+            : { processGroupId: 86, members: [{ pid: 99, processStartedAt: 'replacement', processGroupId: 86, running: true }] };
+        },
+      },
+    });
+    const result = await runner.run({
+      runId: 'reused-group-run', command: 'codex', args: ['exec'], cwd: CWD, environment: {}, timeoutMs: 5,
+      lifecycle: { async onStarted() {}, async onTerminationRequired() {} },
+    });
+
+    expect(result).toEqual(expect.objectContaining({ terminated: true, exitCode: null }));
+    expect(signals).toEqual(['SIGTERM']);
   });
 
   it('coalesces simultaneous explicit and bounded Docker termination into one durable hook and one stop', async () => {

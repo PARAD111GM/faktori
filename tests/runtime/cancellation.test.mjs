@@ -113,6 +113,7 @@ describe('durable cancellation integration', () => {
             ? { pid: 77, processStartedAt: 'worker-start', processGroupId: 77, running: true }
             : { status: 'absent' };
         },
+        inspectProcessGroup: async () => ({ status: 'absent' }),
       },
       now: () => new Date('2026-09-05T00:00:05.000Z'),
     });

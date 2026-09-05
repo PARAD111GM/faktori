@@ -7,6 +7,8 @@ import type {
   ExecutionResourceLimits,
   NativeIdentityObservation,
   NativeIdentityProbe as NativeIdentityProbeContract,
+  NativeProcessGroupObservation,
+  NativeProcessObservation,
   NativeProcessRunner as NativeProcessRunnerContract,
   ProcessLaunchOptions,
 } from './index.ts';
@@ -262,6 +264,32 @@ function sameNativeWorker(
     && observed.processGroupId === worker.processGroupId;
 }
 
+function parseNativeProcess(line: string): NativeProcessObservation | undefined {
+  const match = line.trim().match(/^(\d+)\s+(.+?)\s+(\d+)\s+(\S+)$/);
+  if (match === null || !Number.isInteger(Number(match[1])) || !Number.isInteger(Number(match[3]))) return undefined;
+  return {
+    pid: Number(match[1]),
+    processStartedAt: match[2],
+    processGroupId: Number(match[3]),
+    running: !match[4].startsWith('Z'),
+  };
+}
+
+function observedNativeGroup(
+  observed: NativeProcessGroupObservation | undefined,
+): observed is Extract<NativeProcessGroupObservation, { members: readonly NativeProcessObservation[] }> {
+  return observed !== undefined && 'members' in observed;
+}
+
+function nativeGroupExited(observed: NativeProcessGroupObservation | undefined): boolean {
+  return observed !== undefined && (('status' in observed && observed.status === 'absent')
+    || (observedNativeGroup(observed) && observed.members.every((member) => !member.running)));
+}
+
+function sameNativeProcess(left: NativeProcessObservation, right: NativeProcessObservation): boolean {
+  return left.pid === right.pid && left.processStartedAt === right.processStartedAt && left.processGroupId === right.processGroupId;
+}
+
 function boundedInvocation(command: string, args: readonly string[], cwd: string, env: Readonly<Record<string, string>>, timeoutMs: number): CommandInvocation {
   return { command, args, cwd, env, timeoutMs, stdoutMaxBytes: DEFAULT_OUTPUT_CAP, stderrMaxBytes: DEFAULT_OUTPUT_CAP, detached: true };
 }
@@ -308,10 +336,22 @@ export class NativeIdentityProbe implements NativeIdentityProbeContract {
     if (!Number.isInteger(pid) || pid < 1 || (this.runner !== undefined && !this.runner.launched(pid))) return { status: 'unknown' };
     const result = await this.commands.run(boundedInvocation('ps', ['-o', 'pid=,lstart=,pgid=,stat=', '-p', String(pid)], this.cwd, this.env, 1_000));
     if (result.timedOut || result.outputLimitExceeded || result.spawnError !== undefined) return { status: 'unknown' };
-    if (result.exitCode !== 0 || result.stdout.trim() === '') return { status: 'absent' };
-    const match = result.stdout.trim().match(/^(\d+)\s+(.+?)\s+(\d+)\s+(\S+)$/);
-    if (match === null || Number(match[1]) !== pid || !Number.isInteger(Number(match[3]))) return { status: 'unknown' };
-    return { pid, processStartedAt: match[2], processGroupId: Number(match[3]), running: !match[4].startsWith('Z') };
+    if (result.exitCode !== 0) return { status: 'unknown' };
+    if (result.stdout.trim() === '') return { status: 'absent' };
+    const observed = parseNativeProcess(result.stdout);
+    if (observed === undefined || observed.pid !== pid) return { status: 'unknown' };
+    return observed;
+  }
+
+  async inspectProcessGroup(processGroupId: number): Promise<NativeProcessGroupObservation | undefined> {
+    if (!Number.isInteger(processGroupId) || processGroupId < 1) return { status: 'unknown' };
+    const result = await this.commands.run(boundedInvocation('ps', ['-axo', 'pid=,lstart=,pgid=,stat='], this.cwd, this.env, 1_000));
+    if (result.timedOut || result.outputLimitExceeded || result.spawnError !== undefined || result.exitCode !== 0) return { status: 'unknown' };
+    const lines = result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
+    const parsed = lines.map(parseNativeProcess);
+    if (parsed.some((entry) => entry === undefined)) return { status: 'unknown' };
+    const members = (parsed as NativeProcessObservation[]).filter((entry) => entry.processGroupId === processGroupId);
+    return members.length === 0 ? { status: 'absent' } : { processGroupId, members };
   }
 }
 
@@ -462,26 +502,33 @@ export class NativeCodexProcessRunner {
       active.cancelled = active.cancelled || reason === 'cancelled';
 
       const beforeSignal = await this.identityProbe.inspect(active.worker.pid);
-      if (beforeSignal !== undefined && 'status' in beforeSignal && beforeSignal.status === 'absent') return;
-      if (sameNativeWorker(active.worker, beforeSignal) && !beforeSignal.running) return;
+      const beforeGroup = await this.identityProbe.inspectProcessGroup?.(active.worker.processGroupId);
       if (!sameNativeWorker(active.worker, beforeSignal)) {
+        if (nativeGroupExited(beforeGroup)) return;
         throw new Error('native worker identity unavailable or changed before SIGTERM; no signal sent');
+      }
+      if (observedNativeGroup(beforeGroup)
+        && !beforeGroup.members.some((member) => sameNativeProcess(member, beforeSignal))) {
+        throw new Error('native process-group observation did not contain the exact worker leader; no signal sent');
       }
       this.commands.killProcessGroup(active.worker.processGroupId, 'SIGTERM');
 
       await wait(this.commands.terminationGraceMs);
-      const afterTerm = await this.identityProbe.inspect(active.worker.pid);
-      if (afterTerm !== undefined && 'status' in afterTerm && afterTerm.status === 'absent') return;
-      if (sameNativeWorker(active.worker, afterTerm) && !afterTerm.running) return;
-      if (!sameNativeWorker(active.worker, afterTerm)) {
-        throw new Error('native worker identity unavailable or changed after SIGTERM; SIGKILL not sent');
+      const afterTermGroup = await this.identityProbe.inspectProcessGroup?.(active.worker.processGroupId);
+      if (nativeGroupExited(afterTermGroup)) return;
+      if (!observedNativeGroup(afterTermGroup)) {
+        throw new Error('native process-group exit is unknown after SIGTERM; SIGKILL not sent');
+      }
+      const anchors = observedNativeGroup(beforeGroup) ? beforeGroup.members : [beforeSignal];
+      const hasContinuousMember = afterTermGroup.members.some((member) => anchors.some((anchor) => sameNativeProcess(anchor, member)));
+      if (!hasContinuousMember) {
+        throw new Error('native process group has no continuous identity after SIGTERM; SIGKILL not sent');
       }
 
       this.commands.killProcessGroup(active.worker.processGroupId, 'SIGKILL');
       await wait(this.commands.terminationGraceMs);
-      const afterKill = await this.identityProbe.inspect(active.worker.pid);
-      if (afterKill !== undefined && 'status' in afterKill && afterKill.status === 'absent') return;
-      if (sameNativeWorker(active.worker, afterKill) && !afterKill.running) return;
+      const afterKillGroup = await this.identityProbe.inspectProcessGroup?.(active.worker.processGroupId);
+      if (nativeGroupExited(afterKillGroup)) return;
       throw new Error('native worker exit could not be confirmed after identity-checked SIGKILL');
     })();
     active.termination = termination;

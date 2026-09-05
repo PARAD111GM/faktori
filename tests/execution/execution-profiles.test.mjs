@@ -221,9 +221,21 @@ describe('execution profiles', () => {
       return nativeInspections === 1
         ? { pid: 44, processStartedAt: 'start-1', processGroupId: 44, running: true }
         : { status: 'absent' };
-    } }, 'owner-cancelled');
+    }, inspectProcessGroup: async () => ({ status: 'absent' }) }, 'owner-cancelled');
     expect(order).toEqual(['revoked', 'terminate']);
     expect(confirmed.outcome).toBe('confirmed_exited');
+
+    let leaderChecks = 0;
+    const survivingChild = await cancelNativeExecution(native, { revokeBeforeTermination: async () => {} }, { terminateProcessGroup: async () => {}, spawn: async () => ({ pid: 0 }) }, {
+      inspect: async () => {
+        leaderChecks += 1;
+        return leaderChecks === 1
+          ? { pid: 44, processStartedAt: 'start-1', processGroupId: 44, running: true }
+          : { status: 'absent' };
+      },
+      inspectProcessGroup: async () => ({ processGroupId: 44, members: [{ pid: 45, processStartedAt: 'child-start', processGroupId: 44, running: true }] }),
+    }, 'owner-cancelled');
+    expect(survivingChild).toEqual(expect.objectContaining({ outcome: 'interrupted_uncertain' }));
 
     const uncertain = await cancelDockerExecution({ kind: 'container', containerId: 'ctr-1', containerStartedAt: 'start-2', runNonce: 'nonce-2' }, authority, { run: async () => ({ containerId: 'ignored' }), stop: async () => { order.push('stop'); } }, { inspect: async () => ({ containerId: 'ctr-1', containerStartedAt: 'start-2', running: true }) }, 'owner-cancelled');
     expect(uncertain.outcome).toBe('interrupted_uncertain');

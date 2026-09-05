@@ -120,6 +120,7 @@ export interface NativeProcessRunner {
 
 export interface NativeIdentityProbe {
   inspect(pid: number): Promise<NativeIdentityObservation | undefined>;
+  inspectProcessGroup?(processGroupId: number): Promise<NativeProcessGroupObservation | undefined>;
 }
 
 export interface ContainerRunner {
@@ -131,8 +132,14 @@ export interface ContainerIdentityProbe {
   inspect(containerId: string): Promise<ContainerIdentityObservation | undefined>;
 }
 
+export type NativeProcessObservation = { pid: number; processStartedAt: string; processGroupId: number; running: boolean };
+
 export type NativeIdentityObservation =
-  | { pid: number; processStartedAt: string; processGroupId: number; running: boolean }
+  | NativeProcessObservation
+  | { status: 'absent' | 'unknown' };
+
+export type NativeProcessGroupObservation =
+  | { processGroupId: number; members: readonly NativeProcessObservation[] }
   | { status: 'absent' | 'unknown' };
 
 export type ContainerIdentityObservation =
@@ -264,8 +271,12 @@ export async function cancelNativeExecution(
   try {
     await runner.terminateProcessGroup(identity.processGroupId);
     const observed = await identityProbe.inspect(identity.pid);
-    if (isNativeAbsent(observed) || observed === undefined || (isNativeObserved(observed) && !observed.running && sameNativeIdentity(identity, observed))) {
-      return { authorityRevoked: true, outcome: 'confirmed_exited', identity, detail: 'process group termination confirmed by identity probe' };
+    if (isNativeAbsent(observed) || (isNativeObserved(observed) && !observed.running && sameNativeIdentity(identity, observed))) {
+      const group = await identityProbe.inspectProcessGroup?.(identity.processGroupId);
+      if (nativeGroupExited(group)) {
+        return { authorityRevoked: true, outcome: 'confirmed_exited', identity, detail: 'process group termination confirmed by group identity probe' };
+      }
+      return { authorityRevoked: true, outcome: 'interrupted_uncertain', identity, detail: 'worker leader exited but whole process-group exit was not confirmed' };
     }
     if (isNativeUnknown(observed) || !isNativeObserved(observed) || !sameNativeIdentity(identity, observed)) {
       return { authorityRevoked: true, outcome: 'interrupted_uncertain', identity, detail: 'process identity was unavailable or changed after termination request' };
@@ -404,6 +415,11 @@ function isNativeAbsent(observed: NativeIdentityObservation | undefined): boolea
 
 function isNativeUnknown(observed: NativeIdentityObservation | undefined): boolean {
   return observed !== undefined && 'status' in observed && observed.status === 'unknown';
+}
+
+function nativeGroupExited(observed: NativeProcessGroupObservation | undefined): boolean {
+  return observed !== undefined && (('status' in observed && observed.status === 'absent')
+    || ('members' in observed && observed.members.every((member) => !member.running)));
 }
 
 function sameNativeIdentity(identity: NativeWorkerIdentity, observed: Extract<NativeIdentityObservation, { pid: number }>): boolean {

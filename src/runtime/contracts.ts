@@ -169,6 +169,10 @@ export type RunEventKind =
   | 'worker.termination.observed'
   | 'action.intended'
   | 'action.receipt'
+  /** Durable, owner-visible Console command state. Never contains credentials or raw logs. */
+  | 'console.command'
+  | 'gm.finding.upserted'
+  | 'gm.improvement.proposed'
   | 'reservation.released';
 
 export interface RunEvent {

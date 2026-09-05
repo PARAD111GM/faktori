@@ -169,6 +169,17 @@
       "assumptions": ["The native goal remains uncapped.","No parent/child counters are summed when overlap is unknown.","Acceptance is unchanged by the estimate."],
       "baseline": {"manager":"Adjacent private .build/phase-4-manager-baseline.json; raw provenance is not committed."},
       "revisionNotes": ["No measured token attribution is available from child specialists; current account quota was checked at dispatch."]
+    },
+    {
+      "phase": 5,
+      "hardCeiling": false,
+      "confidence": "low",
+      "currentRevision": 1,
+      "estimateTokens": 800000,
+      "revisions": [{"revision":1,"estimateTokens":800000,"allocations":{"managerCoordination":60000,"implementerOrchestrationAndIntegration":220000,"specialistDelivery":260000,"verificationAndRework":180000,"contingency":80000},"rationale":"Manager-provided bottom-up Phase 5 planning estimate. It is advisory and the native goal is intentionally uncapped."}],
+      "assumptions": ["The estimate includes manager, implementer, two bounded specialists, verification, rework and contingency.","Account percentage is not token-convertible and is monitored separately.","Unknown or overlapping telemetry remains unknown and never weakens acceptance."],
+      "baseline": {"manager":"Adjacent private phase-5-manager-baseline.json; raw provenance is not committed."},
+      "revisionNotes": ["No native hard token cap was set. Measured implementer total is reported only as an overlap-safe lower bound."]
     }
   ]
 }

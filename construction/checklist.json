@@ -2,14 +2,15 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 4,
+    "currentPhase": 5,
     "source": "docs/implementation-plan.md",
     "phaseBudgets": {
       "0": 360000,
       "1": 1600000,
       "2": 2200000,
       "3": 2400000,
-      "4": 650000
+      "4": 650000,
+      "5": 800000
     }
   },
   "tickets": [
@@ -682,7 +683,7 @@
       "id": "F5-01",
       "phase": 5,
       "title": "Build the Console shell and read views",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-01",
         "F3-03",
@@ -698,7 +699,7 @@
       "id": "F5-02",
       "phase": 5,
       "title": "Add owner actions and conversation controls",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-04",
         "F5-01"
@@ -713,7 +714,7 @@
       "id": "F5-03",
       "phase": 5,
       "title": "Implement Factory GM operation",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F2-01",
         "F5-01",
@@ -729,7 +730,7 @@
       "id": "F5-04",
       "phase": 5,
       "title": "Add resource and attention visibility",
-      "status": "not_started",
+      "status": "in_progress",
       "dependencies": [
         "F5-01",
         "F5-02",
@@ -1328,6 +1329,38 @@
       "from": "complete",
       "to": "complete",
       "reason": "Final candidate c55399f adds real loopback HTTP deployment and exact-revision smoke evidence with persisted receipt and confirmed process cleanup; focused 5-test loopback gate and full 31-file/269-test Node24 check passed."
+    },
+    {
+      "eventId": "status-1788625979203-qakfhj",
+      "at": "2026-09-05T16:32:59.204Z",
+      "ticketId": "F5-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Orchestrator completed the coordinator-backed Console API/owner-action vertical slice; bounded React UI lane is in progress."
+    },
+    {
+      "eventId": "status-1788626226467-xnzstp",
+      "at": "2026-09-05T16:37:06.468Z",
+      "ticketId": "F5-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Coordinator-owned Console owner actions and durable command replay are integrated."
+    },
+    {
+      "eventId": "status-1788626227785-q6y3mo",
+      "at": "2026-09-05T16:37:07.786Z",
+      "ticketId": "F5-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Event-driven GM and coordinator-journal projection are integrated; cross-layer verification remains."
+    },
+    {
+      "eventId": "status-1788626229099-tp59v1",
+      "at": "2026-09-05T16:37:09.100Z",
+      "ticketId": "F5-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Resource/attention API projection is implemented; visible Console integration remains."
     }
   ]
 }

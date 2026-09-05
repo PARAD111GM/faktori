@@ -1,14 +1,15 @@
 {
   "schemaVersion": 1,
-  "phase": 4,
-  "generatedAt": "2026-09-05T07:07:27.407Z",
+  "phase": 5,
+  "generatedAt": "2026-09-05T16:49:39.058Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": null,
-    "excludedChildCount": 0
+    "total": 295423,
+    "excludedChildCount": 2,
+    "kind": "overlap-safe-lower-bound"
   },
   "estimated": {
     "total": null
@@ -16,41 +17,37 @@
   "models": [
     {
       "model": "gpt-5.6-terra",
-      "reasoning": "medium",
-      "recordCount": 3
+      "reasoning": "high",
+      "recordCount": 1
     }
   ],
   "unknown": [
     {
-      "ticket": "F4-01",
+      "ticket": "F5-01",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F4-02",
+      "ticket": "F5-03",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F4-04",
-      "reason": "telemetry:unknown"
+      "ticket": "F5-01",
+      "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "phase-4-manager",
+      "ticket": "F5-03",
       "reason": "parent-child-overlap:unknown"
     }
   ],
-  "coverageGaps": [
-
-  ],
+  "coverageGaps": [],
   "records": {
-    "accepted": 0,
+    "accepted": 3,
     "duplicates": 0
   },
   "budget": {
-    "estimate": 650000,
-    "remaining": null,
-    "percentUsed": null
+    "estimate": 800000,
+    "remaining": 504577,
+    "percentUsed": 36.93
   },
-  "notices": [
-
-  ]
+  "notices": []
 }

@@ -11,6 +11,7 @@ import {
   renderProvisioningProposal,
   resolveFactoryConfig,
   SqliteProjection,
+  startLocalConsoleFromFile,
 } from './index.ts';
 
 const HELP = `Usage:
@@ -21,6 +22,7 @@ const HELP = `Usage:
   faktori provision apply <bundle.json> <absolute-root>
   faktori product preview <request.json>
   faktori runtime rebuild <journal.jsonl> <projection.sqlite>
+  faktori console serve <local-console.json>
 
 Commands read explicit files and write JSON to stdout. Provision apply changes
 approved local factory state. Runtime rebuild replaces only the specified
@@ -114,6 +116,15 @@ async function run(argv: string[]): Promise<void> {
       projection.close();
     }
     return;
+  }
+
+  if (group === 'console' && action === 'serve') {
+    const started = await startLocalConsoleFromFile(source ?? '');
+    process.stdout.write(`${JSON.stringify({ url: started.url })}\n`);
+    const close = async (): Promise<void> => { await started.close(); process.exit(0); };
+    process.once('SIGINT', () => { void close(); });
+    process.once('SIGTERM', () => { void close(); });
+    await new Promise<void>(() => {});
   }
 
   throw new Error(`unknown command: ${argv.join(' ')}\n\n${HELP}`);

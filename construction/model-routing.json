@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "phase": 4,
+  "phase": 5,
   "policy": "Use the least expensive model likely to produce accepted work; escalate only from demonstrated failure.",
   "assignments": [
-    {"role":"phase implementer-orchestrator","tickets":["F4-01","F4-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Shared action-admission seam, GitHub progression, integration, package and canonical records."},
-    {"role":"Jira REST specialist","tickets":["F4-02"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded controller-owned REST mapping and deterministic recovery negatives."},
-    {"role":"deployment specialist","tickets":["F4-04"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Separate local deploy/smoke and configured CI observation without live mutation."}
+    {"role":"phase implementer-orchestrator","tickets":["F5-01","F5-02","F5-03","F5-04"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Cross-layer API/coordinator/provider integration, installed package wiring, records, browser proof and acceptance evidence."},
+    {"role":"Console UI specialist","tickets":["F5-01","F5-02","F5-04"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded React/Vite Console and accessibility-safe state/action rendering in exclusive console paths."},
+    {"role":"Factory GM specialist","tickets":["F5-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded event diagnosis/finding behavior, authority rejection and deterministic tests in exclusive GM paths."}
   ],
   "priorAssignments": [
     {"role":"phase implementer-orchestrator","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Shared contracts, integration, package and CLI, canonical records, consequential verification, and manager coordination."},

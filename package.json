@@ -12,6 +12,7 @@
   },
   "files": [
     "dist",
+    "console/dist",
     "docs",
     "docker",
     "examples",
@@ -81,6 +82,10 @@
     "./integrations": {
       "types": "./dist/integrations/index.d.ts",
       "import": "./dist/integrations/index.js"
+    },
+    "./console": {
+      "types": "./dist/console/index.d.ts",
+      "import": "./dist/console/index.js"
     }
   },
   "engines": {
@@ -90,7 +95,8 @@
   "packageManager": "npm@12.0.2",
   "scripts": {
     "faktori": "node src/cli.ts",
-    "build": "tsc --project tsconfig.build.json",
+    "build": "npm run console:build && tsc --project tsconfig.build.json",
+    "console:build": "vite build --config console/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check": "npm run typecheck && npm test && npm run build && npm run pack:verify",

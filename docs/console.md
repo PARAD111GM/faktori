@@ -1,5 +1,59 @@
 # Local Console and Factory GM
 
+## Prepare one approved native Codex proof
+
+The public bootstrap path can derive the otherwise low-level Console file from
+an approved factory and one scoped work item:
+
+```sh
+faktori console prepare /absolute/path/to/console-request.json > /absolute/path/to/local-console.json
+faktori console serve /absolute/path/to/local-console.json
+```
+
+The factory must already have been applied with `faktori provision apply`. Its
+selected product must have been bound through `localProductSources`, must be an
+exact clean Git repository with a named branch and commit, and must resolve to
+a native Codex provider. The preparation command records that exact commit,
+branch, context payload, authority policy, and budget reservation in the
+generated run intent. It rejects a dirty or parent-owned repository.
+
+`console-request.json` has this shape (replace every example value):
+
+```json
+{
+  "factoryRoot": "/absolute/path/to/approved-factory",
+  "configuration": { "factory": {}, "providers": [], "environments": [], "products": [], "pods": [] },
+  "productId": "task-board",
+  "model": "gpt-5.5",
+  "environment": { "PATH": "/owner/controlled/provider/path" },
+  "estimatedTokens": 30000,
+  "contextRevision": "task-board-context@1",
+  "authorityRevision": "task-board-authority@1",
+  "createdAt": "2026-09-05T18:00:00.000Z",
+  "port": 4173,
+  "workItem": {
+    "id": "task-board-implementation",
+    "revision": "task-board-work@1",
+    "objective": "Implement the frozen task-board behavior.",
+    "acceptanceCriteria": ["Run the documented acceptance command successfully."],
+    "constraints": ["Do not change the test oracle.", "Do not use network access."]
+  }
+}
+```
+
+The full canonical factory configuration is required in `configuration`; the
+abbreviated object above only shows its fields. Inherited parent constraints
+belong in `workItem.constraints` and are included in the prompt and its bound
+digest. This convenience route does not implement a hard provider token cap,
+so it truthfully rejects any selected product whose resolved budget has
+`strictSpending: true`. A token estimate and coordinator accounting are not a
+hard spending control.
+
+This is a convenience for an owner-selected native Codex proof, not the generic
+bootstrap default. The default remains isolated execution, and a complete
+factory evaluation still covers Codex, Claude, and Cursor rather than treating
+one successful native route as universal provider evidence.
+
 Run the installed Console with an owner-controlled JSON file:
 
 ```sh

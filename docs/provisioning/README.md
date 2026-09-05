@@ -18,17 +18,37 @@ configuration invalidates that approval.
 each effect and writes the observed result afterward. An interrupted local
 operation is reconciled by the same stable operation identity on rerun. A
 different owner-controlled factory profile, a non-Git target, and all unknown
-paths are blocked rather than overwritten. A pre-existing Git repository at an
-intended target is reconciled, never reinitialized.
+paths are blocked rather than overwritten. Only the exact product-local Git
+repository created by an already-journaled interrupted operation can be
+reconciled; a child of some parent repository is not adopted implicitly.
+
+For an existing local product or bundled fixture, the proposal request may map
+the configured product ID to an absolute source directory:
+
+```json
+{
+  "localProductSources": {
+    "task-board": "/absolute/path/to/approved/task-board"
+  }
+}
+```
+
+Proposal creation rejects symlinks and special files, excludes source `.git`
+metadata, and binds the sorted file digests and modes into the approval-bound
+effect. Apply re-verifies no-follow source bytes, creates destination files
+exclusively, verifies the copied snapshot again, and only then initializes an
+exact product-local Git repository and records a local initial commit. A changed
+source or concurrent destination edit blocks activation instead of importing or
+overwriting unapproved bytes. Omitting `localProductSources` intentionally
+creates a committed empty scaffold.
 
 Before each local effect, Faktori canonicalizes the supplied root and rejects a
 symlink root or any existing symlink component below it. It rechecks parents
 after creating them and verifies their resolved path remains below the real
-root before a write or `git init`. This closes ordinary configuration-parent
-and products-parent escapes. As with other path-based filesystem APIs, an
-attacker with concurrent write access can still race replacement between a
-check and the subsequent system call; Phase 1 does not claim descriptor-relative
-or kernel-enforced protection against that TOCTOU class.
+root before a write or `git init`. Source file descriptors use no-follow reads,
+destination files use exclusive creation, and the final copied manifest is
+rechecked immediately before Git activation. These are application-level
+guards; the factory still requires an owner-controlled provisioning root.
 
 Remote effects are sent only to `createFakeRemoteTransport()` in this phase;
 they return `pending` and `supported: false`. That is an explicit unsupported

@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -23,17 +23,24 @@ describe('public CLI', () => {
     expect(invalid.stderr).toContain('factory');
   });
 
-  it('creates a revision-bound proposal and approval, then applies real local Git scaffolding', async () => {
+  it('creates a revision-bound proposal and approval, applies a bound product, and prepares Console', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'faktori-cli-'));
     const proposalRequestPath = join(directory, 'proposal-request.json');
     const approvalRequestPath = join(directory, 'approval-request.json');
     const bundlePath = join(directory, 'bundle.json');
+    const consoleRequestPath = join(directory, 'console-request.json');
     const provisioningRoot = join(directory, 'owner-factory');
+    const sourceRoot = join(directory, 'website-source');
+    await mkdir(sourceRoot);
+    await writeFile(join(sourceRoot, 'package.json'), '{"name":"website","scripts":{"test":"node --test"}}\n');
     const configuration = JSON.parse(await readFile(join(root, 'examples/config/solo.json'), 'utf8'));
+    configuration.factory.defaults.executionProfile = 'native';
+    configuration.factory.defaults.budget.strictSpending = false;
     await writeFile(proposalRequestPath, JSON.stringify({
       configuration,
       discovery: { factoryId: 'solo-studio', inventory: { providers: ['codex'] }, interview: { owner: 'owner-1' } },
       componentVersions: { faktori: '0.0.0', node: '24.20.0' },
+      localProductSources: { website: sourceRoot },
       costs: { recurring: '$0 new recurring services' },
       humanWorkload: ['Review and approve this local scaffold.'],
       tradeoffs: ['Remote provisioning remains unsupported in Phase 1.'],
@@ -65,8 +72,33 @@ describe('public CLI', () => {
     const applied = run('provision', 'apply', bundlePath, provisioningRoot);
     expect(applied.status).toBe(0, applied.stderr);
     expect(JSON.parse(applied.stdout).operations.every(({ status }) => status === 'completed')).toBe(true);
-    expect(execFileSync('git', ['-C', join(provisioningRoot, 'products/website'), 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }).trim()).toBe('true');
-  });
+    const productRoot = join(provisioningRoot, 'products/website');
+    expect(execFileSync('git', ['-C', productRoot, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }).trim()).toBe('true');
+    expect(execFileSync('git', ['-C', productRoot, 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
+
+    await writeFile(consoleRequestPath, JSON.stringify({
+      configuration,
+      factoryRoot: provisioningRoot,
+      productId: 'website',
+      model: 'gpt-5.5',
+      environment: { PATH: '/usr/bin', HOME: directory },
+      port: 0,
+      estimatedTokens: 1000,
+      contextRevision: 'website-context@1',
+      authorityRevision: 'website-authority@1',
+      createdAt: '2026-09-05T18:00:00.000Z',
+      workItem: {
+        id: 'website-work', revision: 'website-work@1', objective: 'Complete the bounded website work.',
+        acceptanceCriteria: ['The documented test passes.'],
+        constraints: ['Do not use network access.'],
+      },
+    }));
+    const prepared = run('console', 'prepare', consoleRequestPath);
+    expect(prepared.status).toBe(0, prepared.stderr);
+    const consoleConfiguration = JSON.parse(prepared.stdout);
+    expect(consoleConfiguration.runtime.workItems[0].intent.target.baseRevision).toMatch(/^[0-9a-f]{40}$/);
+    expect(consoleConfiguration.runtime.workItems[0].context.prompt).toContain('Do not use network access.');
+  }, 15_000);
 
   it('previews a product without allocating a pod', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'faktori-cli-product-'));

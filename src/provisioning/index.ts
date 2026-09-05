@@ -4,9 +4,13 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   appendFileSync,
+  closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   readdirSync,
@@ -45,6 +49,11 @@ export interface LocalGitRepositoryEffect {
   target: string;
   description: string;
   productId: string;
+  source?: {
+    path: string;
+    digest: string;
+    fileCount: number;
+  };
 }
 export interface RemoteProviderEffect {
   id: string;
@@ -126,6 +135,7 @@ export interface ProvisioningProposalInput {
   costs?: JsonObject;
   humanWorkload?: string[];
   tradeoffs?: string[];
+  localProductSources?: Record<string, string>;
   remoteEffects?: Array<{ id: string; target: string; description: string }>;
 }
 export interface ProvisioningApprovalInput {
@@ -387,7 +397,15 @@ function validateEffect(value: unknown, path: string): ProvisioningEffect {
   };
   if (input.kind === 'local-config') return { ...common, kind: 'local-config' };
   if (input.kind === 'local-git-repository') {
-    return { ...common, kind: 'local-git-repository', productId: nonEmpty(input.productId, `${path}.productId`) };
+    const sourceInput = input.source === undefined ? undefined : record(input.source, `${path}.source`);
+    const source = sourceInput === undefined ? undefined : {
+      path: nonEmpty(sourceInput.path, `${path}.source.path`),
+      digest: nonEmpty(sourceInput.digest, `${path}.source.digest`),
+      fileCount: Number.isInteger(sourceInput.fileCount) && Number(sourceInput.fileCount) >= 0
+        ? Number(sourceInput.fileCount)
+        : fail(`${path}.source.fileCount`, 'must be a non-negative integer'),
+    };
+    return { ...common, kind: 'local-git-repository', productId: nonEmpty(input.productId, `${path}.productId`), ...(source === undefined ? {} : { source }) };
   }
   if (input.kind === 'remote-provider') {
     if (input.transport !== 'fake' || input.status !== 'pending') {
@@ -469,7 +487,65 @@ function authorityRisks(resolvedConfig: ValidatedResolvedConfig): ProvisioningRi
   return risks;
 }
 
-function localEffects(resolvedConfig: ValidatedResolvedConfig): ProvisioningEffect[] {
+interface SourceSnapshot {
+  path: string;
+  digest: string;
+  fileCount: number;
+  files: Array<{ relativePath: string; digest: string; mode: number }>;
+}
+
+function sourceSnapshot(sourcePath: string): SourceSnapshot {
+  if (!isAbsolute(sourcePath)) fail('localProductSources', 'source paths must be absolute');
+  if (!existsSync(sourcePath)) fail('localProductSources', `source does not exist: ${sourcePath}`);
+  const rootStat = lstatSync(sourcePath);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) fail('localProductSources', 'source must be a real directory, not a symlink');
+  const root = realpathSync(sourcePath);
+  const files: SourceSnapshot['files'] = [];
+  const walk = (directory: string, prefix: string): void => {
+    for (const name of readdirSync(directory).sort()) {
+      if (name === '.git') continue;
+      const path = resolve(directory, name);
+      const relativePath = prefix === '' ? name : `${prefix}/${name}`;
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) fail('localProductSources', `source contains symlink: ${relativePath}`);
+      if (stat.isDirectory()) { walk(path, relativePath); continue; }
+      if (!stat.isFile()) fail('localProductSources', `source contains unsupported entry: ${relativePath}`);
+      const bytes = readRegularFileNoFollow(path, relativePath);
+      files.push({ relativePath, digest: createHash('sha256').update(bytes).digest('hex'), mode: stat.mode & 0o777 });
+    }
+  };
+  walk(root, '');
+  return { path: root, digest: digest(files, 'localProductSources.manifest'), fileCount: files.length, files };
+}
+
+function readRegularFileNoFollow(path: string, label: string): Buffer {
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    if (!fstatSync(descriptor).isFile()) fail('localProductSources', `source contains unsupported entry: ${label}`);
+    return readFileSync(descriptor);
+  } catch (error) {
+    if (error instanceof ProvisioningValidationError) throw error;
+    fail('localProductSources', `source file could not be read safely: ${label}`);
+    throw error;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function validatedLocalProductSources(value: unknown, resolvedConfig: ValidatedResolvedConfig): Map<string, SourceSnapshot> {
+  if (value === undefined) return new Map();
+  const sources = record(value, 'localProductSources');
+  const productIds = new Set(resolvedConfig.products.map((product) => product.id));
+  const result = new Map<string, SourceSnapshot>();
+  for (const [productId, pathValue] of Object.entries(sources).sort(([left], [right]) => left.localeCompare(right))) {
+    if (!productIds.has(productId)) fail(`localProductSources.${productId}`, 'does not name a configured product');
+    result.set(productId, sourceSnapshot(nonEmpty(pathValue, `localProductSources.${productId}`)));
+  }
+  return result;
+}
+
+function localEffects(resolvedConfig: ValidatedResolvedConfig, sources: Map<string, SourceSnapshot>): ProvisioningEffect[] {
   const effects: ProvisioningEffect[] = [{
     id: 'local:factory-profile',
     kind: 'local-config',
@@ -477,12 +553,16 @@ function localEffects(resolvedConfig: ValidatedResolvedConfig): ProvisioningEffe
     description: 'Write the owner-controlled factory profile with the approved revision and component locks.',
   }];
   for (const product of resolvedConfig.products) {
+    const source = sources.get(product.id);
     effects.push({
       id: `local:product-repository:${product.id}`,
       kind: 'local-git-repository',
       productId: product.id,
       target: `products/${product.id}`,
-      description: `Initialize the local Git scaffold for product ${product.id}.`,
+      description: source === undefined
+        ? `Initialize and commit the local Git scaffold for product ${product.id}.`
+        : `Copy the approved ${source.fileCount}-file source snapshot, then initialize and commit the local Git repository for product ${product.id}.`,
+      ...(source === undefined ? {} : { source: { path: source.path, digest: source.digest, fileCount: source.fileCount } }),
     });
   }
   return effects;
@@ -520,7 +600,8 @@ export function createProvisioningProposal(input: unknown): ProvisioningProposal
   if (Object.keys(componentVersions).length === 0) fail('componentVersions', 'must lock at least one component version');
   const remoteValues = value.remoteEffects === undefined ? [] : value.remoteEffects;
   if (!Array.isArray(remoteValues)) fail('remoteEffects', 'must be an array');
-  const effects = localEffects(resolvedConfig);
+  const sources = validatedLocalProductSources(value.localProductSources, resolvedConfig);
+  const effects = localEffects(resolvedConfig, sources);
   for (const [index, remoteValue] of remoteValues.entries()) {
     const remote = record(remoteValue, `remoteEffects[${index}]`);
     const remoteId = nonEmpty(remote.id, `remoteEffects[${index}].id`);
@@ -762,9 +843,77 @@ function profileContents(proposal: ProvisioningProposal): string {
   }, null, 2)}\n`;
 }
 
-function isGitRepository(path: string): boolean {
-  const result = spawnSync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' });
-  return result.status === 0 && result.stdout.trim() === 'true';
+function isExactGitRepository(path: string): boolean {
+  const result = spawnSync('git', ['-C', path, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  if (result.status !== 0) return false;
+  try { return realpathSync(result.stdout.trim()) === realpathSync(path); }
+  catch { return false; }
+}
+
+function hasGitHead(path: string): boolean {
+  return spawnSync('git', ['-C', path, 'rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' }).status === 0;
+}
+
+function commitInitialProduct(path: string): string | undefined {
+  const add = spawnSync('git', ['-C', path, 'add', '--all'], { encoding: 'utf8' });
+  if (add.status !== 0) return add.stderr.trim() || 'git add failed';
+  const commit = spawnSync('git', [
+    '-C', path,
+    '-c', 'user.name=Faktori Bootstrap',
+    '-c', 'user.email=faktori@localhost',
+    '-c', 'commit.gpgSign=false',
+    '-c', 'core.hooksPath=/dev/null',
+    'commit', '--quiet', '--allow-empty', '-m', 'chore: initialize product',
+  ], { encoding: 'utf8' });
+  return commit.status === 0 ? undefined : commit.stderr.trim() || 'initial git commit failed';
+}
+
+function existingSourceFiles(root: string): Map<string, { digest: string; mode: number }> {
+  const snapshot = sourceSnapshot(root);
+  return new Map(snapshot.files.map((file) => [file.relativePath, { digest: file.digest, mode: file.mode }]));
+}
+
+function copyApprovedSource(effect: LocalGitRepositoryEffect, target: string, provisioningRoot: string): LocalOutcome | undefined {
+  if (effect.source === undefined) return undefined;
+  let current: SourceSnapshot;
+  try {
+    current = sourceSnapshot(effect.source.path);
+  } catch (error) {
+    return { status: 'failed', target: effect.target, reason: error instanceof Error ? error.message : String(error) };
+  }
+  if (current.digest !== effect.source.digest || current.fileCount !== effect.source.fileCount) {
+    return { status: 'blocked', target: effect.target, reason: 'Approved source snapshot changed after proposal; create and approve a new proposal.' };
+  }
+  const existing = existingSourceFiles(target);
+  const approved = new Map(current.files.map((file) => [file.relativePath, file]));
+  for (const [relativePath, file] of existing) {
+    const expected = approved.get(relativePath);
+    if (expected === undefined || expected.digest !== file.digest || expected.mode !== file.mode) {
+      return { status: 'blocked', target: effect.target, reason: `Existing product scaffold differs from the approved source at ${relativePath}; it was not overwritten.` };
+    }
+  }
+  for (const file of current.files) {
+    if (existing.has(file.relativePath)) continue;
+    const destination = resolve(target, file.relativePath);
+    ensureParentInsideRoot(provisioningRoot, destination);
+    const bytes = readRegularFileNoFollow(resolve(current.path, file.relativePath), file.relativePath);
+    if (createHash('sha256').update(bytes).digest('hex') !== file.digest) {
+      return { status: 'blocked', target: effect.target, reason: `Approved source changed while copying ${file.relativePath}; no unverified bytes were imported.` };
+    }
+    try {
+      writeFileSync(destination, bytes, { flag: 'wx', mode: file.mode });
+    } catch (error) {
+      const afterRace = existsSync(destination) ? readRegularFileNoFollow(destination, file.relativePath) : undefined;
+      if (afterRace === undefined || createHash('sha256').update(afterRace).digest('hex') !== file.digest) {
+        return { status: 'blocked', target: effect.target, reason: `Product scaffold changed concurrently at ${file.relativePath}; it was not overwritten.` };
+      }
+    }
+  }
+  const copied = sourceSnapshot(target);
+  if (copied.digest !== effect.source.digest || copied.fileCount !== effect.source.fileCount) {
+    return { status: 'blocked', target: effect.target, reason: 'Copied product scaffold does not match the approved source snapshot; Git initialization was refused.' };
+  }
+  return undefined;
 }
 
 function executeLocalEffect(
@@ -785,13 +934,27 @@ function executeLocalEffect(
     writeFileSync(path, contents, { encoding: 'utf8', flag: 'wx' });
     return { status: 'completed', target: effect.target };
   }
-  if (existsSync(path) && isGitRepository(path)) return { status: 'reconciled', target: effect.target };
+  if (existsSync(path) && isExactGitRepository(path)) {
+    if (priorOperation?.status !== 'intended' || priorOperation.targetState !== 'missing') {
+      return { status: 'blocked', target: effect.target, reason: 'Target was already a Git repository before this approved operation; it was not adopted implicitly.' };
+    }
+    if (effect.source !== undefined) {
+      const copied = sourceSnapshot(path);
+      if (copied.digest !== effect.source.digest || copied.fileCount !== effect.source.fileCount) {
+        return { status: 'blocked', target: effect.target, reason: 'Interrupted product repository does not match the approved source snapshot.' };
+      }
+    }
+    if (!hasGitHead(path)) {
+      const commitError = commitInitialProduct(path);
+      if (commitError !== undefined) return { status: 'failed', target: effect.target, reason: commitError };
+    }
+    return { status: 'reconciled', target: effect.target };
+  }
   if (existsSync(path)) {
-    const resumableEmptyLeaf = priorOperation?.status === 'intended'
+    const resumableLeaf = priorOperation?.status === 'intended'
       && priorOperation.targetState === 'missing'
-      && lstatSync(path).isDirectory()
-      && readdirSync(path).length === 0;
-    if (!resumableEmptyLeaf) {
+      && lstatSync(path).isDirectory();
+    if (!resumableLeaf) {
       return { status: 'blocked', target: effect.target, reason: 'Target exists but is not a Git repository; it was not replaced.' };
     }
   } else {
@@ -799,10 +962,20 @@ function executeLocalEffect(
     mkdirSync(path, { recursive: false });
     assertNoSymlinkComponents(root, path);
   }
+  const sourceOutcome = copyApprovedSource(effect, path, root);
+  if (sourceOutcome !== undefined) return sourceOutcome;
   onBeforeGitInit?.({ effect, target: path });
+  if (effect.source !== undefined) {
+    const beforeGit = sourceSnapshot(path);
+    if (beforeGit.digest !== effect.source.digest || beforeGit.fileCount !== effect.source.fileCount) {
+      return { status: 'blocked', target: effect.target, reason: 'Product scaffold changed after the approved copy; Git initialization was refused.' };
+    }
+  }
   assertNoSymlinkComponents(root, path);
-  const init = spawnSync('git', ['init', '--quiet', path], { encoding: 'utf8' });
+  const init = spawnSync('git', ['init', '--quiet', '--initial-branch=main', path], { encoding: 'utf8' });
   if (init.status !== 0) return { status: 'failed', target: effect.target, reason: init.stderr.trim() || 'git init failed' };
+  const commitError = commitInitialProduct(path);
+  if (commitError !== undefined) return { status: 'failed', target: effect.target, reason: commitError };
   return { status: 'completed', target: effect.target };
 }
 
@@ -819,7 +992,7 @@ function observeCompletedLocalEffect(
     }
     return { status: 'reconciled', target: effect.target };
   }
-  if (!existsSync(path) || !isGitRepository(path)) {
+  if (!existsSync(path) || !isExactGitRepository(path)) {
     return { status: 'blocked', target: effect.target, reason: 'Drift detected: approved Git repository is missing or changed; it was not recreated.' };
   }
   return { status: 'reconciled', target: effect.target };

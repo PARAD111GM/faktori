@@ -1,0 +1,81 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { prepareLocalCodexConsole } from '../../src/console/prepare.ts';
+import { parseLocalConsoleConfiguration } from '../../src/console/startup.ts';
+import { approveProvisioningProposal, createDiscoveryRecord, createProvisioningProposal, provisionApprovedProposal } from '../../src/provisioning/index.ts';
+import { resolveFactoryConfig } from '../../src/config/index.ts';
+
+const roots = [];
+
+afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
+
+async function preparedFactory() {
+  const source = await mkdtemp(join(tmpdir(), 'faktori-console-source-'));
+  const factoryRoot = await mkdtemp(join(tmpdir(), 'faktori-console-factory-'));
+  roots.push(source, factoryRoot);
+  await writeFile(join(source, 'package.json'), '{"name":"task-board","scripts":{"test":"node --test"}}\n');
+  const configuration = JSON.parse(await readFile(join(process.cwd(), 'examples/config/solo.json'), 'utf8'));
+  configuration.factory.id = 'cold-start';
+  configuration.factory.name = 'Cold Start';
+  configuration.factory.defaults.executionProfile = 'native';
+  configuration.factory.defaults.budget.strictSpending = false;
+  configuration.products = [{ id: 'task-board', name: 'Task Board' }];
+  configuration.pods = [{ id: 'task-board-pod', productId: 'task-board' }];
+  const resolved = resolveFactoryConfig(configuration);
+  const discovery = createDiscoveryRecord({ factoryId: 'cold-start', inventory: { repositories: [source], providers: ['codex'] }, interview: { owner: 'owner' } });
+  const proposal = createProvisioningProposal({ discovery, resolvedConfig: resolved, componentVersions: { faktori: '0.0.0', node: '24.20.0' }, localProductSources: { 'task-board': source } });
+  const approval = approveProvisioningProposal({ proposal, approval: { approverId: 'owner', proposalRevision: proposal.revision, configurationRevision: proposal.configurationRevision, effectIds: proposal.effects.map(({ id }) => id), confirmedRiskIds: [], riskAcknowledgements: {} } });
+  provisionApprovedProposal({ proposal, approval, resolvedConfig: resolved, root: factoryRoot });
+  return { configuration, factoryRoot, workspace: join(factoryRoot, 'products', 'task-board') };
+}
+
+function request(factory) {
+  return {
+    configuration: factory.configuration,
+    factoryRoot: factory.factoryRoot,
+    productId: 'task-board',
+    model: 'gpt-5.5',
+    environment: { PATH: '/usr/bin', HOME: '/private/tmp/provider-home' },
+    port: 0,
+    estimatedTokens: 1000,
+    contextRevision: 'task-board-context@1',
+    authorityRevision: 'task-board-authority@1',
+    createdAt: '2026-09-05T18:00:00.000Z',
+    workItem: {
+      id: 'task-board-implementation',
+      revision: 'task-board-work@1',
+      objective: 'Implement the frozen task-board behavior.',
+      acceptanceCriteria: ['The documented acceptance command passes.', 'State survives reload and restart.'],
+      constraints: ['Do not change the test oracle.', 'Do not use network access.'],
+    },
+  };
+}
+
+describe('local Console preparation', () => {
+  it('binds one clean provisioned product, exact context, authority, and native Codex route', async () => {
+    const factory = await preparedFactory();
+    const generated = prepareLocalCodexConsole(request(factory));
+    const parsed = parseLocalConsoleConfiguration(generated);
+
+    expect(parsed.factoryId).toBe('cold-start');
+    expect(parsed.runtime.workItems[0].intent.target.baseRevision).toBe(execFileSync('git', ['-C', factory.workspace, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim());
+    expect(parsed.runtime.workItems[0].intent.execution.approvedInputDigests).toHaveLength(1);
+    expect(parsed.runtime.workItems[0].context.prompt).toContain('The documented acceptance command passes.');
+    expect(parsed.runtime.workItems[0].context.prompt).toContain('Do not change the test oracle.');
+    expect(parsed.runtime.providers).toEqual([expect.objectContaining({ id: 'codex', profile: 'native', compatibleModels: ['gpt-5.5'] })]);
+  });
+
+  it('rejects a dirty product and an unsupported strict-spending promise', async () => {
+    const factory = await preparedFactory();
+    await writeFile(join(factory.workspace, 'unapproved.txt'), 'dirty\n');
+    expect(() => prepareLocalCodexConsole(request(factory))).toThrow(/must be clean/);
+    await rm(join(factory.workspace, 'unapproved.txt'));
+    const strict = request(factory);
+    strict.configuration.factory.defaults.budget.strictSpending = true;
+    expect(() => prepareLocalCodexConsole(strict)).toThrow(/profile does not match|strict spending/);
+  });
+});

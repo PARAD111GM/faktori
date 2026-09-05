@@ -17,3 +17,8 @@ Explain that a new product inherits factory defaults and incurs only incremental
 Produce a revisioned discovery record, then a readable proposal that names concrete effects, costs, human workload, tradeoffs, risks, authority, and pending/unsupported remote effects. Approval must bind to the exact proposal and configuration revisions. A changed answer or proposal requires a new proposal revision and approval.
 
 Use [the interview record template](../../templates/provisioning/interview-record.json) as the starting shape; replace unresolved entries only with observed or explicitly answered values. The [completed example](../../examples/provisioning/interview-complete.json) shows the same answers retained in a valid configuration, discovery input, and concrete proposal inputs.
+
+If discovery finds an existing local repository or the request names a bundled
+fixture, identify which configured product it belongs to. The provisioning
+proposal must bind that source through `localProductSources`; an empty product
+scaffold is not a substitute for the requested starting product.

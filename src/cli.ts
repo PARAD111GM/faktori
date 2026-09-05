@@ -11,6 +11,7 @@ import {
   applyRuntimeUpdate,
   previewRuntimeUpdate,
   previewNewProduct,
+  prepareLocalCodexConsole,
   provisionApprovedProposal,
   reconcileRestoredFactory,
   renderProvisioningProposal,
@@ -35,6 +36,7 @@ const HELP = `Usage:
   faktori update preview <request.json>
   faktori update apply <approved-request.json>
   faktori console serve <local-console.json>
+  faktori console prepare <request.json>
 
 Commands read explicit files and write JSON to stdout. Provision apply changes
 approved local factory state. Runtime rebuild replaces only the specified
@@ -170,6 +172,11 @@ async function run(argv: string[]): Promise<void> {
     process.once('SIGINT', () => { void close(); });
     process.once('SIGTERM', () => { void close(); });
     await new Promise<void>(() => {});
+  }
+
+  if (group === 'console' && action === 'prepare') {
+    print(prepareLocalCodexConsole(await json(source, 'Console preparation request')));
+    return;
   }
 
   throw new Error(`unknown command: ${argv.join(' ')}\n\n${HELP}`);

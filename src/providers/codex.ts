@@ -73,6 +73,16 @@ export interface CodexSessionBinding {
     packetRevision: string;
     digest: string;
   };
+  /** Durable source scope. The adapter rejects reuse outside this workspace. */
+  sourceScope: {
+    factoryId: string;
+    productId: string;
+    repository: string;
+    workspaceId: string;
+    /** Private operational path. It must not be copied into public evidence. */
+    workspacePath: string;
+    providerId: string;
+  };
 }
 
 export interface CodexProviderCapabilities {
@@ -270,11 +280,19 @@ function validEnvironment(environment: Readonly<Record<string, string>>): boolea
 }
 
 function validSessionBinding(intent: RunIntent, binding: CodexSessionBinding): boolean {
-  void intent;
+  const scope = binding.sourceScope;
   return asNonEmptyString(binding.sessionId) !== undefined
     && asNonEmptyString(binding.sourceRunId) !== undefined
     && asNonEmptyString(binding.sourceContext.packetRevision) !== undefined
-    && asNonEmptyString(binding.sourceContext.digest) !== undefined;
+    && asNonEmptyString(binding.sourceContext.digest) !== undefined
+    && scope !== null
+    && typeof scope === 'object'
+    && asNonEmptyString(scope.factoryId) === intent.target.factoryId
+    && asNonEmptyString(scope.productId) === intent.target.productId
+    && asNonEmptyString(scope.repository) === intent.target.repository
+    && asNonEmptyString(scope.workspaceId) === intent.execution.workspaceId
+    && asNonEmptyString(scope.workspacePath) === intent.execution.workspacePath
+    && asNonEmptyString(scope.providerId) === intent.execution.providerId;
 }
 
 function observedLifecycle(lifecycle: CodexProcessLifecycle): { lifecycle: CodexProcessLifecycle; observation: LifecycleObservation } {

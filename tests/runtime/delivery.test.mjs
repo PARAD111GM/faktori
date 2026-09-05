@@ -77,6 +77,17 @@ function request(runId = 'run-delivery', extras = {}) {
   };
 }
 
+function sourceScope(sourceIntent) {
+  return {
+    factoryId: sourceIntent.target.factoryId,
+    productId: sourceIntent.target.productId,
+    repository: sourceIntent.target.repository,
+    workspaceId: sourceIntent.execution.workspaceId,
+    workspacePath: sourceIntent.execution.workspacePath,
+    providerId: sourceIntent.execution.providerId,
+  };
+}
+
 describe('coordinator-owned Codex delivery', () => {
   it('persists lifecycle evidence before normalized provider events and consumes only reported usage', async () => {
     const directory = await fixtureDirectory();
@@ -123,17 +134,62 @@ describe('coordinator-owned Codex delivery', () => {
     const directory = await fixtureDirectory();
     try {
       const owner = await coordinator(directory);
-      await owner.admit(intent('source-run'));
+      const source = intent('source-run');
+      await owner.admit(source);
       await owner.record('provider.final', 'source-run', { result: final({ sessionId: 'durable-session' }) });
-      await owner.admit(intent('resume-run'));
+      const target = intent('resume-run');
+      target.execution.workspaceId = source.execution.workspaceId;
+      await owner.admit(target);
       const { service, calls } = delivery(owner);
-      const resume = request('resume-run', { resume: { sessionId: 'durable-session', sourceRunId: 'source-run', sourceContext: { packetRevision: 'packet@4', digest: 'packet-digest' } } });
+      const resume = request('resume-run', { resume: { sessionId: 'durable-session', sourceRunId: 'source-run', sourceContext: { packetRevision: 'packet@4', digest: 'packet-digest' }, sourceScope: sourceScope(source) } });
       expect(await service.deliver(resume)).toEqual(expect.objectContaining({ status: 'delivered', command: 'resume' }));
       expect(calls.resume).toEqual([expect.objectContaining({ binding: expect.objectContaining({ sessionId: 'durable-session' }) })]);
       expect(await service.deliver(resume)).toEqual(expect.objectContaining({ status: 'already_recorded', command: 'resume' }));
       expect(calls.resume).toHaveLength(1);
       await owner.admit(intent('bad-resume'));
-      await expect(service.deliver(request('bad-resume', { resume: { sessionId: 'invented', sourceRunId: 'source-run', sourceContext: { packetRevision: 'packet@4', digest: 'packet-digest' } } }))).rejects.toThrow(/not proven/);
+      await expect(service.deliver(request('bad-resume', { resume: { sessionId: 'invented', sourceRunId: 'source-run', sourceContext: { packetRevision: 'packet@4', digest: 'packet-digest' }, sourceScope: sourceScope(source) } }))).rejects.toThrow(/not proven/);
+      await owner.release();
+      owner.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects cross-workspace and cross-product or repository resume before launch intent or adapter invocation', async () => {
+    const directory = await fixtureDirectory();
+    try {
+      const owner = await coordinator(directory);
+      const source = intent('source-scope-run');
+      await owner.admit(source);
+      await owner.record('provider.final', source.runId, { result: final({ sessionId: 'scope-session' }) });
+      const { service, calls } = delivery(owner);
+      const binding = {
+        sessionId: 'scope-session',
+        sourceRunId: source.runId,
+        sourceContext: { ...source.context },
+        sourceScope: sourceScope(source),
+      };
+
+      const crossWorkspace = intent('cross-workspace-run');
+      await owner.admit(crossWorkspace);
+      await expect(service.deliver(request(crossWorkspace.runId, { resume: binding }))).rejects.toThrow(/cannot cross/);
+
+      const crossProduct = intent('cross-product-run');
+      crossProduct.execution.workspaceId = source.execution.workspaceId;
+      crossProduct.target.productId = 'other-product';
+      await owner.admit(crossProduct);
+      await expect(service.deliver(request(crossProduct.runId, { resume: binding }))).rejects.toThrow(/cannot cross/);
+
+      const crossRepository = intent('cross-repository-run');
+      crossRepository.execution.workspaceId = source.execution.workspaceId;
+      crossRepository.target.repository = 'other/repository';
+      await owner.admit(crossRepository);
+      await expect(service.deliver(request(crossRepository.runId, { resume: binding }))).rejects.toThrow(/cannot cross/);
+
+      expect(calls.resume).toEqual([]);
+      for (const runId of [crossWorkspace.runId, crossProduct.runId, crossRepository.runId]) {
+        expect(owner.journal.events().some((event) => event.runId === runId && event.kind === 'effect.intended')).toBe(false);
+      }
       await owner.release();
       owner.close();
     } finally {

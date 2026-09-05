@@ -38,7 +38,20 @@ function context(overrides = {}) {
 }
 
 function binding(overrides = {}) {
-  return { sessionId: 'fixture-session-id', sourceRunId: 'run-77', sourceContext: { packetRevision: 'packet@3', digest: 'sha256:previous-packet' }, ...overrides };
+  return {
+    sessionId: 'fixture-session-id',
+    sourceRunId: 'run-77',
+    sourceContext: { packetRevision: 'packet@3', digest: 'sha256:previous-packet' },
+    sourceScope: {
+      factoryId: 'factory',
+      productId: 'product',
+      repository: 'owner/repository',
+      workspaceId: 'job-77',
+      workspacePath: '/job-workspaces/job-77',
+      providerId: 'codex',
+    },
+    ...overrides,
+  };
 }
 
 function worker() {
@@ -198,8 +211,10 @@ describe('bounded Codex exec adapter', () => {
     const noEnvironment = await adapter(runner, {}, { environment: {} }).start(intent(), context());
     const missingSourceRun = await adapter(runner).resume(intent(), binding({ sourceRunId: '' }), context());
     const missingSourceContext = await adapter(runner).resume(intent(), binding({ sourceContext: { packetRevision: '', digest: '' } }), context());
+    const differentWorkspace = await adapter(runner).resume(intent(), binding({ sourceScope: { ...binding().sourceScope, workspaceId: 'other-workspace' } }), context());
+    const differentProduct = await adapter(runner).resume(intent(), binding({ sourceScope: { ...binding().sourceScope, productId: 'other-product' } }), context());
 
-    for (const result of [changedPacket, noEnvironment, missingSourceRun, missingSourceContext]) expect(result.final.outcome).toBe('unavailable');
+    for (const result of [changedPacket, noEnvironment, missingSourceRun, missingSourceContext, differentWorkspace, differentProduct]) expect(result.final.outcome).toBe('unavailable');
     expect(changedPacket.final.summary).toMatch(/context reference/);
     expect(noEnvironment.final.summary).toMatch(/controlled execution environment/);
     expect(missingSourceRun.final.summary).toMatch(/coordinator-recorded session binding/);

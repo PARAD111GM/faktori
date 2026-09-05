@@ -107,7 +107,7 @@ export class CoordinatorCodexDelivery {
   private async deliverExclusive(request: CodexDeliveryRequest): Promise<CodexDeliveryResult> {
     const snapshot = this.exactSnapshot(request, true);
     const command = request.resume === undefined ? 'start' : 'resume';
-    const sessionId = command === 'resume' ? this.requireResumeBinding(request.resume as CodexSessionBinding) : undefined;
+    const sessionId = command === 'resume' ? this.requireResumeBinding(snapshot.intent, request.resume as CodexSessionBinding) : undefined;
     const operation = this.operation(snapshot.intent, command, sessionId);
     const replay = this.priorDelivery(snapshot.intent.runId, operation);
     if (replay !== undefined) return replay;
@@ -171,7 +171,7 @@ export class CoordinatorCodexDelivery {
     return snapshot;
   }
 
-  private requireResumeBinding(binding: CodexSessionBinding): string {
+  private requireResumeBinding(target: RunIntent, binding: CodexSessionBinding): string {
     if (binding.sessionId.trim().length === 0) throw new DeliveryPreconditionError('Codex resume requires an explicit session binding');
     const source = this.#coordinator.snapshot(binding.sourceRunId);
     if (source === undefined || source.providerResult === undefined || source.providerResult.sessionId !== binding.sessionId) {
@@ -179,6 +179,28 @@ export class CoordinatorCodexDelivery {
     }
     if (source.intent.context.packetRevision !== binding.sourceContext.packetRevision || source.intent.context.digest !== binding.sourceContext.digest) {
       throw new DeliveryPreconditionError('Codex resume source context binding does not match durable source intent');
+    }
+    const durableScope = {
+      factoryId: source.intent.target.factoryId,
+      productId: source.intent.target.productId,
+      repository: source.intent.target.repository,
+      workspaceId: source.intent.execution.workspaceId,
+      workspacePath: source.intent.execution.workspacePath,
+      providerId: source.intent.execution.providerId,
+    };
+    if (stable(binding.sourceScope) !== stable(durableScope)) {
+      throw new DeliveryPreconditionError('Codex resume source scope does not match the durable source intent');
+    }
+    const targetScope = {
+      factoryId: target.target.factoryId,
+      productId: target.target.productId,
+      repository: target.target.repository,
+      workspaceId: target.execution.workspaceId,
+      workspacePath: target.execution.workspacePath,
+      providerId: target.execution.providerId,
+    };
+    if (stable(durableScope) !== stable(targetScope)) {
+      throw new DeliveryPreconditionError('Codex resume cannot cross its recorded factory, product, repository, workspace, or provider scope');
     }
     return binding.sessionId;
   }

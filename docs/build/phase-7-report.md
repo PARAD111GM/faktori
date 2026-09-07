@@ -196,8 +196,13 @@ checkout:
   runtime-only continuation completed that SQLite observation but exposed that
   public Console preparation was coupled to a native non-strict-spending work
   item. It stopped without weakening configuration. Commit `5784f41` adds an
-  approval-bound projection-only preparation mode with no execution authority;
-  fresh-agent validation on that repaired revision remains required.
+  approval-bound projection-only preparation mode with no execution authority.
+  A later fresh agent on public revision `af958a28` built and installed the
+  package, exercised real SQLite, prepared through the installed CLI, observed
+  the canonical hierarchy over real TCP HTTP before and after a clean SIGTERM
+  restart, and recorded only coordinator claim/release events. No execution
+  authority or work node was present and the accepted product remained clean.
+  F7-01 now awaits independent Build Manager acceptance of that evidence.
 - F7-02 needs full Linux Node/Python factory-provider-product delivery under a
   supported isolated container or independent instance. WSL2 is explicitly
   unverified because no real host is available, but its absence alone is not a

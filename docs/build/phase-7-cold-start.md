@@ -182,3 +182,22 @@ isolated strict-spending factory. This repair was made after the authorized
 continuation stopped, so F7-01 remains blocked pending fresh-agent validation on
 the repaired public revision. Exact evidence is in
 `docs/build/evidence/phase-7-console-continuation-2026-09-07.md`.
+
+## Fresh installed Console validation
+
+The owner subsequently authorized fresh validation on public revision
+`af958a28`. After several truthfully retained harness and environment stops, a
+final fresh agent ran a deterministic, provider-free-checked harness in the
+hardened non-root worker envelope. It built and packed the public kit, installed
+the tarball into a separate consumer, exercised real SQLite in both trees, and
+used only the installed CLI to prepare projection mode. Two real TCP HTTP reads
+across a clean SIGTERM restart each returned the canonical factory,
+`task-board`, and `task-board-pod` hierarchy with zero work nodes. The prepared
+file contained no execution authority, the runtime journal contained only two
+claim/release pairs, the product stayed clean at its accepted commit, and the
+container was removed.
+
+Exact sanitized evidence is in
+`docs/build/evidence/phase-7-console-fresh-validation-2026-09-07.md`. This closes
+the known fresh-agent runtime evidence gap, but F7-01 remains blocked until the
+Build Manager independently accepts the evidence and candidate head.

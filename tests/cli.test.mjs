@@ -193,4 +193,31 @@ describe('public CLI', () => {
     });
     expect((await stat(projection)).size).toBeGreaterThan(0);
   });
+
+  it('exports a deterministic redacted run manifest without changing its journal', async () => {
+    const journal = join(root, 'examples/runtime/interrupted-run.jsonl');
+    const before = await readFile(journal, 'utf8');
+    const result = run('run', 'manifest', journal, 'example-run');
+    expect(result.status).toBe(0, result.stderr);
+    const manifest = JSON.parse(result.stdout);
+    expect(manifest).toMatchObject({ format: 'faktori.run-manifest/v1', runId: 'example-run', observations: { target: { repository: 'example/repository' } } });
+    expect(manifest.contentDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(manifest)).not.toMatch(/workspacePath|\/workspace|authority|session/i);
+    expect(await readFile(journal, 'utf8')).toBe(before);
+    expect(run('run', 'manifest', journal, 'example-run', 'unexpected').status).toBe(1);
+  });
+
+  it('renders projection-only preflight without launching or claiming live execution', () => {
+    const result = run('preflight', join(root, 'examples/diagnostics/preflight-projection.json'));
+    expect(result.status).toBe(0, result.stderr);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      format: 'faktori.preflight-result/v1',
+      status: 'partial',
+      projectionReady: false,
+      executionReady: false,
+      liveExecutionVerified: false,
+      summary: { fail: 0 },
+    });
+    expect(run('preflight', join(root, 'examples/diagnostics/preflight-projection.json'), 'unexpected').status).toBe(1);
+  });
 });

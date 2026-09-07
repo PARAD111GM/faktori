@@ -20,6 +20,7 @@ import { createConsoleOwnerActions } from './owner-actions.ts';
 import { ConsoleProviderRequestBroker } from './provider-requests.ts';
 import { consoleCommandToken, createConsoleService, type ConsoleOwnerActions } from './service.ts';
 import type { RunIntent, WorkerIdentity } from '../runtime/contracts.ts';
+import { evaluatePreflight, type PreflightResult } from '../diagnostics/preflight.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -31,6 +32,7 @@ export interface LocalConsoleConfiguration {
   allowedOrigins: string[];
   limits: AdmissionLimits;
   factoryConfiguration?: ResolvedFactoryConfiguration;
+  preflight?: PreflightResult;
   runtime?: LocalConsoleRuntimeConfiguration;
 }
 
@@ -249,8 +251,10 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   const factoryId = requiredText(input.factoryId, 'factoryId');
   const factoryConfiguration = input.factoryConfiguration === undefined ? undefined : resolveFactoryConfig(input.factoryConfiguration as FactoryConfiguration);
   if (factoryConfiguration !== undefined && factoryConfiguration.factory.id !== factoryId) throw new Error('factoryConfiguration must resolve to the Console factoryId');
+  const preflight = input.preflightRequest === undefined ? undefined : evaluatePreflight(input.preflightRequest);
+  if (preflight !== undefined && preflight.scope.factoryId !== 'unresolved' && preflight.scope.factoryId !== factoryId) throw new Error('preflightRequest must target the Console factoryId');
   const configuredRuntime = runtime(input.runtime, factoryId);
-  return { factoryId, journalPath: absolutePath(input.journalPath, 'journalPath'), projectionPath: absolutePath(input.projectionPath, 'projectionPath'), port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  return { factoryId, journalPath: absolutePath(input.journalPath, 'journalPath'), projectionPath: absolutePath(input.projectionPath, 'projectionPath'), port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -539,7 +543,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies);
     gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
     observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration) });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight });
     const listeningApp = app;
     pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();

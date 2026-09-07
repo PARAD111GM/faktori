@@ -9,6 +9,8 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type { QueuedMessage, RunSnapshot } from '../runtime/contracts.ts';
 import type { DurableCoordinator } from '../runtime/coordinator.ts';
 import { coordinatorGMState } from '../gm/coordinator-store.ts';
+import { projectStructuredBlocker, structuredBlockersFromEvents, type StructuredBlocker } from '../diagnostics/blockers.ts';
+import type { PreflightResult } from '../diagnostics/preflight.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -45,6 +47,9 @@ export interface ConsoleServiceOptions {
     pods: Array<{ id: string; productId: string }>;
     workItems: Array<{ id: string; label: string; productId: string; podId?: string; dependsOnWorkItemIds: string[] }>;
   };
+  /** Optional diagnostic source. It is projected as read-only sanitized state. */
+  blockers?: () => readonly StructuredBlocker[];
+  preflight?: PreflightResult;
   assetsDirectory?: string;
   now?: () => Date;
   /** Test seam for the local append-only journal watcher. */
@@ -288,6 +293,9 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       format: 'faktori.console-state/v1', observedAt: now().toISOString(), stale: false,
       admissionPaused: currentPause(records()),
       runs: snapshots.map((snapshot) => publicRun(options.coordinator, snapshot)),
+      blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
+        .filter((blocker, index, values) => values.findIndex((candidate) => candidate.blockerId === blocker.blockerId) === index),
+      ...(options.preflight === undefined ? {} : { preflight: options.preflight }),
       hierarchy: hierarchyState(snapshots, options.hierarchy),
       overview: { activeRuns: snapshots.filter((snapshot) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(snapshot.state)).length, waitingDecisions: waiting.length, failedRuns: snapshots.filter((snapshot) => snapshot.state === 'failed').length },
       resources: { knownUsageTokens: knownTokens, reportedUsageCount: reported.length, unavailableUsageCount: usages.length - reported.length, reservedTokens, unavailableMeasurements: usages.filter((usage) => usage.availability === 'unavailable').length, queueAge: snapshots.filter((snapshot) => snapshot.state === 'queued' || snapshot.state === 'admitted').map((snapshot) => ({ runId: snapshot.intent.runId, createdAt: snapshot.intent.createdAt })) },

@@ -8,6 +8,7 @@ import { createConsoleOwnerActions } from '../../src/console/owner-actions.ts';
 import { parseLocalConsoleConfiguration, startLocalConsole } from '../../src/console/startup.ts';
 import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
+import { evaluatePreflight } from '../../src/diagnostics/preflight.ts';
 
 async function waitFor(read, predicate, timeoutMs = 2_000) {
   const deadline = Date.now() + timeoutMs;
@@ -75,6 +76,44 @@ describe('loopback Console service', () => {
     } finally {
       await app.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it('projects only safe read-only blockers without leaking unsafe ownership paths', async () => {
+    const { root, coordinator } = await fixture();
+    await coordinator.record('provider.event', 'run-1', { type: 'delegation.blocked', blocker: { format: 'faktori.blocker/v1', blockerId: 'untrusted', reasonCode: 'ownership_conflicts_with_active_child', decisionOwnerRole: 'parent_coordinator', related: { parentRunId: 'run-1' }, ownership: { state: 'observed', paths: ['src/safe.ts', '/Users/nobody/.codex/secret', '../escape', 'https://evil.example/x'], omittedPathCount: 0 }, overlaps: [], omittedIdentityCount: 0, remediation: 'untrusted' } });
+    const app = createConsoleService({ coordinator, commandToken: 'local-secret', allowedOrigins: ['http://127.0.0.1:4173'] });
+    try {
+      const state = (await app.inject({ method: 'GET', url: '/api/console/state' })).json();
+      expect(state.blockers).toEqual([expect.objectContaining({ format: 'faktori.blocker/v1', ownership: { state: 'observed', paths: ['src/safe.ts'], omittedPathCount: 3 } })]);
+      expect(JSON.stringify(state)).not.toMatch(/Users|escape|evil\.example|secret/);
+    } finally { await app.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('returns the same read-only preflight report evaluated for the Factory view', async () => {
+    const { root, coordinator } = await fixture();
+    const scope = { factoryId: 'factory', productId: 'product' };
+    const configuration = {
+      factory: { id: 'factory', name: 'Factory', defaults: { providerId: 'codex', environmentId: 'local', executionProfile: 'isolated', budget: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 5, maxTokens: 1000, strictSpending: true } } },
+      providers: [{ id: 'codex', kind: 'codex', capabilities: ['isolated', 'token-limit'] }],
+      environments: [{ id: 'local', kind: 'local' }],
+      products: [{ id: 'product', name: 'Product' }],
+      pods: [],
+    };
+    const observed = (id) => ({ id, status: 'pass', freshness: 'current', scope });
+    const preflight = evaluatePreflight({
+      format: 'faktori.preflight/v1', configuration, target: scope,
+      providers: [{ providerId: 'codex', capabilities: [{ capability: 'isolated', ...observed('isolated') }, { capability: 'token-limit', ...observed('token-limit') }] }],
+      console: { prerequisites: [observed('projection')] },
+      execution: { prerequisites: [observed('profile')] },
+      resources: { prerequisites: [observed('budget')] },
+      integrations: { prerequisites: [observed('read_adapter')] },
+    });
+    const app = createConsoleService({ coordinator, commandToken: 'local-secret', allowedOrigins: ['http://127.0.0.1:4173'], preflight });
+    try {
+      const state = (await app.inject({ method: 'GET', url: '/api/console/state' })).json();
+      expect(state.preflight).toEqual(preflight);
+      expect(state.preflight).toMatchObject({ status: 'partial', projectionReady: false, executionReady: false, liveExecutionVerified: false });
+    } finally { await app.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
   });
 
   it('streams provider journal changes to an already-connected Console client', async () => {

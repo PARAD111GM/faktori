@@ -64,9 +64,24 @@ describe('local Console preparation', () => {
       factoryRoot: factory.factoryRoot,
       port: 0,
     });
+    const scope = { factoryId: 'cold-start', productId: 'task-board', podId: 'task-board-pod' };
+    generated.preflightRequest = {
+      format: 'faktori.preflight/v1',
+      configuration: factory.configuration,
+      target: scope,
+      providers: [{ providerId: 'codex', capabilities: [
+        { capability: 'isolated', status: 'pass', freshness: 'current', scope },
+        { capability: 'token-limit', status: 'pass', freshness: 'current', scope },
+      ] }],
+      console: { prerequisites: [{ id: 'projection', status: 'pass', freshness: 'current', scope }] },
+      execution: { prerequisites: [] },
+      resources: { prerequisites: [] },
+      integrations: { prerequisites: [] },
+    };
     const parsed = parseLocalConsoleConfiguration(generated);
 
     expect(parsed.runtime).toBeUndefined();
+    expect(parsed.preflight).toMatchObject({ status: 'partial', projectionReady: false, executionReady: false, liveExecutionVerified: false });
     expect(parsed.limits).toEqual(expect.objectContaining({ strictSpending: true, strictSpendingSupported: false }));
     expect(() => prepareLocalCodexConsole({
       mode: 'projection',
@@ -83,6 +98,7 @@ describe('local Console preparation', () => {
         expect.objectContaining({ id: 'pod:task-board-pod', productId: 'task-board' }),
       ]));
       expect(state.hierarchy.nodes.filter((node) => node.kind === 'work_item')).toEqual([]);
+      expect(state.preflight).toEqual(parsed.preflight);
     } finally {
       await started.close();
     }

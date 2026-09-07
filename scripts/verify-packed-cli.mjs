@@ -33,6 +33,9 @@ try {
     'package/dist/maintenance/index.js',
     'package/dist/maintenance/backup.js',
     'package/dist/maintenance/update.js',
+    'package/dist/diagnostics/index.js',
+    'package/dist/diagnostics/preflight.js',
+    'package/dist/runtime/run-manifest.js',
     'package/docs/maintenance/README.md',
     'package/docs/maintenance/compatibility.md',
     'package/examples/maintenance/README.md',
@@ -51,7 +54,7 @@ try {
   await writeFile(join(consumer, 'package.json'), '{"name":"faktori-pack-smoke","private":true}\n');
   runNpm(['install', '--ignore-scripts', '--offline', '--no-audit', '--no-fund', '--package-lock=false', tarball], consumer);
 
-  const importResult = spawnSync(process.execPath, ['--input-type=module', '-e', "const runtime=await import('faktori/runtime'); const transports=await import('faktori/execution/transports'); const maintenance=await import('faktori/maintenance'); if(typeof runtime.CoordinatorCodexDelivery!=='function'||typeof transports.DockerCodexProcessRunner!=='function'||typeof maintenance.createFactoryBackup!=='function'||typeof maintenance.previewRuntimeUpdate!=='function') process.exit(2)"], {
+  const importResult = spawnSync(process.execPath, ['--input-type=module', '-e', "const runtime=await import('faktori/runtime'); const diagnostics=await import('faktori/diagnostics'); const transports=await import('faktori/execution/transports'); const maintenance=await import('faktori/maintenance'); if(typeof runtime.CoordinatorCodexDelivery!=='function'||typeof runtime.createRunManifest!=='function'||typeof diagnostics.evaluatePreflight!=='function'||typeof transports.DockerCodexProcessRunner!=='function'||typeof maintenance.createFactoryBackup!=='function'||typeof maintenance.previewRuntimeUpdate!=='function') process.exit(2)"], {
     cwd: consumer,
     encoding: 'utf8',
   });
@@ -65,7 +68,7 @@ try {
     encoding: 'utf8',
     env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}` },
   });
-  if (result.status !== 0 || !result.stdout.includes('faktori backup create') || !result.stdout.includes('faktori update preview')) throw new Error(result.stderr || result.stdout || 'installed Faktori CLI help failed');
+  if (result.status !== 0 || !result.stdout.includes('faktori backup create') || !result.stdout.includes('faktori update preview') || !result.stdout.includes('faktori run manifest') || !result.stdout.includes('faktori preflight')) throw new Error(result.stderr || result.stdout || 'installed Faktori CLI help failed');
   const configResult = spawnSync(executable, ['config', 'resolve', configPath], {
     cwd: consumer,
     encoding: 'utf8',
@@ -90,6 +93,28 @@ try {
   const runtime = JSON.parse(runtimeResult.stdout);
   if (runtime.eventCount !== 2 || runtime.snapshots?.[0]?.state !== 'launching' || runtime.snapshots[0].unresolvedEffects?.[0]?.operationId !== 'example-launch') {
     throw new Error('installed runtime rebuild returned an unexpected recovery projection');
+  }
+  const sourceJournal = join(consumer, 'node_modules', 'faktori', 'examples', 'runtime', 'interrupted-run.jsonl');
+  const sourceBefore = await readFile(sourceJournal, 'utf8');
+  const manifestResult = spawnSync(executable, ['run', 'manifest', sourceJournal, 'example-run'], {
+    cwd: consumer,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}` },
+  });
+  if (manifestResult.status !== 0) throw new Error(manifestResult.stderr || manifestResult.stdout || 'installed run manifest failed');
+  const manifest = JSON.parse(manifestResult.stdout);
+  if (manifest.format !== 'faktori.run-manifest/v1' || !/^[a-f0-9]{64}$/.test(manifest.contentDigest) || JSON.stringify(manifest).includes('/workspace') || await readFile(sourceJournal, 'utf8') !== sourceBefore) {
+    throw new Error('installed run manifest did not preserve the redacted read-only contract');
+  }
+  const preflightResult = spawnSync(executable, ['preflight', join(consumer, 'node_modules', 'faktori', 'examples', 'diagnostics', 'preflight-projection.json')], {
+    cwd: consumer,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}` },
+  });
+  if (preflightResult.status !== 0) throw new Error(preflightResult.stderr || preflightResult.stdout || 'installed preflight failed');
+  const preflight = JSON.parse(preflightResult.stdout);
+  if (preflight.format !== 'faktori.preflight-result/v1' || preflight.status !== 'partial' || preflight.projectionReady !== false || preflight.liveExecutionVerified !== false) {
+    throw new Error('installed preflight returned an unexpected readiness report');
   }
 
   const ownerRoot = join(scratch, 'owner-factory');

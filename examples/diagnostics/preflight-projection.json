@@ -1,0 +1,92 @@
+{
+  "format": "faktori.preflight/v1",
+  "configuration": {
+    "factory": {
+      "id": "example-factory",
+      "name": "Example Factory",
+      "defaults": {
+        "providerId": "codex",
+        "environmentId": "local",
+        "executionProfile": "isolated",
+        "budget": {
+          "maxConcurrentRuns": 1,
+          "maxRetries": 0,
+          "maxRuntimeMinutes": 30,
+          "maxTokens": 10000,
+          "strictSpending": true
+        }
+      }
+    },
+    "providers": [
+      {
+        "id": "codex",
+        "kind": "codex",
+        "capabilities": ["isolated", "token-limit"]
+      }
+    ],
+    "environments": [
+      {
+        "id": "local",
+        "kind": "local"
+      }
+    ],
+    "products": [
+      {
+        "id": "example-product",
+        "name": "Example Product"
+      }
+    ],
+    "pods": []
+  },
+  "target": {
+    "factoryId": "example-factory",
+    "productId": "example-product"
+  },
+  "providers": [
+    {
+      "providerId": "codex",
+      "capabilities": [
+        {
+          "capability": "isolated",
+          "status": "pass",
+          "freshness": "current",
+          "scope": {
+            "factoryId": "example-factory",
+            "productId": "example-product"
+          }
+        },
+        {
+          "capability": "token-limit",
+          "status": "pass",
+          "freshness": "current",
+          "scope": {
+            "factoryId": "example-factory",
+            "productId": "example-product"
+          }
+        }
+      ]
+    }
+  ],
+  "console": {
+    "prerequisites": [
+      {
+        "id": "projection",
+        "status": "pass",
+        "freshness": "current",
+        "scope": {
+          "factoryId": "example-factory",
+          "productId": "example-product"
+        }
+      }
+    ]
+  },
+  "execution": {
+    "prerequisites": []
+  },
+  "resources": {
+    "prerequisites": []
+  },
+  "integrations": {
+    "prerequisites": []
+  }
+}

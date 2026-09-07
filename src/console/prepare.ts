@@ -43,8 +43,9 @@ function git(workspace: string, args: string[], label: string): string {
 }
 
 /**
- * Converts an approved local factory and one explicit work item into the exact
- * owner-controlled Console configuration needed for a real native Codex turn.
+ * Converts an approved local factory into an owner-controlled Console
+ * configuration. Explicit projection mode grants no provider or work authority;
+ * the default path binds one native Codex work item.
  */
 export function prepareLocalCodexConsole(value: unknown): Record<string, unknown> {
   const input = object(value, 'Console preparation request');
@@ -58,6 +59,25 @@ export function prepareLocalCodexConsole(value: unknown): Record<string, unknown
   if (object(profile.factory, 'approved factory profile.factory').id !== resolved.factory.id
     || readApprovedConfigurationRevision(factoryRoot) !== sha(stable(resolved))) {
     throw new Error('approved factory profile does not match the supplied configuration');
+  }
+  const mode = input.mode === undefined ? 'native-work' : text(input.mode, 'mode');
+  if (mode !== 'native-work' && mode !== 'projection') throw new Error('mode must be native-work or projection');
+  const port = input.port === undefined ? 4173 : integer(input.port, 'port', 0);
+  if (port > 65_535) throw new Error('port must be at most 65535');
+  if (mode === 'projection') {
+    const workFields = ['productId', 'model', 'environment', 'estimatedTokens', 'contextRevision', 'authorityRevision', 'createdAt', 'workItem'];
+    if (workFields.some((field) => input[field] !== undefined)) {
+      throw new Error('projection mode must not include provider or work-item fields');
+    }
+    return {
+      factoryId: resolved.factory.id,
+      journalPath: join(factoryRoot, '.faktori', 'runtime', 'operations.jsonl'),
+      projectionPath: join(factoryRoot, '.faktori', 'runtime', 'projection.sqlite'),
+      port,
+      allowedOrigins: [`http://127.0.0.1:${port}`],
+      limits: { ...resolved.factory.defaults.budget, strictSpendingSupported: false },
+      factoryConfiguration: configuration,
+    };
   }
 
   const productId = text(input.productId, 'productId');
@@ -128,8 +148,6 @@ export function prepareLocalCodexConsole(value: unknown): Record<string, unknown
     attempt: 1,
     createdAt,
   };
-  const port = input.port === undefined ? 4173 : integer(input.port, 'port', 0);
-  if (port > 65_535) throw new Error('port must be at most 65535');
   return {
     factoryId: resolved.factory.id,
     journalPath: join(factoryRoot, '.faktori', 'runtime', 'operations.jsonl'),

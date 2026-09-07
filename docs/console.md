@@ -1,5 +1,38 @@
 # Local Console and Factory GM
 
+## Prepare an approved projection-only Console
+
+An approved isolated or native factory can start the real loopback Console
+without granting provider, work-item, or Factory GM authority. Use the explicit
+projection mode:
+
+```sh
+faktori console prepare /absolute/path/to/projection-request.json > /absolute/path/to/local-console.json
+faktori console serve /absolute/path/to/local-console.json
+```
+
+`projection-request.json` contains only the approved factory root, the same
+canonical configuration bound by provisioning, the explicit mode, and an
+optional loopback port:
+
+```json
+{
+  "mode": "projection",
+  "factoryRoot": "/absolute/path/to/approved-factory",
+  "configuration": { "factory": {}, "providers": [], "environments": [], "products": [], "pods": [] },
+  "port": 4173
+}
+```
+
+Preparation verifies that the supplied configuration still matches the
+approved factory revision. The emitted Console configuration contains the
+canonical factory/product/pod hierarchy and fail-closed coordinator limits, but
+no runtime provider routes, eligible work items, resume plans, or GM template.
+Projection mode rejects provider and work-item fields instead of silently
+ignoring them. Consequently the Console can be inspected and restarted, but it
+cannot launch work; adding execution remains a separate owner-controlled
+configuration step.
+
 ## Prepare one approved native Codex proof
 
 The public bootstrap path can derive the otherwise low-level Console file from

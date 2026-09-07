@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { prepareLocalCodexConsole } from '../../src/console/prepare.ts';
-import { parseLocalConsoleConfiguration } from '../../src/console/startup.ts';
+import { parseLocalConsoleConfiguration, startLocalConsole } from '../../src/console/startup.ts';
 import { approveProvisioningProposal, createDiscoveryRecord, createProvisioningProposal, provisionApprovedProposal } from '../../src/provisioning/index.ts';
 import { resolveFactoryConfig } from '../../src/config/index.ts';
 
@@ -13,7 +13,7 @@ const roots = [];
 
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
-async function preparedFactory() {
+async function preparedFactory({ executionProfile = 'native', strictSpending = false } = {}) {
   const source = await mkdtemp(join(tmpdir(), 'faktori-console-source-'));
   const factoryRoot = await mkdtemp(join(tmpdir(), 'faktori-console-factory-'));
   roots.push(source, factoryRoot);
@@ -21,8 +21,8 @@ async function preparedFactory() {
   const configuration = JSON.parse(await readFile(join(process.cwd(), 'examples/config/solo.json'), 'utf8'));
   configuration.factory.id = 'cold-start';
   configuration.factory.name = 'Cold Start';
-  configuration.factory.defaults.executionProfile = 'native';
-  configuration.factory.defaults.budget.strictSpending = false;
+  configuration.factory.defaults.executionProfile = executionProfile;
+  configuration.factory.defaults.budget.strictSpending = strictSpending;
   configuration.products = [{ id: 'task-board', name: 'Task Board' }];
   configuration.pods = [{ id: 'task-board-pod', productId: 'task-board' }];
   const resolved = resolveFactoryConfig(configuration);
@@ -56,6 +56,38 @@ function request(factory) {
 }
 
 describe('local Console preparation', () => {
+  it('prepares and starts an approved isolated factory in explicit projection-only mode without provider authority', async () => {
+    const factory = await preparedFactory({ executionProfile: 'isolated', strictSpending: true });
+    const generated = prepareLocalCodexConsole({
+      mode: 'projection',
+      configuration: factory.configuration,
+      factoryRoot: factory.factoryRoot,
+      port: 0,
+    });
+    const parsed = parseLocalConsoleConfiguration(generated);
+
+    expect(parsed.runtime).toBeUndefined();
+    expect(parsed.limits).toEqual(expect.objectContaining({ strictSpending: true, strictSpendingSupported: false }));
+    expect(() => prepareLocalCodexConsole({
+      mode: 'projection',
+      configuration: factory.configuration,
+      factoryRoot: factory.factoryRoot,
+      productId: 'task-board',
+    })).toThrow(/must not include provider or work-item fields/);
+    const started = await startLocalConsole(parsed);
+    try {
+      const state = (await started.app.inject({ method: 'GET', url: '/api/console/state' })).json();
+      expect(state.hierarchy.nodes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'factory:cold-start', label: 'Cold Start' }),
+        expect.objectContaining({ id: 'product:task-board', label: 'Task Board' }),
+        expect.objectContaining({ id: 'pod:task-board-pod', productId: 'task-board' }),
+      ]));
+      expect(state.hierarchy.nodes.filter((node) => node.kind === 'work_item')).toEqual([]);
+    } finally {
+      await started.close();
+    }
+  });
+
   it('binds one clean provisioned product, exact context, authority, and native Codex route', async () => {
     const factory = await preparedFactory();
     const generated = prepareLocalCodexConsole(request(factory));

@@ -166,3 +166,28 @@ push, merge, deployment, staging write, provider execution, reset or paid route
 occurred in this continuation.
 
 Consequently F7-01 through F7-04 remain blocked and V1 remains incomplete.
+
+## Remaining gates after independent Linux baseline acceptance
+
+The Build Manager independently reproduced the checksum-verified Linux Node
+fixture envelope from the immutable Playwright image digest. Construction-record
+tests and the Node 24 packed public CLI also passed independently. The prior full
+repository run's only failure was the now-fixed construction-record mismatch;
+runtime source did not change afterward. Repeating those unchanged checks would
+not close another acceptance criterion.
+
+The remaining blockers require authority or resources not present in this
+checkout:
+
+- F7-01 needs an approved provider-authentication profile created by a fresh
+  vendor-owned login inside the hardened isolated worker.
+- F7-02 needs an actual native Linux factory/provider delivery and a real WSL2
+  host; the observed macOS Docker environment cannot supply WSL2.
+- F7-03 needs direct informed approval for host-native Codex, Claude and Cursor
+  access (or an approved isolated alternative) before the owner-controlled,
+  push-disabled TWZ-83 comparison may launch.
+- F7-04 needs a specifically approved isolated Triforge provider-authenticated
+  read-only mirror and result-bundle resource after its dependencies complete.
+
+No further local-only execution can honestly satisfy those gates. They remain
+blocked rather than converted into inferred evidence.

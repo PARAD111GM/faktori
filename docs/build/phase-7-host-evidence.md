@@ -113,7 +113,7 @@ defaulted to the macOS scratch path. These findings were returned to the same
 Phase 7 implementer for bounded portability remediation; they are not waived
 or hidden by creating a fake macOS directory in Linux. F7-02 remains open.
 
-## 2026-09-06 continuation: reproducible local envelope and Linux fixtures
+## 2026-09-06 continuation (status before follow-up)
 
 The committed Node 24/Chromium envelope at `7797200` subsequently reproduced
 all frozen expected RED/base GREEN outcomes in both implementer and independent
@@ -146,3 +146,10 @@ The earlier Playwright-core assertion did not reproduce reliably, so it is not
 attributed more narrowly than the invalid browser-cache environment. The Linux
 frozen Node baseline is now observed; native Linux factory/provider delivery,
 completed candidate products and WSL2 remain unproved, keeping F7-02 blocked.
+
+The Build Manager independently verified the archive manifest and all 20 source
+checksums, then reproduced the complete envelope with the immutable Playwright
+image digest. That run exited 0; due-dates base passed in 2.660 seconds and both
+starters reproduced their expected RED outcomes. A transcribed archive-hash
+mismatch was caught before manager execution and reconciled against the original
+creation record; the archive had not changed.

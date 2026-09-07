@@ -15,7 +15,7 @@ credential store or active workload was mounted.
 
 The Node input archive contained only the public fixtures plus the pinned local
 Playwright package/core. Its SHA-256 was
-`9acf1049cb9b96c3b950ce3567bf87bb810f58ea9862c7e59fd3e3a13049f0dd`.
+`9acf104985a88c662e93a6ce20829716357b75c0e2c8af86a6642e481266c47f`.
 Every run checked the frozen fixture manifest before executing a contract.
 
 ## Python result
@@ -26,7 +26,7 @@ container reproduced the expected baseline exactly: two tests passed and
 successfully because that RED result is the frozen expected outcome, not a
 repaired product claim.
 
-## Node browser attempt history
+## Node browser attempt history (status before the 2026-09-07 follow-up)
 
 1. The first archive extraction failed because macOS ownership and extended
    attributes were incompatible with the capability-dropped container. The
@@ -74,3 +74,22 @@ bounds, the complete Node fixture envelope then passed:
 This resolves the Linux frozen Node harness baseline. It does not repair either
 starter product, prove a fresh native Linux provider delivery, satisfy WSL2 or
 complete F7-02.
+
+## Independent Build Manager reproduction
+
+Before launch, the manager verified that the archive's embedded
+`fixtures/SHA256SUMS` exactly matched the source manifest and that all 20
+archived fixture files matched that manifest. The manager then ran the inspected
+script using the immutable image digest
+`sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27`
+with the same network, filesystem, capability and resource controls.
+
+The independent run exited 0 on Node 24.20.0, Playwright 1.63.0 and Chromium
+revision 1243: all 20 checksums and browser prewarm passed, task-board reproduced
+expected RED, due-dates base passed in 2.660 seconds, due-dates feature
+reproduced expected RED, and the envelope reported GREEN.
+
+The archive hash above comes from both its original creation record and the
+unchanged current file. An earlier report transcribed a different hash; the
+manager stopped before execution, the discrepancy was reconciled against the
+creation record, and no mismatched archive was run.

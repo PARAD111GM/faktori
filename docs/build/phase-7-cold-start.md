@@ -199,5 +199,8 @@ container was removed.
 
 Exact sanitized evidence is in
 `docs/build/evidence/phase-7-console-fresh-validation-2026-09-07.md`. This closes
-the known fresh-agent runtime evidence gap, but F7-01 remains blocked until the
-Build Manager independently accepts the evidence and candidate head.
+the known fresh-agent runtime evidence gap. The Build Manager independently
+inspected the harness and artifacts, recomputed all three evidence hashes, and
+accepted exact head `a4dff21` for this outstanding F7-01 scope. The acceptance
+is precisely harness-assisted validation using the retained approved factory,
+not a new unaided cold start or provider orchestration through projection mode.

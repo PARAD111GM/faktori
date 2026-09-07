@@ -13,17 +13,16 @@ change, or active Twinzy/Triforge operation.
 
 ## Ticket status
 
-- **F7-01 — blocked:** the public flow can now import an approval-bound
-  starter, create an exact local product repository, prepare a real Console work
-  item, execute a provider, project evidence, and recover the Console after a
-  stale owner. The first functional result passed the frozen contract but
-  violated ambient-context and dependency-portability constraints. The single
-  separately authorized bounded rerun passed restart and no-symlink checks, but
-  substituted a hand-written compatibility package after the genuine offline
-  dependency was unavailable and did not establish absence of every
-  outside-path read. Its own substituted harness reported pass; an independent
-  rerun with genuine Playwright failed the frozen final delete-after-restart
-  assertion (`1 !== 0`). It was not retried.
+- **F7-01 — complete:** the accepted cold-start sequence passed public
+  provisioning/replay, genuine product-local Playwright acceptance, independent
+  credential-free acceptance, final commits, complete-tree link checks, and
+  retained configuration. After the projection-only preparation repair, a
+  fresh agent built and installed the package and observed the real Console
+  hierarchy across two clean TCP start/stop cycles with no execution authority.
+  The Build Manager independently inspected the harness and artifacts,
+  recomputed all bound hashes, and accepted exact head `a4dff21` for the
+  outstanding scope. This is harness-assisted validation using the retained
+  factory, not a new unaided cold start or provider orchestration proof.
 - **F7-02 — blocked by unavailable host evidence:** the pinned macOS Node path,
   Python runtime, frozen checksums/starting states, full repository gate, and
   packed CLI were observed. No independent Linux instance or WSL2 host exists
@@ -38,7 +37,7 @@ change, or active Twinzy/Triforge operation.
   deployment therefore remain unproved.
 - **F7-04 — blocked by prerequisites:** frozen inputs were reverified and a
   candid dimensional report was written, but no isolated Triforge comparison
-  resource/run exists and F7-01 through F7-03 are incomplete. No comparison or
+  resource/run exists and F7-02 through F7-03 are incomplete. No comparison or
   release claim is fabricated.
 
 ## Delivered product repairs
@@ -132,8 +131,8 @@ plus approved deployment/test resources and all three providers. F7-04 requires
 an isolated Triforge fixture runner under the frozen equal conditions. None of
 those resources or authorities is inferred by this report.
 
-Faktori V1 is not complete while the compliant fresh run, independent Linux
-path, all-provider isolated Twinzy deployment, paired frozen comparison, and
+Faktori V1 is not complete while the independent Linux path, all-provider
+isolated Twinzy deployment, paired frozen comparison, and
 Build Manager exact-head acceptance remain unresolved. The candidate preserves
 each prerequisite and first exact blocking gate instead of converting partial
 runtime success into release acceptance.
@@ -165,7 +164,7 @@ because they are not an OS filesystem-isolation boundary. No Jira mutation,
 push, merge, deployment, staging write, provider execution, reset or paid route
 occurred in this continuation.
 
-Consequently F7-01 through F7-04 remain blocked and V1 remains incomplete.
+Consequently F7-02 through F7-04 remain blocked and V1 remains incomplete.
 
 ## Remaining gates after independent Linux baseline acceptance
 
@@ -176,10 +175,7 @@ repository run's only failure was the now-fixed construction-record mismatch;
 runtime source did not change afterward. Repeating those unchanged checks would
 not close another acceptance criterion.
 
-The remaining blockers require authority or resources not present in this
-checkout:
-
-- F7-01 needs an approved provider-authentication profile created by a fresh
+F7-01 previously required an approved provider-authentication profile created by a fresh
   vendor-owned login inside the hardened isolated worker. One such profile and
   directly authorized run were completed on 2026-09-07: public provisioning,
   replay, and genuine frozen acceptance passed, but the required final commit
@@ -202,7 +198,15 @@ checkout:
   the canonical hierarchy over real TCP HTTP before and after a clean SIGTERM
   restart, and recorded only coordinator claim/release events. No execution
   authority or work node was present and the accepted product remained clean.
-  F7-01 now awaits independent Build Manager acceptance of that evidence.
+  The Build Manager independently inspected the harness and retained artifacts,
+  recomputed all three evidence hashes, and accepted exact head `a4dff21` for
+  this outstanding F7-01 scope. This is harness-assisted fresh-agent validation
+  using the retained factory, not an unaided new cold start or provider
+  orchestration through projection mode. F7-01 is complete.
+
+The remaining blockers require authority or resources not present in this
+checkout:
+
 - F7-02 needs full Linux Node/Python factory-provider-product delivery under a
   supported isolated container or independent instance. WSL2 is explicitly
   unverified because no real host is available, but its absence alone is not a

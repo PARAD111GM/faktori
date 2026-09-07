@@ -96,4 +96,11 @@ final pass uses the documented development install, exact approval-bound
 configuration, real installed consumer CLI, real TCP listener, and the same
 hardened non-root boundary as the accepted cold-start run.
 
-F7-01 remains blocked until the Build Manager independently accepts this scope.
+The Build Manager independently inspected the deterministic harness and
+retained HTTP, shutdown, and event-class artifacts; recomputed the public
+archive, retained configuration, and package tarball hashes; and accepted exact
+head `a4dff21b6ae83cd627c1e32970316efd23e5c035` for F7-01's outstanding
+installed projection-Console scope. The verdict is specifically
+harness-assisted fresh-agent validation using the retained approved factory.
+It is not a new unaided end-to-end cold start, provider orchestration through
+projection mode, Phase 7 acceptance, or release acceptance.

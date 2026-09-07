@@ -14,7 +14,7 @@
       "6": 700000,
       "7": 4200000
     },
-    "progressSummary": "Updated 2026-09-07. Phases 0–6 are accepted; the current Phase 7 candidate is not accepted and V1 remains incomplete. The Linux arm64 package gate passes 313 tests / 39 files, typecheck, builds and packed CLI. The committed Node 24/Chromium fixture envelope and an independent manager rerun reproduce every frozen expected RED/base GREEN outcome without changing fixture bytes or timeouts. The equivalent constrained Linux Node envelope also passes after assigning Chromium a writable ephemeral HOME/cache; the Build Manager independently reproduced that pass from the checksum-verified archive and immutable image digest. Linux Python reproduces its expected frozen baseline. The GitHub controller authentication repair passed an independent live read-only Twinzy observation. Fresh isolated onboarding now has candidate evidence through installed projection-only Console start, real TCP observation, clean stop and restart, and awaits independent Build Manager acceptance. Full Linux Node/Python factory-provider-product delivery under supported isolation, the owner-controlled TWZ-83 all-provider run, a valid paired Triforge resource and final exact-head Build Manager acceptance remain outstanding; all four Phase 7 tickets stay blocked. WSL2 is explicitly unverified because no real host is available, but its absence alone is not a V1 blocker. Usage telemetry is historical and incomplete. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
+    "progressSummary": "Updated 2026-09-07. Phases 0–6 and F7-01 are accepted; Phase 7 as a whole is not accepted and V1 remains incomplete. The Linux arm64 package gate passes 313 tests / 39 files, typecheck, builds and packed CLI. The committed Node 24/Chromium fixture envelope and an independent manager rerun reproduce every frozen expected RED/base GREEN outcome without changing fixture bytes or timeouts. The equivalent constrained Linux Node envelope also passes after assigning Chromium a writable ephemeral HOME/cache; the Build Manager independently reproduced that pass from the checksum-verified archive and immutable image digest. Linux Python reproduces its expected frozen baseline. The GitHub controller authentication repair passed an independent live read-only Twinzy observation. The Build Manager accepted F7-01 at exact head a4dff21 after harness-assisted fresh-agent installed projection-only Console validation using the retained approved factory. Full Linux Node/Python factory-provider-product delivery under supported isolation, the owner-controlled TWZ-83 all-provider run, a valid paired Triforge resource and final Phase 7 exact-head Build Manager acceptance remain outstanding; three Phase 7 tickets stay blocked. WSL2 is explicitly unverified because no real host is available, but its absence alone is not a V1 blocker. Usage telemetry is historical and incomplete. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
   },
   "tickets": [
     {
@@ -967,7 +967,7 @@
       "id": "F7-01",
       "phase": 7,
       "title": "Conduct cold-start onboarding",
-      "status": "blocked",
+      "status": "complete",
       "dependencies": [
         "F6-04"
       ],
@@ -980,7 +980,7 @@
       "notes": [
         "Three fresh temporary factories preserved the observed path: the first exposed missing product assembly, the second produced a behaviorally correct but scope-invalid product, and the single manager-authorized bounded rerun passed restart but used a hand-written dependency compatibility package after the genuine offline install failed. Its substituted harness reported pass, while a genuine-Playwright rerun failed delete-after-restart; absence of all outside-path reads was also not proved.",
         "The trusted Node 24/Chromium envelope reproduces the unchanged frozen baseline. A fresh dedicated vendor login and one directly authorized isolated run then passed public provisioning, replay, genuine product-local Playwright acceptance, and an independent credential-free rerun, but stopped at the required final commit because the repository lacked local Git identity. Two npm-internal bin symlinks also prevented the literal complete-tree no-link criterion. Commit 9f0cdba repairs the Git prerequisite.",
-        "One later owner-authorized repaired rerun passed proposal, approval, apply/replay, genuine product-local Playwright 1.63 with bin links disabled, final commits, clean complete-tree link checks, retained configuration, and both worker and independent frozen browser acceptance. A runtime-only continuation then completed the narrow SQLite observation but found that public Console preparation required a native non-strict-spending work item and could not prepare the approved isolated factory. Commit 5784f41 adds explicit approval-bound projection-only preparation with no provider/work/GM authority and a real loopback hierarchy test. A fresh agent on public revision af958a28 subsequently built and installed the package, exercised SQLite, prepared through the installed CLI, observed the canonical hierarchy over real TCP HTTP before and after a clean SIGTERM restart, and recorded no execution authority or provider/work/command/GM events. F7-01 remains blocked only pending independent Build Manager acceptance of this evidence."
+        "One later owner-authorized repaired rerun passed proposal, approval, apply/replay, genuine product-local Playwright 1.63 with bin links disabled, final commits, clean complete-tree link checks, retained configuration, and both worker and independent frozen browser acceptance. A runtime-only continuation then completed the narrow SQLite observation but found that public Console preparation required a native non-strict-spending work item and could not prepare the approved isolated factory. Commit 5784f41 adds explicit approval-bound projection-only preparation with no provider/work/GM authority and a real loopback hierarchy test. A fresh agent on public revision af958a28 subsequently built and installed the package, exercised SQLite, prepared through the installed CLI, observed the canonical hierarchy over real TCP HTTP before and after a clean SIGTERM restart, and recorded no execution authority or provider/work/command/GM events. The Build Manager inspected the harness and retained artifacts, recomputed all evidence hashes, and accepted exact head a4dff21 for this harness-assisted retained-factory scope. This does not prove a new unaided cold start or provider orchestration through projection mode."
       ],
       "evidence": [
         {
@@ -1105,7 +1105,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Frozen inputs, checksums, the committed reproducible harness envelope and the dimensional rubric were independently reverified, but no isolated Triforge comparison resource/run exists and F7-01 through F7-03 are incomplete. The available Triforge checkout documents the intended untrusted-runner/trusted-publisher boundary but does not supply an approved provider-authenticated read-only mirror or result-bundle path for this comparison. Unknown incumbent and candidate cells remain unknown; no winner or release claim is published."
+        "Frozen inputs, checksums, the committed reproducible harness envelope and the dimensional rubric were independently reverified, but no isolated Triforge comparison resource/run exists and F7-02 through F7-03 are incomplete. The available Triforge checkout documents the intended untrusted-runner/trusted-publisher boundary but does not supply an approved provider-authenticated read-only mirror or result-bundle path for this comparison. Unknown incumbent and candidate cells remain unknown; no winner or release claim is published."
       ],
       "evidence": [
         {
@@ -1769,6 +1769,14 @@
       "to": "blocked",
       "reason": "The one authorized bounded rerun passed restart but substituted a hand-written compatibility package after the genuine offline dependency was unavailable; a genuine-Playwright rerun failed delete-after-restart, and absence of all outside-path reads was not proved. No retry was authorized.",
       "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "status-1788818688561-3cmr6u",
+      "at": "2026-09-07T22:04:48.562Z",
+      "ticketId": "F7-01",
+      "from": "blocked",
+      "to": "complete",
+      "reason": "Build Manager accepted exact head a4dff21b6ae83cd627c1e32970316efd23e5c035 for harness-assisted fresh-agent validation of the repaired installed projection Console using the retained approved factory; this does not accept Phase 7 or provider orchestration."
     }
   ]
 }

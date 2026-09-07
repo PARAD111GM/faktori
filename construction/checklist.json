@@ -12,8 +12,9 @@
       "4": 650000,
       "5": 800000,
       "6": 700000,
-      "7": 1300000
-    }
+      "7": 4200000
+    },
+    "progressSummary": "Updated 2026-09-06. Phases 0–6 are accepted; the current Phase 7 candidate is not accepted and V1 remains incomplete. The Linux arm64 package gate passes 313 tests / 39 files, typecheck, builds and packed CLI. The committed Node 24/Chromium fixture envelope and an independent manager rerun now reproduce every frozen expected RED/base GREEN outcome without changing fixture bytes or timeouts. The GitHub controller authentication repair also passed an independent live read-only Twinzy observation. Linux Python reproduced its expected frozen baseline, while the Linux Node browser path remains unresolved after a Playwright assertion. Fresh isolated onboarding, the owner-controlled TWZ-83 all-provider run, a valid paired Triforge resource, WSL2 evidence and exact-head Build Manager acceptance remain outstanding; all four Phase 7 tickets stay blocked. Usage telemetry is historical and incomplete. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
   },
   "tickets": [
     {
@@ -977,7 +978,8 @@
         "reasoning": "medium"
       },
       "notes": [
-        "Three fresh temporary factories preserved the observed path: the first exposed missing product assembly, the second produced a behaviorally correct but scope-invalid product, and the single manager-authorized bounded rerun passed restart but used a hand-written dependency compatibility package after the genuine offline install failed. Its substituted harness reported pass, while a genuine-Playwright rerun failed delete-after-restart; absence of all outside-path reads was also not proved."
+        "Three fresh temporary factories preserved the observed path: the first exposed missing product assembly, the second produced a behaviorally correct but scope-invalid product, and the single manager-authorized bounded rerun passed restart but used a hand-written dependency compatibility package after the genuine offline install failed. Its substituted harness reported pass, while a genuine-Playwright rerun failed delete-after-restart; absence of all outside-path reads was also not proved.",
+        "The trusted Node 24/Chromium envelope now reproduces the unchanged frozen baseline, but a new F7-01 run is still gated on an approved isolated provider-authentication profile. No host provider credentials were copied into the retired container route."
       ],
       "evidence": [
         {
@@ -995,6 +997,10 @@
         {
           "label": "Attempt 3 trusted-contract failure",
           "url": "docs/build/evidence/phase-7-attempt3-trusted-contract.txt"
+        },
+        {
+          "label": "Trusted harness continuation evidence",
+          "url": "docs/build/evidence/phase-7-trusted-harness-2026-09-06.md"
         }
       ]
     },
@@ -1016,7 +1022,7 @@
         "reasoning": "medium"
       },
       "notes": [
-        "The supported macOS repository/package path and frozen starting states were observed. No independent Linux or WSL2 resource was available, and the separately provisioned Python product stopped at its first explicit native-profile configuration gate before provider execution."
+        "macOS package verification passed. Linux arm64 package gate now passes 313 tests / 39 files, typecheck, builds and packed CLI after explicit cache preparation, retaining the updater's offline policy. A network-disabled Python 3.12 container reproduced the expected frozen RED baseline. The equivalent Linux Node browser run remains unresolved after bounded due-date runs exposed a hang and then a Playwright-core assertion. Full native Linux factory/provider delivery, the complete Node/Python product matrix and WSL2 verification remain outstanding. Package and partial fixture checks do not complete this ticket."
       ],
       "evidence": [
         {
@@ -1026,6 +1032,14 @@
         {
           "label": "Compatibility matrix",
           "url": "docs/maintenance/compatibility.md"
+        },
+        {
+          "label": "Final Linux package pass",
+          "url": "docs/build/evidence/phase-7-linux-portability-repair.md"
+        },
+        {
+          "label": "Linux Node and Python fixture evidence",
+          "url": "docs/build/evidence/phase-7-linux-node-python-2026-09-06.md"
         }
       ]
     },
@@ -1048,7 +1062,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "A live read-only Jira re-query found no eligible small ready unclaimed Twinzy item. TWZ-1 and TWZ-17 are epics; TWZ-80 remains blocked by TWZ-83 and changes staging credentials; TWZ-81 changes active Triforge delivery; TWZ-83 is a large security-boundary migration. New-ticket authority remains unanswered and was not inferred."
+        "The owner selected TWZ-83 for a separate-branch, local-only all-provider comparison at the exact approved base, with no Jira mutation, push, merge, deployment or staging write. The Faktori GitHub controller authentication repair passed an independent live read-only observation. Native Codex, Claude and Cursor execution is still pending direct informed approval because those host processes are not an OS filesystem-isolation boundary. No provider run was launched."
       ],
       "evidence": [
         {
@@ -1074,7 +1088,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Frozen inputs and the dimensional rubric were reverified, but no isolated Triforge comparison resource/run exists and F7-01 through F7-03 are incomplete. Unknown incumbent and candidate cells remain unknown; no winner or release claim is published."
+        "Frozen inputs, checksums, the committed reproducible harness envelope and the dimensional rubric were independently reverified, but no isolated Triforge comparison resource/run exists and F7-01 through F7-03 are incomplete. The available Triforge checkout documents the intended untrusted-runner/trusted-publisher boundary but does not supply an approved provider-authenticated read-only mirror or result-bundle path for this comparison. Unknown incumbent and candidate cells remain unknown; no winner or release claim is published."
       ],
       "evidence": [
         {
@@ -1088,6 +1102,10 @@
         {
           "label": "Final deterministic repository gate",
           "url": "docs/build/evidence/phase-7-final-check.txt"
+        },
+        {
+          "label": "Comparison resource audit",
+          "url": "docs/build/evidence/phase-7-comparison-resource-audit-2026-09-06.md"
         }
       ]
     }

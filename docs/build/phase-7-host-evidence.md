@@ -112,3 +112,22 @@ requiring `dist` before the check command built it. The runtime itself also
 defaulted to the macOS scratch path. These findings were returned to the same
 Phase 7 implementer for bounded portability remediation; they are not waived
 or hidden by creating a fake macOS directory in Linux. F7-02 remains open.
+
+## 2026-09-06 continuation: reproducible local envelope and Linux fixtures
+
+The committed Node 24/Chromium envelope at `7797200` subsequently reproduced
+all frozen expected RED/base GREEN outcomes in both implementer and independent
+Build Manager runs. It preserves the original fixture bytes, checksums and
+20/25-second bounds; the envelope's additional 120-second process-tree timeout
+only prevents an unbounded outer hang.
+
+A network-disabled Linux arm64 Python 3.12 container also reproduced the
+expected frozen Python baseline. The analogous Linux Node 24/Chromium path did
+not complete reliably: one run passed due-dates base and hung during feature
+teardown, while bounded follow-ups failed with a Playwright-core assertion.
+Further retries stopped. The immutable image digests, controls and attempt
+sequence are recorded in
+`docs/build/evidence/phase-7-linux-node-python-2026-09-06.md`.
+
+This improves host evidence but does not complete F7-02: the Linux browser
+matrix, full native factory/provider delivery and WSL2 remain unproved.

@@ -137,3 +137,30 @@ path, all-provider isolated Twinzy deployment, paired frozen comparison, and
 Build Manager exact-head acceptance remain unresolved. The candidate preserves
 each prerequisite and first exact blocking gate instead of converting partial
 runtime success into release acceptance.
+
+## 2026-09-06 continuation checkpoint
+
+Three bounded repairs/preparations were added after the earlier report:
+
+- `bf2d9f2` preserves the controller's authenticated `gh` environment through
+  an explicit allowlist while omitting ambient token, repository and Git
+  variables. Focused tests passed, and the Build Manager independently observed
+  the exact Twinzy base revision's checks and merge state through the read-only
+  controller path.
+- `7797200` adds a reproducible Node 24/Chromium envelope around the unchanged
+  frozen verifier. Implementer and manager runs both reproduced every expected
+  RED/base GREEN result without changing fixture bytes or bounds.
+- `bb576ad` revises the full-phase advisory forecast to 4,200,000 tokens. The
+  historical 1,230,468-token overlap-safe lower bound remains separate and is
+  not presented as current account usage.
+
+Linux Python reproduced its expected baseline in a constrained container. The
+Linux Node browser path remains unresolved after a bounded hang and repeatable
+Playwright-core assertion. A read-only Triforge audit found no approved isolated
+fixture resource. The owner-selected local TWZ-83 comparison has not launched:
+host-native Codex, Claude and Cursor processes require direct informed approval
+because they are not an OS filesystem-isolation boundary. No Jira mutation,
+push, merge, deployment, staging write, provider execution, reset or paid route
+occurred in this continuation.
+
+Consequently F7-01 through F7-04 remain blocked and V1 remains incomplete.

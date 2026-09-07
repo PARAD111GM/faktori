@@ -50,3 +50,17 @@ lower-bound/unknown until the final construction record is generated.
 4. Record functional correctness first, then tokens, cost, elapsed execution,
    infrastructure preparation, human waiting/intervention, rework, failed
    handoffs, maintainability, and evidence visibility as separate dimensions.
+
+## 2026-09-06 continuation
+
+The trusted local fixture harness prerequisite is now reproducible through the
+committed Node 24/Chromium envelope at `7797200`, and an independent Build
+Manager run observed every frozen expected RED/base GREEN outcome. That is
+harness evidence, not a candidate product result.
+
+A read-only Triforge resource audit confirmed the documented isolated
+untrusted-runner / trusted-publisher boundary but found no specifically approved
+provider-authenticated read-only mirror and result-bundle path for this pair.
+No active configuration or runner was used. The incumbent cells therefore
+remain `unknown`, and F7-04 remains blocked. See
+`docs/build/evidence/phase-7-comparison-resource-audit-2026-09-06.md`.

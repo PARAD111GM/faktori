@@ -111,3 +111,18 @@ succeeded run with zero active/failed runs, and created no second provider
 final. Restart recovery therefore passed independently; product behavior
 did not pass trusted acceptance, and cold-start scope and portability also
 failed. F7-01 remains blocked rather than accepted.
+
+## 2026-09-06 continuation prerequisite
+
+The trusted Node 24/Chromium envelope now reproduces the unchanged frozen
+baseline, so the earlier aggregate timeout is no longer the first F7-01 gate.
+The previously sanctioned isolated container credential profile is absent, and
+no approved provider-authentication profile exists under the Docker-shared
+scratch boundary. Host provider credentials were not copied or exported.
+
+No new F7-01 provider run was attempted. A compliant continuation requires a
+fresh vendor-owned login inside the unchanged hardened worker (or another
+explicitly approved equivalent) before public onboarding and product work may
+begin. Native host provider execution for the separate TWZ-83 comparison is a
+different authority decision and does not satisfy this cold-start isolation
+gate.

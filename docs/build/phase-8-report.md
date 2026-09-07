@@ -24,9 +24,9 @@
 - Narrow native rebuild: pinned `better-sqlite3@13.0.3` only; in-memory load/query succeeded.
 - Focused integrated suite before review: 57/57 passed across seven files.
 - Independent security/behavior review initially blocked the candidate on credential-shaped values and fabricated readiness, and identified stale blocker projection. Those findings were remediated and covered by negative tests.
-- Post-remediation security-negative suite: 19/19 passed across blocker, manifest, and preflight tests; TypeScript `--noEmit` passed.
-- Full pinned offline gate: 43 files and 344 tests passed; build passed; installed packed CLI verified under Node `24.20.0`.
-- The exact-head full gate will be rerun after the construction-evidence commit; its full SHA is delivered to the Build Manager with this report.
+- Post-remediation security-negative suite: 20/20 passed across blocker, manifest, and preflight tests; TypeScript `--noEmit` passed. The independent final re-review found no remaining high-confidence release blocker.
+- Full pinned offline gate: 43 files and 346 tests passed; build passed; installed packed CLI verified under Node `24.20.0`.
+- The exact-head full gate passed after the ticket and construction-evidence commits; the delivered full SHA accompanies this report in the Build Manager handoff.
 - No provider execution, authentication, credential lookup, paid route, network call, push, merge, or product-infrastructure mutation occurred.
 
 ## Usage and budget

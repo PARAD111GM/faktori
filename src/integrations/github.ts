@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { isAbsolute } from 'node:path';
 
 import type { ActionExecutionResult, AuthorizedAction, ControllerActionExecutor } from '../actions/index.ts';
 
@@ -12,6 +13,15 @@ export interface GitHubCommandResult {
 export type GitHubCommand = (argv: readonly string[], input?: string) => Promise<GitHubCommandResult>;
 /** A deliberately separate command boundary for the controller-owned Git clone. */
 export type GitCommand = (argv: readonly string[]) => Promise<GitHubCommandResult>;
+
+export interface GitHubControllerEnvironment {
+  /** Controller-selected executable search path. Worker PATH values never cross this boundary. */
+  path: string;
+  /** Provider-owned gh login discovery root. No credential values are copied into Faktori. */
+  home?: string;
+  /** Optional explicit gh config location for installations that do not use HOME. */
+  configDirectory?: string;
+}
 
 export interface GitHubPublisherTarget {
   /** Controller-owned GitHub repository identity, never supplied by a worker. */
@@ -241,9 +251,35 @@ export async function probeInstalledGh(command: GitHubCommand = spawnGh): Promis
   return result.stdout.split('\n')[0];
 }
 
+/**
+ * Build a gh command from explicit controller configuration. The resulting
+ * process gets no ambient worker, project, token, hook, or Git environment.
+ */
+export function createSpawnGh(configuration: GitHubControllerEnvironment): GitHubCommand {
+  if (configuration.path.trim().length === 0 || configuration.path.includes('\0')) throw new Error('github_controller_path_required');
+  if (configuration.home !== undefined && (!isAbsolute(configuration.home) || configuration.home.includes('\0'))) throw new Error('github_controller_home_must_be_absolute');
+  if (configuration.configDirectory !== undefined && (!isAbsolute(configuration.configDirectory) || configuration.configDirectory.includes('\0'))) throw new Error('github_controller_config_directory_must_be_absolute');
+  const environment = Object.freeze({
+    PATH: configuration.path,
+    ...(configuration.home === undefined ? {} : { HOME: configuration.home }),
+    ...(configuration.configDirectory === undefined ? {} : { GH_CONFIG_DIR: configuration.configDirectory }),
+    GH_PROMPT_DISABLED: '1',
+  });
+  return (argv, input) => spawnGhWithEnvironment(argv, input, environment);
+}
+
 export async function spawnGh(argv: readonly string[], input?: string): Promise<GitHubCommandResult> {
+  const command = createSpawnGh({
+    path: process.env.PATH ?? '',
+    ...(process.env.HOME === undefined ? {} : { home: process.env.HOME }),
+    ...(process.env.GH_CONFIG_DIR === undefined ? {} : { configDirectory: process.env.GH_CONFIG_DIR }),
+  });
+  return command(argv, input);
+}
+
+async function spawnGhWithEnvironment(argv: readonly string[], input: string | undefined, environment: Readonly<Record<string, string>>): Promise<GitHubCommandResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn('gh', [...argv], { stdio: ['pipe', 'pipe', 'pipe'], env: { PATH: process.env.PATH ?? '' } });
+    const child = spawn('gh', [...argv], { stdio: ['pipe', 'pipe', 'pipe'], env: environment });
     let stdout = ''; let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
     child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });

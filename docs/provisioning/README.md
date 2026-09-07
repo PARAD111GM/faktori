@@ -41,9 +41,11 @@ exact product-local Git repository and records a local initial commit. The new
 repository receives the neutral local commit identity
 `Faktori Agent <faktori@localhost>` so an isolated worker can commit without
 ambient or owner Git configuration; owners may replace that repository-local
-identity explicitly. A changed source or concurrent destination edit blocks
-activation instead of importing or overwriting unapproved bytes. Omitting
-`localProductSources` intentionally creates a committed empty scaffold.
+identity explicitly. Interrupted provisioning fills only missing identity
+fields during reconciliation and preserves any explicit repository-local owner
+identity already present. A changed source or concurrent destination edit
+blocks activation instead of importing or overwriting unapproved bytes.
+Omitting `localProductSources` intentionally creates a committed empty scaffold.
 
 Before each local effect, Faktori canonicalizes the supplied root and rejects a
 symlink root or any existing symlink component below it. It rechecks parents

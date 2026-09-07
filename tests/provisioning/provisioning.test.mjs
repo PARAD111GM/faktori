@@ -415,13 +415,18 @@ describe('resumable local provisioning', () => {
 
     const journalBeforeResume = await readFile(join(root, '.faktori/provisioning/operations.jsonl'), 'utf8');
     expect(journalBeforeResume).toContain('"status":"intended"');
-    expect(execFileSync('git', ['-C', join(root, 'products/web'), 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }).trim()).toBe('true');
+    const productRoot = join(root, 'products/web');
+    expect(execFileSync('git', ['-C', productRoot, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }).trim()).toBe('true');
+    execFileSync('git', ['-C', productRoot, 'config', '--local', 'user.name', 'Owner Identity']);
+    execFileSync('git', ['-C', productRoot, 'config', '--local', 'user.email', 'owner@example.test']);
 
     const resumed = provisionApprovedProposal({ proposal, approval, resolvedConfig: resolvedConfig(), root });
     expect(resumed.operations).toEqual(expect.arrayContaining([
       expect.objectContaining({ effectId: 'local:product-repository:web', status: 'reconciled' }),
     ]));
-    expect(execFileSync('git', ['-C', join(root, 'products/web'), 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }).trim()).toBe('true');
+    expect(execFileSync('git', ['-C', productRoot, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }).trim()).toBe('true');
+    expect(execFileSync('git', ['-C', productRoot, 'config', '--local', '--get', 'user.name'], { encoding: 'utf8' }).trim()).toBe('Owner Identity');
+    expect(execFileSync('git', ['-C', productRoot, 'config', '--local', '--get', 'user.email'], { encoding: 'utf8' }).trim()).toBe('owner@example.test');
   });
 
   it('detects owner drift on a later rerun without overwriting the profile', async () => {

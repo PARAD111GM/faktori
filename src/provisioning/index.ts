@@ -1079,6 +1079,9 @@ function hasGitHead(path: string): boolean {
 
 function configureProductCommitIdentity(path: string): string | undefined {
   for (const [key, value] of [['user.name', 'Faktori Agent'], ['user.email', 'faktori@localhost']]) {
+    const existing = spawnSync('git', ['-C', path, 'config', '--local', '--get', key], { encoding: 'utf8' });
+    if (existing.status === 0) continue;
+    if (existing.status !== 1) return existing.stderr.trim() || `git config --get ${key} failed`;
     const result = spawnSync('git', ['-C', path, 'config', '--local', key, value], { encoding: 'utf8' });
     if (result.status !== 0) return result.stderr.trim() || `git config ${key} failed`;
   }

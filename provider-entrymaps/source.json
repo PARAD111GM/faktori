@@ -1,7 +1,24 @@
 {
   "version": 1,
   "sharedSource": "docs/lifecycle/contract.md",
-  "skills": ["bootstrap", "product-creation", "shaping", "plan", "design", "build", "test", "deploy", "maintain", "factory-operation", "factory-improvement"],
+  "skills": ["bootstrap", "product-creation", "interview", "research", "shaping", "plan", "design", "build", "review", "test", "deploy", "maintain", "handoff", "factory-operation", "factory-improvement"],
+  "routes": [
+    {"skill":"bootstrap","when":"Erect a new factory from available resources and owner preferences."},
+    {"skill":"product-creation","when":"Register or provision a product inside an existing factory."},
+    {"skill":"interview","when":"Resolve material ambiguity in factory, product, feature, or bug requirements.","skipWhen":"Accepted intent and testable criteria already resolve the decision; preserve explicit owner instructions to skip."},
+    {"skill":"research","when":"Resolve a bounded factual question before making a design or implementation choice."},
+    {"skill":"shaping","when":"Turn intent or an issue into scoped parent-child work and dependency contracts."},
+    {"skill":"plan","when":"Plan executable work against accepted intent, constraints, resources, and verification criteria."},
+    {"skill":"design","when":"Resolve interfaces, data behavior, UX, or architecture decisions needed by the work."},
+    {"skill":"build","when":"Implement an authorized work item in its owned workspace."},
+    {"skill":"review","when":"Independently assess an exact plan, design, or code revision against criteria."},
+    {"skill":"test","when":"Reproduce a bug or verify behavior, regression, security, and recovery outcomes."},
+    {"skill":"deploy","when":"Release an exact artifact to an authorized environment and observe health."},
+    {"skill":"maintain","when":"Diagnose and maintain a released product, including incidents and recovery."},
+    {"skill":"handoff","when":"Transfer evidence and approved scope across agents, providers, or interrupted sessions."},
+    {"skill":"factory-operation","when":"Operate, diagnose, or recover the factory itself within delegated authority."},
+    {"skill":"factory-improvement","when":"Propose and verify a measured improvement to factory behavior or skills."}
+  ],
   "providers": {
     "codex": {"entry": "Read the public Faktori skill matching this request, then follow its linked lifecycle contract."},
     "claude": {"entry": "Read the public Faktori skill matching this request, then follow its linked lifecycle contract."},

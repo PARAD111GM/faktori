@@ -25,6 +25,8 @@ not benchmark results.
 
 ## Start here
 
+- [Shipped SDLC skills](docs/skills.md) — complete first-party procedures, selective
+  loading, requirements interviews, review, and provider-independent handoffs.
 - [Project intent](docs/intent.md) — scope, boundaries, and principles.
 - [Architecture decisions](docs/architecture/README.md) — portable source of truth,
   authority, recovery, and execution boundaries.

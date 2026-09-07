@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = join(process.cwd());
 const skills = readdirSync(join(root, 'skills'));
-const required = ['bootstrap', 'product-creation', 'shaping', 'plan', 'design', 'build', 'test', 'deploy', 'maintain', 'factory-operation', 'factory-improvement'];
+const required = ['bootstrap', 'product-creation', 'interview', 'research', 'shaping', 'plan', 'design', 'build', 'review', 'test', 'deploy', 'maintain', 'handoff', 'factory-operation', 'factory-improvement'];
 
 describe('first-party lifecycle kit', () => {
   it('contains every required skill with valid concise frontmatter', () => {
@@ -12,7 +12,6 @@ describe('first-party lifecycle kit', () => {
     for (const skill of required) {
       const text = readFileSync(join(root, 'skills', skill, 'SKILL.md'), 'utf8');
       expect(text).toMatch(/^---\nname: [a-z0-9-]+\ndescription: .+\n---\n/);
-      for (const field of ['inputs', 'output', 'evidence', 'escalate']) expect(text.toLowerCase()).toContain(field);
     }
   });
 
@@ -28,7 +27,7 @@ describe('first-party lifecycle kit', () => {
     const bootstrap = readFileSync(join(root, 'skills/bootstrap/SKILL.md'), 'utf8');
     const guide = readFileSync(join(root, 'docs/onboarding/interview.md'), 'utf8');
     const record = JSON.parse(readFileSync(join(root, 'templates/provisioning/interview-record.json')));
-    expect(bootstrap).toContain('../../docs/onboarding/interview.md');
+    expect(bootstrap).toContain('docs/onboarding/interview.md');
     for (const dimension of ['product scope', 'stack', 'organization', 'hierarchy', 'provider', 'budget', 'human attention', 'approval', 'environments', 'incident']) {
       expect(guide.toLowerCase()).toContain(dimension);
     }

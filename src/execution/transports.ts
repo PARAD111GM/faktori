@@ -584,8 +584,9 @@ export class DockerCodexProcessRunner {
       : request;
     const plan = this.planFor(plannedRequest);
     if (plan.profile !== 'isolated' || plan.args[0] !== 'run' || plan.args.filter((arg) => arg === 'codex').length !== 1) throw new Error('Docker Codex runner requires one validated detached Codex plan');
+    if (!isValidatedDockerExecutionPlan(plan)) throw new Error('Docker Codex runner requires an unchanged plan from the hardened Docker builder');
     if (this.allowUnsandboxedCodexInsideValidatedContainer
-      && (!isValidatedDockerExecutionPlan(plan) || plan.args.filter((arg) => arg === CODEX_EXTERNAL_SANDBOX_FLAG).length !== 1)) {
+      && plan.args.filter((arg) => arg === CODEX_EXTERNAL_SANDBOX_FLAG).length !== 1) {
       throw new Error('Codex inner-sandbox bypass requires an unchanged plan from the hardened Docker builder');
     }
     const startedAt = Date.now();

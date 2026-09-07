@@ -53,7 +53,10 @@ describe('managed runtime update assembly', () => {
       expect(rebuilt.status).toBe(0);
       expect(JSON.parse(rebuilt.stdout)).toEqual(expect.objectContaining({ eventCount: 0, snapshots: [] }));
     } finally { await rm(root, { recursive: true, force: true }); }
-  }, 30_000);
+  // This intentionally copies and activates two complete built kits. Under the
+  // full parallel suite it can exceed 30 seconds even though the isolated test
+  // passes, so keep a bounded ceiling that includes suite-level I/O contention.
+  }, 60_000);
 
   it('rejects a candidate altered after preview without activation, plus rollback, prerelease, and unsupported operational state', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-update-reject-'));

@@ -1,7 +1,8 @@
 # Phase 7 implementation report
 
-Status: blocked evidence candidate; Build Manager exact-head review remains
-required. Base was the accepted Phase 6 revision
+Status: F7-02 candidate evidence complete; Build Manager exact-head review of
+the Faktori repair remains required. F7-03 is owner-deferred and F7-04 remains
+pending. Base was the accepted Phase 6 revision
 `81c33493881a039923b9a6a94263b05578bfdce7`. Runtime implementation commits are
 `46342a9c0d88e5fe1ec762910221d6dc3ad63d97`,
 `121a4c34f46f1969b5d555be1f7727766bddfe7e`, and
@@ -23,22 +24,21 @@ change, or active Twinzy/Triforge operation.
   recomputed all bound hashes, and accepted exact head `a4dff21` for the
   outstanding scope. This is harness-assisted validation using the retained
   factory, not a new unaided cold start or provider orchestration proof.
-- **F7-02 — blocked by unavailable host evidence:** the pinned macOS Node path,
-  Python runtime, frozen checksums/starting states, full repository gate, and
-  packed CLI were observed. No independent Linux instance or WSL2 host exists
-  in the available environment. A fresh Python product was provisioned, but the
-  public preparation command correctly rejected its inherited isolated profile
-  before provider execution. That is a configuration gate, not a solved case.
-- **F7-03 — blocked by work/authority:** a live read-only Jira query found no
-  eligible small, ready, unclaimed Twinzy item. The available issues are epics,
-  blocked by a security-boundary migration, part of active Triforge delivery,
-  or themselves a large migration. Authority to create a new proof ticket was
-  not granted and was not inferred. All-provider contribution and verified
-  deployment therefore remain unproved.
-- **F7-04 — blocked by prerequisites:** frozen inputs were reverified and a
-  candid dimensional report was written, but no isolated Triforge comparison
-  resource/run exists and F7-02 through F7-03 are incomplete. No comparison or
-  release claim is fabricated.
+- **F7-02 — candidate complete, manager review pending:** an owner-approved
+  isolated bridge-network Codex run completed and committed the disposable Node
+  due-date and Python date-boundary products. Independent credential-free,
+  network-disabled Linux verification passed the frozen contracts, both product
+  repositories are clean, and all frozen checksums remain unchanged. The
+  private-profile compatibility repair still requires exact-head acceptance.
+- **F7-03 — owner-deferred, not passed:** the read-only eligibility audit found
+  no small ready unclaimed Twinzy item. The owner directed that Twinzy testing
+  stop for the current completion push. No further Twinzy provider execution,
+  Jira mutation, auth request, push, merge, deployment, or staging write will be
+  performed. The original acceptance requirement remains recorded and unmet.
+- **F7-04 — pending its own admitted run:** frozen inputs, the reproducible
+  harness envelope, and the dimensional rubric remain intact. The owner did not
+  cancel the independent frozen-fixture comparison, but no Triforge run or
+  release claim is inferred from the F7-02 result.
 
 ## Delivered product repairs
 
@@ -87,6 +87,10 @@ loser that stops before repository creation.
   of the unchanged frozen contract failed at delete-after-restart, proving the
   product does not satisfy the behavioral contract; the exit-1 evidence is
   `docs/build/evidence/phase-7-attempt3-trusted-contract.txt`.
+- the F7-02 disposable Node and Python products completed under the hardened
+  isolated credential boundary, then passed independent credential-free,
+  network-disabled Linux verification. The full sanitized record is
+  `docs/build/evidence/phase-7-f702-linux-products-2026-09-07.md`.
 
 The macOS Docker client had no usable server, and no Podman, Colima, Lima,
 Multipass, OrbStack, QEMU, or WSL path was available. Linux and WSL2 remain
@@ -219,3 +223,27 @@ checkout:
 
 No further local-only execution can honestly satisfy those gates. They remain
 blocked rather than converted into inferred evidence.
+
+## 2026-09-07 F7-02 completion continuation
+
+The owner approved a bridge-network Codex run using the dedicated credential
+profile against only the disposable due-date and Python date-boundary
+workspaces. The initially configured fixed container identity could not traverse
+the controller-owned private profile. The repair adds an explicit
+controller-identity mode that accepts no arbitrary UID/GID, requires a private
+non-root controller-owned directory, keeps the profile read-only, and moves
+provider session writes to tmpfs while linking only the selected auth file. It
+also records and revalidates the credential directory and file identity before
+launch. Focused tests and strict typechecking pass.
+
+The Node provider committed `a80e05362fac9aa63a89c73e944cacc0c96d6421`;
+the Python provider committed `56f78304f995838cc3fdbc96441afcfba435526c`.
+Independent network-disabled Linux runs passed the frozen Node base and feature
+contracts and all three Python assertions. Both repositories are clean and all
+20 frozen checksums remain green. F7-02 is ready for exact-head Build Manager
+review.
+
+F7-03 is now owner-deferred, not accepted or removed. It is excluded from the
+current completion push, and no further Twinzy work is authorized. F7-04's
+frozen comparison is not cancelled; it still requires a separate specifically
+admitted Triforge run and must preserve unknown cells until measured.

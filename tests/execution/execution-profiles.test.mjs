@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, realpath, rm, symlink } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -194,6 +194,133 @@ describe('execution profiles', () => {
     expect(plan.args).toContain(`type=bind,src=${await realpath(staged.credential)},dst=/credentials/profile`);
     expect(plan.args).not.toContain(`type=bind,src=${await realpath(staged.credential)},dst=/credentials/profile,readonly`);
     expect(plan.args).toContain(`type=bind,src=${await realpath(staged.input)},dst=/inputs/0,readonly`);
+  });
+
+  it.skipIf(typeof process.getuid !== 'function' || typeof process.getgid !== 'function' || process.getuid() === 0)(
+    'uses the non-root controller identity only for an explicitly private controller-owned credential profile',
+    async () => {
+      const staged = await stagedJob();
+      await chmod(staged.credential, 0o700);
+      const plan = buildDockerExecutionPlan({
+        ...request(staged),
+        credentialProfile: {
+          profileId: 'codex-local',
+          path: staged.credential,
+          environmentVariable: 'CODEX_HOME',
+          writable: true,
+          containerUser: 'controller',
+        },
+      }, dockerOptions(staged));
+
+      expect(plan.workerUser).toEqual({ uid: process.getuid(), gid: process.getgid() });
+      expect(plan.args.slice(plan.args.indexOf('--user'), plan.args.indexOf('--user') + 2)).toEqual([
+        '--user', `${process.getuid()}:${process.getgid()}`,
+      ]);
+      expect(plan.trustDisclosure).toMatch(/controller-owned credential profile/);
+      expect(isValidatedDockerExecutionPlan(plan)).toBe(true);
+      await chmod(staged.credential, 0o755);
+      expect(isValidatedDockerExecutionPlan(plan)).toBe(false);
+    },
+  );
+
+  it('fails closed for invalid or permissive controller-identity credential profiles', async () => {
+    const staged = await stagedJob();
+    expect(() => buildDockerExecutionPlan({
+      ...request(staged),
+      credentialProfile: { ...request(staged).credentialProfile, containerUser: 'root' },
+    }, dockerOptions(staged))).toThrow(/containerUser/);
+
+    await chmod(staged.credential, 0o755);
+    expect(() => buildDockerExecutionPlan({
+      ...request(staged),
+      credentialProfile: { ...request(staged).credentialProfile, containerUser: 'controller' },
+    }, dockerOptions(staged))).toThrow(/private|controller identity|non-root/);
+  });
+
+  it.skipIf(typeof process.getuid !== 'function' || typeof process.getgid !== 'function' || process.getuid() === 0)(
+    'keeps selected credential files read-only while writing provider state only to ephemeral tmpfs',
+    async () => {
+      const staged = await stagedJob();
+      await writeFile(join(staged.credential, 'auth.json'), '{}\n', { mode: 0o600 });
+      await writeFile(join(staged.credential, 'unselected.json'), '{"must":"remain-unmounted"}\n', { mode: 0o600 });
+      await chmod(staged.credential, 0o700);
+      const plan = buildDockerExecutionPlan({
+        ...request(staged),
+        credentialProfile: {
+          profileId: 'codex-local',
+          path: staged.credential,
+          environmentVariable: 'CODEX_HOME',
+          containerUser: 'controller',
+          ephemeralHomeFiles: ['auth.json'],
+        },
+      }, dockerOptions(staged));
+
+      expect(plan.env.CODEX_HOME).toBe('/tmp/provider-home');
+      expect(plan.args).toContain('sh');
+      expect(plan.args).toContain('faktori-provider-bootstrap');
+      expect(plan.args.join(' ')).toMatch(/ln -s \/credentials\/seed\/auth\.json \/tmp\/provider-home\/auth\.json/);
+      expect(plan.mounts).toContainEqual({
+        source: await realpath(join(staged.credential, 'auth.json')),
+        target: '/credentials/seed/auth.json',
+        readOnly: true,
+        purpose: 'credential_profile',
+      });
+      const credentialRoot = await realpath(staged.credential);
+      expect(plan.mounts.some((mount) => mount.source === credentialRoot)).toBe(false);
+      expect(plan.mounts.some((mount) => mount.source === join(credentialRoot, 'unselected.json'))).toBe(false);
+      expect(plan.args.join('\n')).not.toContain('unselected.json');
+      expect(plan.credentialFileBoundaries).toHaveLength(1);
+      expect(isValidatedDockerExecutionPlan(plan)).toBe(true);
+      await rm(join(staged.credential, 'auth.json'));
+      await writeFile(join(staged.credential, 'auth.json'), '{}\n', { mode: 0o600 });
+      expect(isValidatedDockerExecutionPlan(plan)).toBe(false);
+    },
+  );
+
+  it.skipIf(typeof process.getuid !== 'function' || typeof process.getgid !== 'function' || process.getuid() === 0)(
+    'refuses any mutated Docker plan even when the Codex inner-sandbox bypass is disabled',
+    async () => {
+      const staged = await stagedJob();
+      await writeFile(join(staged.credential, 'auth.json'), '{}\n', { mode: 0o600 });
+      await chmod(staged.credential, 0o700);
+      const built = () => buildDockerExecutionPlan({
+        ...request(staged),
+        credentialProfile: {
+          profileId: 'codex-local', path: staged.credential, environmentVariable: 'CODEX_HOME',
+          containerUser: 'controller', ephemeralHomeFiles: ['auth.json'],
+        },
+      }, dockerOptions(staged));
+      for (const mutate of [
+        (plan) => { delete plan.credentialProfileBoundary; },
+        (plan) => { delete plan.credentialFileBoundaries; },
+        (plan) => { plan.workerUser = { uid: 65532, gid: 65532 }; },
+      ]) {
+        const plan = built();
+        mutate(plan);
+        const runner = new DockerCodexProcessRunner({
+          docker: { cwd: staged.control, env: {}, async run() { throw new Error('must not launch'); }, async stop() {} },
+          identityProbe: { inspect: async () => ({ status: 'unknown' }) },
+          runNonce: 'mutated-plan-test',
+          planFor: () => plan,
+        });
+        await expect(runner.run({
+          runId: 'run-42', command: 'codex', args: ['exec', '--json'], cwd: staged.workspace,
+          environment: { LANG: 'C.UTF-8' }, timeoutMs: 30_000,
+        })).rejects.toThrow(/unchanged plan from the hardened Docker builder/);
+      }
+    },
+  );
+
+  it('rejects unsafe ephemeral credential-home selections', async () => {
+    const staged = await stagedJob();
+    expect(() => buildDockerExecutionPlan({
+      ...request(staged),
+      credentialProfile: { ...request(staged).credentialProfile, ephemeralHomeFiles: ['../auth.json'] },
+    }, dockerOptions(staged))).toThrow(/ephemeralHomeFiles/);
+    expect(() => buildDockerExecutionPlan({
+      ...request(staged),
+      credentialProfile: { ...request(staged).credentialProfile, writable: true, containerUser: 'controller', ephemeralHomeFiles: ['auth.json'] },
+    }, dockerOptions(staged))).toThrow(/writable|ephemeral/);
   });
 
   it('rejects host and unrecognized Docker network modes without widening the default', async () => {

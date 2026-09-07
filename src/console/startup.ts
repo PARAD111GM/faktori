@@ -108,11 +108,20 @@ function providerRoute(value: unknown): LocalProviderRoute {
       return { path, ...(input?.label === undefined ? {} : { label: requiredText(input.label, 'runtime.providers.docker.approvedInputs.label') }) };
     });
     const credentialInput = object(docker.credentialProfile);
+    if (credentialInput?.containerUser !== undefined && credentialInput.containerUser !== 'controller') {
+      throw new Error('runtime.providers.docker.credentialProfile.containerUser must be "controller" when selected');
+    }
+    if (credentialInput?.ephemeralHomeFiles !== undefined && (!Array.isArray(credentialInput.ephemeralHomeFiles)
+      || !credentialInput.ephemeralHomeFiles.every((item) => typeof item === 'string'))) {
+      throw new Error('runtime.providers.docker.credentialProfile.ephemeralHomeFiles must be an array of filenames');
+    }
     const credentialProfile = credentialInput === undefined ? undefined : {
       profileId: requiredText(credentialInput.profileId, 'runtime.providers.docker.credentialProfile.profileId'),
       path: absolutePath(credentialInput.path, 'runtime.providers.docker.credentialProfile.path'),
       environmentVariable: requiredText(credentialInput.environmentVariable, 'runtime.providers.docker.credentialProfile.environmentVariable'),
       ...(credentialInput.writable === true ? { writable: true } : {}),
+      ...(credentialInput.containerUser === 'controller' ? { containerUser: 'controller' as const } : {}),
+      ...(credentialInput.ephemeralHomeFiles === undefined ? {} : { ephemeralHomeFiles: credentialInput.ephemeralHomeFiles as string[] }),
     };
     const allowedRoots = docker.allowedSharedScratchRoots;
     if (allowedRoots !== undefined && (!Array.isArray(allowedRoots) || !allowedRoots.every((item) => typeof item === 'string' && isAbsolute(item)))) throw new Error('isolated Codex allowed shared scratch roots must be absolute paths');

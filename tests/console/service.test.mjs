@@ -432,4 +432,28 @@ describe('loopback Console service', () => {
       await started.close();
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+
+  it('rejects an unrecognized isolated credential-profile container identity mode', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-console-isolated-user-'));
+    try {
+      const control = join(root, 'control');
+      const workspace = join(root, 'workspace');
+      const credential = join(root, 'credential');
+      await Promise.all([mkdir(control), mkdir(workspace), mkdir(credential)]);
+      const configuredIntent = intent('isolated-user-run');
+      configuredIntent.execution.profile = 'isolated';
+      configuredIntent.execution.model = 'fixture';
+      configuredIntent.execution.workspacePath = workspace;
+      const context = { packetRevision: 'packet@1', digest: 'packet', prompt: 'Run only in the hardened isolated profile.' };
+      configuredIntent.execution.approvedInputDigests = [providerContextPayloadDigest(context)];
+      expect(() => parseLocalConsoleConfiguration({
+        factoryId: 'factory', journalPath: join(root, 'operations.jsonl'), projectionPath: join(root, 'projection.sqlite'), port: 0,
+        allowedOrigins: ['http://127.0.0.1:4173'], limits: { maxConcurrentRuns: 1, maxRetries: 1, maxRuntimeMinutes: 10, maxTokens: 500, strictSpending: false, strictSpendingSupported: false },
+        runtime: {
+          providers: [{ id: 'codex', profile: 'isolated', environment: { PATH: '/usr/bin' }, compatibleModels: ['fixture'], runNonce: 'isolated-test', docker: { image: `sha256:${'a'.repeat(64)}`, scratchRoot: root, controlStoragePaths: [control], approvedInputs: [], credentialProfile: { profileId: 'fixture', path: credential, environmentVariable: 'CODEX_HOME', containerUser: 'root' }, networkMode: 'none', resources: { memoryBytes: 268_435_456, cpuCount: 1, pids: 64 }, allowUnsandboxedCodexInsideValidatedContainer: false } }],
+          workItems: [{ workItemId: 'isolated-work', intent: configuredIntent, context }], resumePlans: [],
+        },
+      })).toThrow(/containerUser/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
 });

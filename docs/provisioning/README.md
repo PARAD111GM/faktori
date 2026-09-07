@@ -37,10 +37,13 @@ Proposal creation rejects symlinks and special files, excludes source `.git`
 metadata, and binds the sorted file digests and modes into the approval-bound
 effect. Apply re-verifies no-follow source bytes, creates destination files
 exclusively, verifies the copied snapshot again, and only then initializes an
-exact product-local Git repository and records a local initial commit. A changed
-source or concurrent destination edit blocks activation instead of importing or
-overwriting unapproved bytes. Omitting `localProductSources` intentionally
-creates a committed empty scaffold.
+exact product-local Git repository and records a local initial commit. The new
+repository receives the neutral local commit identity
+`Faktori Agent <faktori@localhost>` so an isolated worker can commit without
+ambient or owner Git configuration; owners may replace that repository-local
+identity explicitly. A changed source or concurrent destination edit blocks
+activation instead of importing or overwriting unapproved bytes. Omitting
+`localProductSources` intentionally creates a committed empty scaffold.
 
 Before each local effect, Faktori canonicalizes the supplied root and rejects a
 symlink root or any existing symlink component below it. It rechecks parents

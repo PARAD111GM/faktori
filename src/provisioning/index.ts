@@ -1077,6 +1077,14 @@ function hasGitHead(path: string): boolean {
   return spawnSync('git', ['-C', path, 'rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' }).status === 0;
 }
 
+function configureProductCommitIdentity(path: string): string | undefined {
+  for (const [key, value] of [['user.name', 'Faktori Agent'], ['user.email', 'faktori@localhost']]) {
+    const result = spawnSync('git', ['-C', path, 'config', '--local', key, value], { encoding: 'utf8' });
+    if (result.status !== 0) return result.stderr.trim() || `git config ${key} failed`;
+  }
+  return undefined;
+}
+
 function commitInitialProduct(path: string): string | undefined {
   const add = spawnSync('git', ['-C', path, 'add', '--all'], { encoding: 'utf8' });
   if (add.status !== 0) return add.stderr.trim() || 'git add failed';
@@ -1201,6 +1209,8 @@ function executeLocalEffect(
       const commitError = commitInitialProduct(path);
       if (commitError !== undefined) return { status: 'failed', target: effect.target, reason: commitError };
     }
+    const identityError = configureProductCommitIdentity(path);
+    if (identityError !== undefined) return { status: 'failed', target: effect.target, reason: identityError };
     return { status: 'reconciled', target: effect.target };
   }
   if (existsSync(path)) {
@@ -1229,6 +1239,8 @@ function executeLocalEffect(
   if (init.status !== 0) return { status: 'failed', target: effect.target, reason: init.stderr.trim() || 'git init failed' };
   const commitError = commitInitialProduct(path);
   if (commitError !== undefined) return { status: 'failed', target: effect.target, reason: commitError };
+  const identityError = configureProductCommitIdentity(path);
+  if (identityError !== undefined) return { status: 'failed', target: effect.target, reason: identityError };
   return { status: 'completed', target: effect.target };
 }
 

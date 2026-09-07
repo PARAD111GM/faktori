@@ -324,6 +324,8 @@ describe('resumable local provisioning', () => {
     expect(execFileSync('git', ['-C', target, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }).trim()).toBe('true');
     expect(execFileSync('git', ['-C', target, 'branch', '--show-current'], { encoding: 'utf8' }).trim()).toBe('main');
     expect(execFileSync('git', ['-C', target, 'log', '-1', '--format=%s'], { encoding: 'utf8' }).trim()).toBe('chore: initialize product');
+    expect(execFileSync('git', ['-C', target, 'config', '--local', '--get', 'user.name'], { encoding: 'utf8' }).trim()).toBe('Faktori Agent');
+    expect(execFileSync('git', ['-C', target, 'config', '--local', '--get', 'user.email'], { encoding: 'utf8' }).trim()).toBe('faktori@localhost');
     expect(execFileSync('git', ['-C', target, 'status', '--short'], { encoding: 'utf8' })).toBe('');
     await expect(access(join(target, '.git', 'source-only'))).rejects.toThrow();
   });

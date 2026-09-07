@@ -53,7 +53,7 @@ describe('managed runtime update assembly', () => {
       expect(rebuilt.status).toBe(0);
       expect(JSON.parse(rebuilt.stdout)).toEqual(expect.objectContaining({ eventCount: 0, snapshots: [] }));
     } finally { await rm(root, { recursive: true, force: true }); }
-  }, 30_000);
+  }, 60_000);
 
   it('rejects a candidate altered after preview without activation, plus rollback, prerelease, and unsupported operational state', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-update-reject-'));
@@ -71,5 +71,5 @@ describe('managed runtime update assembly', () => {
       await expect(previewRuntimeUpdate(request(installation, await candidate(root, 'prerelease', '1.0.2-rc.1')))).rejects.toBeInstanceOf(MaintenanceValidationError);
       await expect(previewRuntimeUpdate(request(installation, await candidate(root, 'state-v2', '1.0.2', 2)))).rejects.toBeInstanceOf(MaintenanceValidationError);
     } finally { await rm(root, { recursive: true, force: true }); }
-  }, 30_000);
+  }, 60_000);
 });

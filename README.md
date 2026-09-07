@@ -12,7 +12,7 @@ integration identifiers belong here.
 
 ## Status
 
-Phases 0–5 are accepted. Phase 6 adds installed backup/restore and supported
+Phases 0–6 are accepted. Phase 6 adds installed backup/restore and supported
 runtime-update boundaries, plus a public maintenance kit. The Phase 5
 candidate added an installed loopback
 Console over the durable coordinator, native Codex/Claude/Cursor and isolated

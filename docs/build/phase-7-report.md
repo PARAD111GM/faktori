@@ -181,8 +181,10 @@ checkout:
 
 - F7-01 needs an approved provider-authentication profile created by a fresh
   vendor-owned login inside the hardened isolated worker.
-- F7-02 needs an actual native Linux factory/provider delivery and a real WSL2
-  host; the observed macOS Docker environment cannot supply WSL2.
+- F7-02 needs full Linux Node/Python factory-provider-product delivery under a
+  supported isolated container or independent instance. WSL2 is explicitly
+  unverified because no real host is available, but its absence alone is not a
+  V1 blocker.
 - F7-03 needs direct informed approval for host-native Codex, Claude and Cursor
   access (or an approved isolated alternative) before the owner-controlled,
   push-disabled TWZ-83 comparison may launch.

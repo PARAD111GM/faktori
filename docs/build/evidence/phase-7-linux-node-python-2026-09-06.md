@@ -72,8 +72,10 @@ bounds, the complete Node fixture envelope then passed:
 - the container exited successfully without a forced stop.
 
 This resolves the Linux frozen Node harness baseline. It does not repair either
-starter product, prove a fresh native Linux provider delivery, satisfy WSL2 or
-complete F7-02.
+starter product or prove full Linux Node/Python factory-provider-product
+delivery under supported isolation, so it does not complete F7-02. WSL2 remains
+explicitly unverified because no real host is available; its absence alone is
+not a V1 blocker.
 
 ## Independent Build Manager reproduction
 

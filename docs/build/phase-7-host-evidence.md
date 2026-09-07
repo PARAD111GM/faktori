@@ -144,8 +144,10 @@ task-board RED, due-dates base GREEN and expected due-dates feature RED.
 
 The earlier Playwright-core assertion did not reproduce reliably, so it is not
 attributed more narrowly than the invalid browser-cache environment. The Linux
-frozen Node baseline is now observed; native Linux factory/provider delivery,
-completed candidate products and WSL2 remain unproved, keeping F7-02 blocked.
+frozen Node baseline is now observed; full Linux Node/Python
+factory-provider-product delivery under supported isolation and completed
+candidate products remain unproved, keeping F7-02 blocked. WSL2 is explicitly
+unverified because unavailable, but is not an independent V1 blocker.
 
 The Build Manager independently verified the archive manifest and all 20 source
 checksums, then reproduced the complete envelope with the immutable Playwright

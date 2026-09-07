@@ -22,6 +22,23 @@ Browser suites have a 20-second bound; verification distinguishes a required
 feature assertion from a runtime, spawn, syntax, or timeout failure. Any change
 requires a new fixture version and a new explicit comparison run.
 
+For a paired local run, use Node 24 and the versioned envelope below on both
+isolated candidates. It pins Playwright to the bundled `chromium` channel,
+prewarms that resolved executable locally, runs the unchanged frozen verifier,
+and writes the same machine-readable evidence shape for each side:
+
+```sh
+node scripts/run-phase7-fixture-harness.mjs --evidence /absolute/path/to/evidence.json
+```
+
+The envelope preserves the frozen 20-second browser-test and 25-second
+per-child harness bounds. Its 120-second outer bound only contains the complete
+multi-fixture process tree and terminates descendants if that tree stops
+making progress; it is not a fixture timeout increase. The evidence records
+the Node version, installed Playwright package, effective channel, resolved
+executable, prewarm result, command output, timings, and exit status. It does
+not install browsers or use the network.
+
 Phase 7 received no isolated incumbent Triforge resource and did not touch the
 active system. Its comparison report therefore keeps every incumbent result
 unknown and publishes no unsupported winner or benchmark claim. A future paired

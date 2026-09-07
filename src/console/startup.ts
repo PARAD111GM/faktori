@@ -20,7 +20,8 @@ import { createConsoleOwnerActions } from './owner-actions.ts';
 import { ConsoleProviderRequestBroker } from './provider-requests.ts';
 import { consoleCommandToken, createConsoleService, type ConsoleOwnerActions } from './service.ts';
 import type { RunIntent, WorkerIdentity } from '../runtime/contracts.ts';
-import { evaluatePreflight, type PreflightResult } from '../diagnostics/preflight.ts';
+import { evaluateInstalledPreflight } from '../diagnostics/local-preflight.ts';
+import type { PreflightResult } from '../diagnostics/preflight.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -249,12 +250,19 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   }
   const commandToken = input.commandToken === undefined ? undefined : requiredText(input.commandToken, 'commandToken');
   const factoryId = requiredText(input.factoryId, 'factoryId');
+  const journalPath = absolutePath(input.journalPath, 'journalPath');
+  const projectionPath = absolutePath(input.projectionPath, 'projectionPath');
   const factoryConfiguration = input.factoryConfiguration === undefined ? undefined : resolveFactoryConfig(input.factoryConfiguration as FactoryConfiguration);
   if (factoryConfiguration !== undefined && factoryConfiguration.factory.id !== factoryId) throw new Error('factoryConfiguration must resolve to the Console factoryId');
-  const preflight = input.preflightRequest === undefined ? undefined : evaluatePreflight(input.preflightRequest);
+  const preflightInput = object(input.preflightRequest);
+  if (preflightInput !== undefined && factoryConfiguration !== undefined) {
+    const requestedConfiguration = resolveFactoryConfig(preflightInput.configuration as FactoryConfiguration);
+    if (JSON.stringify(requestedConfiguration) !== JSON.stringify(factoryConfiguration)) throw new Error('preflightRequest configuration must match the selected Console factoryConfiguration');
+  }
+  const preflight = input.preflightRequest === undefined ? undefined : evaluateInstalledPreflight(input.preflightRequest, { factoryId, projectionPath });
   if (preflight !== undefined && preflight.scope.factoryId !== 'unresolved' && preflight.scope.factoryId !== factoryId) throw new Error('preflightRequest must target the Console factoryId');
   const configuredRuntime = runtime(input.runtime, factoryId);
-  return { factoryId, journalPath: absolutePath(input.journalPath, 'journalPath'), projectionPath: absolutePath(input.projectionPath, 'projectionPath'), port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {

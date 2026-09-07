@@ -13,9 +13,9 @@
       "5": 800000,
       "6": 700000,
       "7": 4200000,
-      "8": 1100000
+      "8": 1700000
     },
-    "progressSummary": "Updated 2026-09-07. Phases 0–6 are accepted; Phase 7 remains unaccepted and unchanged. Owner-authorized concurrent Phase 8 implementation is active from exact F7 candidate af958a28f8366e91683f3f67615cc2ec5ea0ee88 for structured blocker details, a redacted exportable run manifest, and unified read-only preflight/remediation. The initial 420,000-token forecast was materially low and is revised to 1,100,000 advisory tokens after the native goal reported 846,335; this is not a cap. Specialist counters and parent-child inclusion remain unknown and are not added."
+    "progressSummary": "Updated 2026-09-07. Phases 0–6 are accepted; Phase 7 remains unaccepted and unchanged. Owner-authorized concurrent Phase 8 implementation remains based on exact F7 candidate af958a28f8366e91683f3f67615cc2ec5ea0ee88. The first exact-head F8 candidate was not accepted; F8-03 remediation now adds an actual read-only installed-projection check and credential-safe diagnostic IDs. The advisory forecast progressed from 420,000 to 1,100,000 and then 1,700,000 tokens after measured goal telemetry and manager rework; it is not a cap. Specialist counters and parent-child inclusion remain unknown and are not added."
   },
   "tickets": [
     {
@@ -1179,12 +1179,14 @@
         "reasoning": "medium"
       },
       "notes": [
-        "Implemented deterministic data-only preflight across configuration, Console, execution, resources, provider, integrations, and live-evidence sections. Public JSON assertions cannot self-certify readiness; negative observations remain fail-closed and provider conflicts are fail-dominant."
+        "Implemented deterministic data-only preflight across configuration, Console, execution, resources, provider, integrations, and live-evidence sections. Public JSON assertions cannot self-certify readiness; negative observations remain fail-closed and provider conflicts are fail-dominant.",
+        "After Build Manager rejection of the first candidate, added one shared read-only installed SQLite projection inspector for CLI and Console, actual factory/configuration binding, specific missing/invalid remediation, and credential-safe caller diagnostic IDs."
       ],
       "evidence": [
         "tests/diagnostics/preflight.test.mjs",
         "tests/console/prepare.test.mjs",
-        "tests/cli.test.mjs"
+        "tests/cli.test.mjs",
+        "scripts/verify-packed-cli.mjs"
       ]
     }
   ],
@@ -1883,6 +1885,24 @@
       "from": "in_progress",
       "to": "complete",
       "reason": "Unified data-only preflight, fail-closed self-assertion handling, CLI, and Console projection passed local verification; candidate still requires Build Manager acceptance.",
+      "actor": "phase-8-orchestrator"
+    },
+    {
+      "eventId": "phase-8-reopen-f8-03-manager-review",
+      "at": "2026-09-07T21:37:00Z",
+      "ticketId": "F8-03",
+      "from": "complete",
+      "to": "in_progress",
+      "reason": "Build Manager rejected exact head 08c914d because projection readiness had no supported trusted path and caller-controlled prerequisite IDs could be emitted.",
+      "actor": "phase-8-manager"
+    },
+    {
+      "eventId": "phase-8-recomplete-f8-03-manager-remediation",
+      "at": "2026-09-07T22:04:00Z",
+      "ticketId": "F8-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Manager-requested remediation now has focused green evidence: actual read-only projection happy/missing/scope paths, shared CLI/Console behavior, non-forgeable core API, and credential-safe IDs; exact-head and manager acceptance remain pending.",
       "actor": "phase-8-orchestrator"
     }
   ]

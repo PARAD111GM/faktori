@@ -115,7 +115,7 @@
     "build:dashboard": "node scripts/render-build-dashboard.mjs --checklist construction/checklist.json --summary construction/phase-summary.json --output construction/dashboard.html",
     "build:dashboard:phase8": "node scripts/render-build-dashboard.mjs --checklist construction/checklist.json --summary construction/phase-8-summary.json --output construction/phase-8-dashboard.html",
     "build:usage": "node scripts/build-usage.mjs summarize --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 4200000 --phase 7",
-    "build:usage:phase8": "node scripts/build-usage.mjs summarize --input .build/usage/phase-8-records.jsonl --output construction/phase-8-summary.json --estimate 1100000 --phase 8",
+    "build:usage:phase8": "node scripts/build-usage.mjs summarize --input .build/usage/phase-8-records.jsonl --output construction/phase-8-summary.json --estimate 1700000 --phase 8",
     "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 4200000 --phase 7"
   },
   "dependencies": {

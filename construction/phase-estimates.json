@@ -212,8 +212,8 @@
       "phase": 8,
       "hardCeiling": false,
       "confidence": "low",
-      "currentRevision": 2,
-      "estimateTokens": 1100000,
+      "currentRevision": 3,
+      "estimateTokens": 1700000,
       "revisions": [
         {
           "revision": 1,
@@ -238,6 +238,18 @@
             "contingency": 90000
           },
           "rationale": "The native F8 goal reported 846,335 tokens after three specialist implementations and root integration exposed durable Console and readiness-aggregation gaps. The original estimate materially underweighted inherited-context processing, security hardening, integration rework, installed-package verification, and manager acceptance. This revised forecast leaves room for one independent review, focused remediation, exact-head gates, records, and acceptance without changing scope."
+        },
+        {
+          "revision": 3,
+          "estimateTokens": 1700000,
+          "allocations": {
+            "managerCoordination": 100000,
+            "implementerOrchestrationAndIntegration": 600000,
+            "specialistDelivery": 250000,
+            "verificationAndRework": 650000,
+            "contingency": 100000
+          },
+          "rationale": "The native goal reached 1,467,214 tokens after the first exact-head candidate and Build Manager rejection identified two substantive F8-03 gaps: no supported trusted projection-ready path and caller-controlled diagnostic ID echo. Revision 3 accounts for the real read-only SQLite inspection path, configuration/scope binding, security re-review, installed happy/missing evidence, new commits, and another exact-head acceptance cycle. Scope is unchanged and the estimate remains advisory."
         }
       ],
       "assumptions": [
@@ -253,6 +265,7 @@
       "revisionNotes": [
         "The 330,000-token draft and 420,000-token launch estimates were advisory and are superseded for Phase 8 planning only.",
         "Revision 2 responds to measured goal telemetry; it is not a reset, hard stop, completion target, or permission for paid work.",
+        "Revision 3 responds to concrete Build Manager remediation and another measured native-goal snapshot; it does not broaden Phase 8 scope.",
         "No token_budget was attached to the native goal."
       ]
     }

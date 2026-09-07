@@ -1,7 +1,12 @@
 import { readFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { evaluatePreflight } from '../../src/diagnostics/preflight.ts';
+import { evaluateInstalledPreflight } from '../../src/diagnostics/local-preflight.ts';
+import { SqliteProjection } from '../../src/runtime/sqlite-projection.ts';
 
 const config = () => ({
   factory: { id: 'factory-a', name: 'Factory A', defaults: { providerId: 'codex', environmentId: 'local', executionProfile: 'isolated', budget: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 20, maxTokens: 1000, strictSpending: true } } },
@@ -13,6 +18,16 @@ const config = () => ({
 
 const scope = { factoryId: 'factory-a', productId: 'product-a', podId: 'pod-a' };
 const observation = (id, status = 'pass') => ({ id, status, freshness: 'current', scope });
+const runIntent = (factoryId) => ({
+  format: 'faktori.run-intent/v1', runId: 'run', admissionKey: 'admission',
+  workItem: { id: 'work', revision: 'work@1' },
+  target: { factoryId, productId: scope.productId, podId: scope.podId, repository: 'org/repo', branch: 'work', baseRevision: 'base@1', expectedRevision: 'head@1' },
+  context: { packetRevision: 'packet@1', digest: 'a'.repeat(64) },
+  execution: { profile: 'isolated', workspaceId: 'workspace', workspacePath: '/private/tmp/workspace', providerId: 'codex', model: 'fixture', approvedInputDigests: [] },
+  budget: { reservationId: 'reservation', maxRuntimeMinutes: 5, estimatedTokens: 1000, status: 'held' },
+  authority: { authorityRevision: 'authority@1', epoch: 1, scopeDigest: 'b'.repeat(64), policy: { requireIntentApproval: true, requireSpecificationApproval: true, requireIndependentReview: true, mergeAuthority: 'human', productionReleaseAuthority: 'human', allowPreviewDeployment: false, allowLocalDeployment: false, allowSeparateBilling: false } },
+  attempt: 1, createdAt: '2026-09-07T00:00:00.000Z',
+});
 const request = () => ({
   format: 'faktori.preflight/v1', configuration: config(), target: scope,
   expectedRevision: 'evidence@1',
@@ -41,6 +56,12 @@ describe('evaluatePreflight', () => {
     ]));
   });
 
+  it('cannot be given a forged trusted projection observation through the core API', () => {
+    const result = evaluatePreflight(request(), { factoryId: scope.factoryId, projection: 'ready' });
+    expect(result).toMatchObject({ projectionReady: false, executionReady: false, liveExecutionVerified: false });
+    expect(result.checks.find((item) => item.id === 'console.installed_projection')).toMatchObject({ status: 'not_tested', basis: 'not_observed' });
+  });
+
   it('keeps projection readiness separate when execution is unavailable', () => {
     const input = request();
     input.execution.prerequisites[0].status = 'unavailable';
@@ -57,8 +78,8 @@ describe('evaluatePreflight', () => {
     expect(evaluatePreflight(unsupported).executionReady).toBe(false);
     const stale = request(); stale.providers[0].capabilities[0].freshness = 'stale';
     expect(evaluatePreflight(stale).checks.find((item) => item.id === 'provider.isolated.observed')).toMatchObject({ status: 'unavailable', freshness: 'stale' });
-    const wrongScope = request(); wrongScope.console.prerequisites[0].scope = { ...scope, productId: 'other' };
-    expect(evaluatePreflight(wrongScope).checks.find((item) => item.id === 'console.projection')).toMatchObject({ status: 'unavailable' });
+    const wrongScope = request(); wrongScope.execution.prerequisites[0].scope = { ...scope, productId: 'other' };
+    expect(evaluatePreflight(wrongScope).checks.find((item) => item.id === 'execution.profile')).toMatchObject({ status: 'unavailable' });
   });
 
   it('does not infer missing observations and treats explicit unavailable as dominant', () => {
@@ -82,6 +103,49 @@ describe('evaluatePreflight', () => {
     expect(result.liveExecutionVerified).toBe(false);
     expect(result.projectionReady).toBe(false);
     expect(result.checks.find((item) => item.id === 'live_evidence.observed')).toMatchObject({ status: 'not_tested' });
+  });
+
+  it('marks an actual installed projection ready while execution and live evidence remain unknown', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'faktori-preflight-'));
+    const projectionPath = join(directory, 'projection.sqlite');
+    const projection = new SqliteProjection(projectionPath);
+    projection.apply({ format: 'faktori.run-event/v1', eventId: 'admitted', runId: 'run', occurredAt: '2026-09-07T00:00:00.000Z', kind: 'run.admitted', data: { intent: runIntent(scope.factoryId) } });
+    projection.close();
+    try {
+      const result = evaluateInstalledPreflight(request(), { factoryId: scope.factoryId, projectionPath });
+      expect(result).toMatchObject({ status: 'partial', projectionReady: true, executionReady: false, liveExecutionVerified: false });
+      expect(result.checks.find((item) => item.id === 'console.installed_projection')).toMatchObject({ status: 'pass', basis: 'observed', freshness: 'current' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an installed projection containing a different factory scope', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'faktori-preflight-scope-'));
+    const projectionPath = join(directory, 'projection.sqlite');
+    const projection = new SqliteProjection(projectionPath);
+    projection.apply({ format: 'faktori.run-event/v1', eventId: 'admitted', runId: 'run', occurredAt: '2026-09-07T00:00:00.000Z', kind: 'run.admitted', data: { intent: runIntent('other-factory') } });
+    projection.close();
+    try {
+      const result = evaluateInstalledPreflight(request(), { factoryId: scope.factoryId, projectionPath });
+      expect(result).toMatchObject({ status: 'blocked', projectionReady: false });
+      expect(result.checks.find((item) => item.id === 'console.installed_projection').remediation).toMatch(/invalid local SQLite projection/i);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a missing installed projection with specific nonexecuting remediation', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'faktori-preflight-missing-'));
+    try {
+      const result = evaluateInstalledPreflight(request(), { factoryId: scope.factoryId, projectionPath: join(directory, 'missing.sqlite') });
+      const check = result.checks.find((item) => item.id === 'console.installed_projection');
+      expect(result).toMatchObject({ status: 'blocked', projectionReady: false, executionReady: false, liveExecutionVerified: false });
+      expect(check).toMatchObject({ status: 'fail' });
+      expect(check.remediation).toMatch(/authoritative journal.*faktori runtime rebuild/i);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('rejects unrelated live revisions and credential-shaped evidence', () => {
@@ -108,6 +172,16 @@ describe('evaluatePreflight', () => {
     expect(encoded).not.toMatch(/approval|command|workspacePath|prompt|credential/i);
     expect(result.executionReady).toBe(false);
     expect(result.checks.every((item) => ['pass', 'fail', 'unavailable', 'not_tested'].includes(item.status))).toBe(true);
+  });
+
+  it('never emits credential-shaped prerequisite or live-evidence identifiers', () => {
+    const secretId = `sk-${'A'.repeat(24)}`;
+    const input = request();
+    input.console.prerequisites[0].id = secretId;
+    input.liveEvidence.evidence[0].id = secretId;
+    const encoded = JSON.stringify(evaluatePreflight(input));
+    expect(encoded).not.toContain(secretId);
+    expect(encoded).toContain('live_evidence.invalid_input');
   });
 
   it('has no filesystem, process, provider, approval, or writer dependency surface', async () => {

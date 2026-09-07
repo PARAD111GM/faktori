@@ -34,6 +34,7 @@ try {
     'package/dist/maintenance/backup.js',
     'package/dist/maintenance/update.js',
     'package/dist/diagnostics/index.js',
+    'package/dist/diagnostics/local-preflight.js',
     'package/dist/diagnostics/preflight.js',
     'package/dist/runtime/run-manifest.js',
     'package/docs/maintenance/README.md',
@@ -106,14 +107,21 @@ try {
   if (manifest.format !== 'faktori.run-manifest/v1' || !/^[a-f0-9]{64}$/.test(manifest.contentDigest) || JSON.stringify(manifest).includes('/workspace') || await readFile(sourceJournal, 'utf8') !== sourceBefore) {
     throw new Error('installed run manifest did not preserve the redacted read-only contract');
   }
-  const preflightResult = spawnSync(executable, ['preflight', join(consumer, 'node_modules', 'faktori', 'examples', 'diagnostics', 'preflight-projection.json')], {
+  const packagedPreflightRequest = JSON.parse(await readFile(join(consumer, 'node_modules', 'faktori', 'examples', 'diagnostics', 'preflight-projection.json'), 'utf8'));
+  const preflightPath = join(scratch, 'installed-preflight.json');
+  await writeFile(preflightPath, JSON.stringify({
+    format: 'faktori.preflight-installation/v1',
+    request: packagedPreflightRequest,
+    installation: { factoryId: 'example-factory', projectionPath: projection },
+  }));
+  const preflightResult = spawnSync(executable, ['preflight', preflightPath], {
     cwd: consumer,
     encoding: 'utf8',
     env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}` },
   });
   if (preflightResult.status !== 0) throw new Error(preflightResult.stderr || preflightResult.stdout || 'installed preflight failed');
   const preflight = JSON.parse(preflightResult.stdout);
-  if (preflight.format !== 'faktori.preflight-result/v1' || preflight.status !== 'partial' || preflight.projectionReady !== false || preflight.liveExecutionVerified !== false) {
+  if (preflight.format !== 'faktori.preflight-result/v1' || preflight.status !== 'partial' || preflight.projectionReady !== true || preflight.executionReady !== false || preflight.liveExecutionVerified !== false) {
     throw new Error('installed preflight returned an unexpected readiness report');
   }
 

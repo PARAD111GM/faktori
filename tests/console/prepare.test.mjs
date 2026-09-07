@@ -1,13 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { prepareLocalCodexConsole } from '../../src/console/prepare.ts';
 import { parseLocalConsoleConfiguration, startLocalConsole } from '../../src/console/startup.ts';
 import { approveProvisioningProposal, createDiscoveryRecord, createProvisioningProposal, provisionApprovedProposal } from '../../src/provisioning/index.ts';
 import { resolveFactoryConfig } from '../../src/config/index.ts';
+import { SqliteProjection } from '../../src/runtime/sqlite-projection.ts';
 
 const roots = [];
 
@@ -65,6 +66,9 @@ describe('local Console preparation', () => {
       port: 0,
     });
     const scope = { factoryId: 'cold-start', productId: 'task-board', podId: 'task-board-pod' };
+    await mkdir(dirname(generated.projectionPath), { recursive: true });
+    const installedProjection = new SqliteProjection(generated.projectionPath);
+    installedProjection.close();
     generated.preflightRequest = {
       format: 'faktori.preflight/v1',
       configuration: factory.configuration,
@@ -81,7 +85,7 @@ describe('local Console preparation', () => {
     const parsed = parseLocalConsoleConfiguration(generated);
 
     expect(parsed.runtime).toBeUndefined();
-    expect(parsed.preflight).toMatchObject({ status: 'partial', projectionReady: false, executionReady: false, liveExecutionVerified: false });
+    expect(parsed.preflight).toMatchObject({ status: 'partial', projectionReady: true, executionReady: false, liveExecutionVerified: false });
     expect(parsed.limits).toEqual(expect.objectContaining({ strictSpending: true, strictSpendingSupported: false }));
     expect(() => prepareLocalCodexConsole({
       mode: 'projection',
@@ -102,6 +106,21 @@ describe('local Console preparation', () => {
     } finally {
       await started.close();
     }
+  });
+
+  it('reports a missing Console projection without creating it during configuration parsing', async () => {
+    const factory = await preparedFactory();
+    const generated = prepareLocalCodexConsole({ mode: 'projection', configuration: factory.configuration, factoryRoot: factory.factoryRoot, port: 0 });
+    generated.preflightRequest = {
+      format: 'faktori.preflight/v1',
+      configuration: factory.configuration,
+      target: { factoryId: 'cold-start', productId: 'task-board' },
+      execution: { prerequisites: [] }, resources: { prerequisites: [] }, integrations: { prerequisites: [] },
+    };
+    const parsed = parseLocalConsoleConfiguration(generated);
+    expect(parsed.preflight).toMatchObject({ status: 'blocked', projectionReady: false, executionReady: false, liveExecutionVerified: false });
+    expect(parsed.preflight.checks.find((item) => item.id === 'console.installed_projection').remediation).toMatch(/faktori runtime rebuild/i);
+    await expect(readFile(generated.projectionPath)).rejects.toThrow();
   });
 
   it('binds one clean provisioned product, exact context, authority, and native Codex route', async () => {

@@ -51,7 +51,7 @@ const FRESHNESS = new Set<ObservationFreshness>(['current', 'stale', 'unknown', 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SENSITIVE = /(?:bearer|authorization|credential|password|secret|token|api[_-]?key|\.codex|\.claude|\.env|\.npmrc|\.netrc|\.ssh|\.gnupg|\.aws|(?:^|[\/])(?:Users|home)(?:[\/]|$))/i;
 const CREDENTIAL_SIGNATURE = /(?:\bsk-(?:(?:proj|live|test)-)?[A-Za-z0-9_-]{8,}|\b(?:[rs]k_(?:live|test)|whsec)_[A-Za-z0-9]{8,}|\b(?:gh[opusr]_[A-Za-z0-9]{12,}|github_pat_[A-Za-z0-9_]{12,})|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|\bxox[aboprs]-[A-Za-z0-9-]{10,}|\bnpm_[A-Za-z0-9]{12,}|\bpypi-[A-Za-z0-9_-]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/i;
-const SECTIONS: Array<Exclude<PreflightSection, 'configuration' | 'provider' | 'live_evidence'>> = ['console', 'execution', 'resources', 'integrations'];
+const SECTIONS: Array<Exclude<PreflightSection, 'configuration' | 'console' | 'provider' | 'live_evidence'>> = ['execution', 'resources', 'integrations'];
 
 function record(value: unknown): InputRecord | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as InputRecord : undefined;
@@ -91,8 +91,8 @@ function remediation(section: PreflightSection, status: PreflightCheckStatus): s
   return 'Attach current revision-bound evidence or leave this optional evidence explicitly not tested.';
 }
 
-function check(id: string, section: PreflightSection, status: PreflightCheckStatus, basis: ObservationBasis, freshness: ObservationFreshness, scope: PreflightScope): PreflightCheck {
-  return { id, section, status, basis, freshness, scope, remediation: remediation(section, status) };
+function check(id: string, section: PreflightSection, status: PreflightCheckStatus, basis: ObservationBasis, freshness: ObservationFreshness, scope: PreflightScope, fixedRemediation?: string): PreflightCheck {
+  return { id, section, status, basis, freshness, scope, remediation: fixedRemediation ?? remediation(section, status) };
 }
 
 function statusOf(value: unknown): PreflightCheckStatus | undefined {
@@ -126,7 +126,7 @@ function observedCheck(id: string, section: PreflightSection, observation: Obser
   return check(id, section, status, 'observed', freshness, scope);
 }
 
-function sectionChecks(section: Exclude<PreflightSection, 'configuration' | 'provider' | 'live_evidence'>, value: unknown, scope: PreflightScope): PreflightCheck[] {
+function sectionChecks(section: Exclude<PreflightSection, 'configuration' | 'console' | 'provider' | 'live_evidence'>, value: unknown, scope: PreflightScope): PreflightCheck[] {
   const input = record(value);
   if (input === undefined) return [observedCheck(`${section}.observed`, section, undefined, scope)];
   const prerequisites = input.prerequisites;
@@ -136,7 +136,7 @@ function sectionChecks(section: Exclude<PreflightSection, 'configuration' | 'pro
   const output: PreflightCheck[] = [];
   for (const item of prerequisites) {
     const observation = record(item);
-    const localId = typeof observation?.id === 'string' && SAFE_ID.test(observation.id) ? observation.id : undefined;
+    const localId = requiredText(observation?.id);
     if (observation === undefined || localId === undefined || seen.has(localId)) {
       output.push(check(`${section}.invalid_input`, section, 'fail', 'observed', 'unknown', scope));
       continue;
@@ -208,7 +208,7 @@ function liveEvidenceChecks(value: unknown, expectedRevisionValue: unknown, scop
   const expectedRevision = safeRevision(expectedRevisionValue);
   return evidence.map((item) => {
     const observation = record(item);
-    const localId = typeof observation?.id === 'string' && SAFE_ID.test(observation.id) ? observation.id : undefined;
+    const localId = requiredText(observation?.id);
     const revision = safeRevision(observation?.revision);
     if (localId === undefined || (observation?.status === 'pass' && (revision === undefined || expectedRevision === undefined))) {
       return check('live_evidence.invalid_input', 'live_evidence', 'fail', 'observed', 'unknown', scope);
@@ -253,6 +253,7 @@ export function evaluatePreflight(value: unknown): PreflightResult {
   }
   if (input !== undefined && resolved !== undefined && target !== undefined) checks.push(...providerChecks(input, resolved, target, scope));
   else checks.push(check('provider.observed', 'provider', 'not_tested', 'not_observed', 'unknown', scope));
+  checks.push(check('console.installed_projection', 'console', 'not_tested', 'not_observed', 'unknown', scope, 'Run preflight against the owner-controlled local Console configuration so the existing projection can be inspected read-only.'));
   for (const section of SECTIONS) checks.push(...sectionChecks(section, input?.[section], scope));
   checks.push(...liveEvidenceChecks(input?.liveEvidence, input?.expectedRevision, scope));
   const summary: Record<PreflightCheckStatus, number> = { pass: 0, fail: 0, unavailable: 0, not_tested: 0 };

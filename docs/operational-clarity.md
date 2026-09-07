@@ -44,7 +44,7 @@ There is no export timestamp.
 
     faktori preflight <request.json>
 
-The input contract is faktori.preflight/v1; a public projection-only example is
+The diagnostic request contract is faktori.preflight/v1; a public projection-only example is
 [preflight-projection.json](../examples/diagnostics/preflight-projection.json).
 It contains the canonical factory configuration, selected target and profile,
 and explicit, untrusted observation assertions for:
@@ -62,14 +62,25 @@ faktori.preflight-result/v1. Every check has a stable ID, section, status,
 observation basis, freshness, scope, and fixed non-executing remediation.
 Configuration-derived checks can pass, while caller-supplied success assertions
 remain `not_tested` with unknown freshness. Negative observations remain
-fail-closed, and conflicting provider observations are fail-dominant. Therefore
-the public JSON/CLI surface cannot self-certify `ready`, `executionReady`, or
-`liveExecutionVerified`; a future trusted read adapter must independently bind
-source provenance, revision, and age before those claims can exist. Preflight is
+fail-closed, conflicting provider observations are fail-dominant, and every
+caller-controlled diagnostic ID uses the same credential-safe validator.
+
+For an installed check, wrap that request in
+`faktori.preflight-installation/v1` with `installation.factoryId` and an
+absolute `installation.projectionPath`. The CLI opens the existing SQLite file
+with `readonly` and `fileMustExist`, verifies the Faktori `run_events` table
+shape, and never emits the path. The Console supplies those same facts from its
+already validated owner-controlled local configuration. A valid installed
+projection can therefore set `projectionReady: true`; a missing or invalid one
+returns a specific `faktori runtime rebuild` remediation. Neither caller JSON
+status nor freshness can make execution or live evidence verified. Preflight is
 an observation report, never an admission lease; the coordinator must revalidate
 current scope, capacity, budget, and authority at admission time.
 
-The evaluator is data-only. It does not import filesystem, process, transport,
+The core evaluator is data-only. It does not import filesystem, process, transport,
 provider adapter, coordinator, approval, provisioning, script, or network
-execution surfaces. The Factory Console renders the same sanitized result when
-its owner-controlled local configuration supplies preflightRequest.
+execution surfaces. The small local inspector imports only the existing SQLite
+projection reader and path validator; it cannot write, launch, install,
+authenticate, repair, or reach the network. The Factory Console renders the
+same sanitized result when its owner-controlled local configuration supplies
+preflightRequest.

@@ -108,11 +108,15 @@ injected into the served document. The token, provider environments, workspace
 paths, prompts, session IDs, and raw provider events are never returned in the
 Console state projection.
 
-An owner-controlled Console file may also include preflightRequest. Startup
-evaluates it with the same pure function used by the faktori preflight command,
-then publishes only the sanitized result in the Factory view. Projection
-readiness, execution prerequisites, and revision-bound live execution evidence
-remain separate. The report cannot approve, repair, admit, or launch work.
+An owner-controlled Console file may also include `preflightRequest`. Parsing
+binds that request to the selected resolved `factoryConfiguration`, factory ID,
+and actual `projectionPath`, then opens the existing SQLite projection strictly
+read-only with `fileMustExist`. The same installed check powers `faktori
+preflight`; a valid projection can be projection-ready while execution and live
+evidence remain unknown. Missing or invalid projections return a specific
+nonexecuting rebuild remediation and are not created during preflight. Only the
+sanitized result reaches the Factory view. The report cannot approve, repair,
+admit, or launch work.
 
 ## Configuration boundary
 

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "phase": 8,
-  "generatedAt": "2026-09-07T21:30:54.396Z",
+  "generatedAt": "2026-09-07T22:05:29.202Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 1110098,
+    "total": 1467214,
     "excludedChildCount": 3,
     "kind": "overlap-safe-lower-bound"
   },
@@ -49,25 +49,17 @@
   ],
   "coverageGaps": [],
   "records": {
-    "accepted": 6,
+    "accepted": 7,
     "duplicates": 0
   },
   "budget": {
-    "estimate": 1100000,
-    "remaining": 0,
-    "percentUsed": 100.92
+    "estimate": 1700000,
+    "remaining": 232786,
+    "percentUsed": 86.31
   },
   "notices": [
     {
       "threshold": 70,
-      "type": "budget-threshold"
-    },
-    {
-      "threshold": 90,
-      "type": "budget-threshold"
-    },
-    {
-      "threshold": 100,
       "type": "budget-threshold"
     }
   ]

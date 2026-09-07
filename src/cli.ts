@@ -8,7 +8,7 @@ import {
   createFactoryBackup,
   createProvisioningProposal,
   createRunManifest,
-  evaluatePreflight,
+  evaluateInstalledPreflightDocument,
   initializeRuntimeInstallation,
   applyRuntimeUpdate,
   previewRuntimeUpdate,
@@ -165,7 +165,7 @@ async function run(argv: string[]): Promise<void> {
 
   if (group === 'preflight') {
     if (argv.length !== 2 || !action) throw new Error('preflight requires exactly one request JSON path');
-    print(evaluatePreflight(await json(action, 'preflight request')));
+    print(evaluateInstalledPreflightDocument(await json(action, 'preflight request')));
     return;
   }
 

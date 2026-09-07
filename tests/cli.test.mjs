@@ -220,4 +220,26 @@ describe('public CLI', () => {
     });
     expect(run('preflight', join(root, 'examples/diagnostics/preflight-projection.json'), 'unexpected').status).toBe(1);
   });
+
+  it('inspects the installed projection read-only and gives specific missing-projection remediation', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'faktori-cli-preflight-'));
+    const projectionPath = join(directory, 'projection.sqlite');
+    const requestPath = join(directory, 'preflight.json');
+    expect(run('runtime', 'rebuild', join(root, 'examples/runtime/interrupted-run.jsonl'), projectionPath).status).toBe(0);
+    const request = JSON.parse(await readFile(join(root, 'examples/diagnostics/preflight-projection.json'), 'utf8'));
+    const envelope = { format: 'faktori.preflight-installation/v1', request, installation: { factoryId: 'example-factory', projectionPath } };
+    await writeFile(requestPath, JSON.stringify(envelope));
+    const ready = run('preflight', requestPath);
+    expect(ready.status).toBe(0, ready.stderr);
+    expect(JSON.parse(ready.stdout)).toMatchObject({ status: 'partial', projectionReady: true, executionReady: false, liveExecutionVerified: false });
+
+    envelope.installation.projectionPath = join(directory, 'missing.sqlite');
+    await writeFile(requestPath, JSON.stringify(envelope));
+    const missingResult = run('preflight', requestPath);
+    expect(missingResult.status).toBe(0, missingResult.stderr);
+    const missing = JSON.parse(missingResult.stdout);
+    expect(missing).toMatchObject({ status: 'blocked', projectionReady: false });
+    expect(missing.checks.find((item) => item.id === 'console.installed_projection').remediation).toMatch(/faktori runtime rebuild/i);
+    await expect(stat(envelope.installation.projectionPath)).rejects.toThrow();
+  });
 });

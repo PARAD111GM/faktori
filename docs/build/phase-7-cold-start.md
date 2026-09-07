@@ -144,3 +144,23 @@ criterion was not met. Commit `9f0cdba` repairs the isolated commit prerequisite
 with a neutral repository-local Faktori identity and focused tests, but no
 second provider run was authorized. Exact sanitized evidence is in
 `docs/build/evidence/phase-7-isolated-cold-start-2026-09-07.md`.
+
+## 2026-09-07 repaired rerun and manager boundary
+
+The owner later authorized exactly one repaired rerun. It used public revision
+`7355410`, genuine product-local Playwright 1.63.0 installed with bin links
+disabled, and the same hardened worker boundary. Proposal, approval, apply,
+replay, final product commits, a clean complete-tree link check, retained
+configuration resolution, and the unchanged frozen browser contract all
+passed. A credential-free, network-disabled controller rerun passed the same
+contract after the final commit, and the public snapshot remained byte-exact.
+
+This still does not close F7-01. npm 12 blocked the native SQLite install script;
+although a subsequent read-only controller diagnostic proved the included
+Linux native artifact can open, write, and query, the fresh worker did not make
+that documented observation. More importantly, it did not prepare or start the
+loopback Console or prove canonical factory projection. The Build Manager
+therefore rejected completion: a finished product and durable provisioning
+records are not by themselves a usable factory. No further provider turn was
+authorized. Exact evidence is in
+`docs/build/evidence/phase-7-isolated-cold-start-rerun-2026-09-07.md`.

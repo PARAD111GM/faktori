@@ -186,7 +186,14 @@ checkout:
   failed because the provisioned repository lacked local author identity. npm
   also created two internal `.bin` symlinks, so the literal complete-tree link
   criterion was not satisfied. Commit `9f0cdba` repairs the Git prerequisite;
-  no second provider run was authorized.
+  a later owner-authorized repaired rerun passed proposal, approval, replay,
+  genuine dependency installation, final commits, complete-tree link checks,
+  retained configuration, and both worker and independent frozen browser
+  acceptance. F7-01 nevertheless remains blocked because the fresh worker did
+  not perform the documented native SQLite observation or prepare/start the
+  loopback Console and prove factory projection. Controller SQLite diagnosis
+  cannot retroactively supply fresh-agent evidence, and no further provider
+  turn was authorized.
 - F7-02 needs full Linux Node/Python factory-provider-product delivery under a
   supported isolated container or independent instance. WSL2 is explicitly
   unverified because no real host is available, but its absence alone is not a

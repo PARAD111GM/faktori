@@ -980,7 +980,7 @@
       "notes": [
         "Three fresh temporary factories preserved the observed path: the first exposed missing product assembly, the second produced a behaviorally correct but scope-invalid product, and the single manager-authorized bounded rerun passed restart but used a hand-written dependency compatibility package after the genuine offline install failed. Its substituted harness reported pass, while a genuine-Playwright rerun failed delete-after-restart; absence of all outside-path reads was also not proved.",
         "The trusted Node 24/Chromium envelope reproduces the unchanged frozen baseline. A fresh dedicated vendor login and one directly authorized isolated run then passed public provisioning, replay, genuine product-local Playwright acceptance, and an independent credential-free rerun, but stopped at the required final commit because the repository lacked local Git identity. Two npm-internal bin symlinks also prevented the literal complete-tree no-link criterion. Commit 9f0cdba repairs the Git prerequisite.",
-        "One later owner-authorized repaired rerun passed proposal, approval, apply/replay, genuine product-local Playwright 1.63 with bin links disabled, final commits, clean complete-tree link checks, retained configuration, and both worker and independent frozen browser acceptance. F7-01 remains blocked because the fresh worker did not make the README's native SQLite observation or prepare/start the loopback Console and prove canonical factory projection. A credential-free controller SQLite diagnostic passed but cannot retroactively supply fresh-agent evidence; no further provider turn was authorized."
+        "One later owner-authorized repaired rerun passed proposal, approval, apply/replay, genuine product-local Playwright 1.63 with bin links disabled, final commits, clean complete-tree link checks, retained configuration, and both worker and independent frozen browser acceptance. A runtime-only continuation then completed the narrow SQLite observation but found that public Console preparation required a native non-strict-spending work item and could not prepare the approved isolated factory. Commit 5784f41 adds explicit approval-bound projection-only preparation with no provider/work/GM authority and a real loopback hierarchy test. F7-01 remains blocked pending fresh-agent validation on that repaired public revision."
       ],
       "evidence": [
         {
@@ -1010,6 +1010,10 @@
         {
           "label": "Repaired cold-start rerun and remaining runtime gap",
           "url": "docs/build/evidence/phase-7-isolated-cold-start-rerun-2026-09-07.md"
+        },
+        {
+          "label": "Console continuation blocker and projection-only repair",
+          "url": "docs/build/evidence/phase-7-console-continuation-2026-09-07.md"
         }
       ]
     },

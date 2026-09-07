@@ -192,8 +192,12 @@ checkout:
   acceptance. F7-01 nevertheless remains blocked because the fresh worker did
   not perform the documented native SQLite observation or prepare/start the
   loopback Console and prove factory projection. Controller SQLite diagnosis
-  cannot retroactively supply fresh-agent evidence, and no further provider
-  turn was authorized.
+  cannot retroactively supply fresh-agent evidence. One later authorized
+  runtime-only continuation completed that SQLite observation but exposed that
+  public Console preparation was coupled to a native non-strict-spending work
+  item. It stopped without weakening configuration. Commit `5784f41` adds an
+  approval-bound projection-only preparation mode with no execution authority;
+  fresh-agent validation on that repaired revision remains required.
 - F7-02 needs full Linux Node/Python factory-provider-product delivery under a
   supported isolated container or independent instance. WSL2 is explicitly
   unverified because no real host is available, but its absence alone is not a

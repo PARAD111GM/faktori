@@ -164,3 +164,21 @@ therefore rejected completion: a finished product and durable provisioning
 records are not by themselves a usable factory. No further provider turn was
 authorized. Exact evidence is in
 `docs/build/evidence/phase-7-isolated-cold-start-rerun-2026-09-07.md`.
+
+## Runtime-only continuation and preparation repair
+
+One additional owner-authorized continuation resumed the exact isolated
+session solely for the missing runtime observations. It completed the narrow
+`better-sqlite3` rebuild and real open/create/insert/query/close check, preserved
+the product commit, and launched no Faktori provider. Public Console preparation
+then failed closed because the only preparer required a native Codex work item,
+while the approved factory is isolated and strict-spending. The agent did not
+weaken configuration or hand-write a Console file.
+
+Commit `5784f41` adds an explicit approval-bound projection-only preparation
+mode with no provider, work item, resume, or GM authority. A real loopback test
+proves canonical factory/product/pod projection and zero work nodes for an
+isolated strict-spending factory. This repair was made after the authorized
+continuation stopped, so F7-01 remains blocked pending fresh-agent validation on
+the repaired public revision. Exact evidence is in
+`docs/build/evidence/phase-7-console-continuation-2026-09-07.md`.

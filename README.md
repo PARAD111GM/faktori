@@ -12,7 +12,7 @@ integration identifiers belong here.
 
 ## Status
 
-Phases 0–6 are accepted. Phase 7 is the assembled-product proof: cold-start,
+Phases 0–6 are accepted. Phase 7 is the unaccepted assembled-product proof: cold-start,
 host/stack compatibility, the authority-gated isolated Twinzy delivery, and the
 frozen paired comparison. Phase 6 added installed backup/restore and supported
 runtime-update boundaries, plus a public maintenance kit. The Phase 5
@@ -24,6 +24,12 @@ visibility. The package build emits installable JavaScript and declarations;
 its packed CLI is verified from a clean temporary install. Frozen fixtures
 remain test contracts, not benchmark results; unsupported host or incumbent
 evidence remains explicitly unverified.
+
+The Phase 8 candidate, developed concurrently under explicit owner authority,
+adds operational-clarity observations only: structured admission blockers, a
+redacted deterministic run manifest, and read-only preflight/remediation. It
+does not repair or complete Phase 7 and is not accepted until the Build Manager
+verifies its exact head.
 
 ## Start here
 
@@ -42,6 +48,8 @@ evidence remains explicitly unverified.
   six lifecycle outcomes, evidence, and provider-neutral handoffs.
 - [Recoverable runtime](docs/runtime/README.md) — journal, SQLite, execution
   profiles, Codex adapter, cancellation, and action authority boundaries.
+- [Operational clarity](docs/operational-clarity.md) — blocker details,
+  redacted run manifests, and read-only preflight reports.
 - [Local Console and Factory GM](docs/console.md) — loopback service, live
   views, owner controls, provider routes, and bounded health diagnosis.
 - [Maintenance kit](docs/maintenance/README.md) — backup, separate restore,
@@ -58,6 +66,8 @@ the supported Node 24 runtime, for example:
 
 ```sh
 npm run faktori -- config resolve examples/config/solo.json
+npm run faktori -- run manifest examples/runtime/interrupted-run.jsonl example-run
+npm run faktori -- preflight examples/diagnostics/preflight-projection.json
 ```
 
 After initial provisioning, add a separately discovered and approved product

@@ -108,6 +108,12 @@ injected into the served document. The token, provider environments, workspace
 paths, prompts, session IDs, and raw provider events are never returned in the
 Console state projection.
 
+An owner-controlled Console file may also include preflightRequest. Startup
+evaluates it with the same pure function used by the faktori preflight command,
+then publishes only the sanitized result in the Factory view. Projection
+readiness, execution prerequisites, and revision-bound live execution evidence
+remain separate. The report cannot approve, repair, admit, or launch work.
+
 ## Configuration boundary
 
 The local file contains:

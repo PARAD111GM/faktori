@@ -1,8 +1,12 @@
 {
   "schemaVersion": 1,
-  "phase": 7,
+  "phase": 8,
   "policy": "Use the least expensive model likely to produce accepted work; escalate only from demonstrated failure.",
   "assignments": [
+    {"role":"phase 8 implementer-orchestrator","tickets":["F8-01","F8-02","F8-03"],"model":"gpt-5.6-sol","reasoning":"medium","rationale":"Owns shared CLI, public exports, serialized Console integration, construction state, exact-head verification, acceptance coordination, and F7 base-update handling."},
+    {"role":"blocker diagnostics specialist","tickets":["F8-01"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded cross-layer runtime and Console implementation with concurrency and privacy-sensitive tests."},
+    {"role":"run manifest specialist","tickets":["F8-02"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded deterministic schema, redaction, provenance, digest, and security-negative implementation."},
+    {"role":"preflight diagnostics specialist","tickets":["F8-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded pure configuration/readiness aggregation and no-side-effect security-negative implementation."},
     {"role":"phase implementer-orchestrator","tickets":["F7-01","F7-02","F7-03","F7-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Owns assembled-product integration, shared records, live-target authority boundaries, defect remediation, claim verification, release audit, and manager coordination."},
     {"role":"fresh cold-start specialist","tickets":["F7-01"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Independently executes the public onboarding path in temporary local state with only the product request and public repository instructions."},
     {"role":"host and frozen-fixture evidence specialist","tickets":["F7-02","F7-04"],"model":"gpt-5.6-luna","reasoning":"medium","rationale":"Performs bounded read-only host inventory, checksum verification, fixture execution, and evidence classification without source or incumbent mutations."}

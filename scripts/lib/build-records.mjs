@@ -34,5 +34,10 @@ export function escapeHtml(value) {
 }
 
 export function canonicalTickets() {
-  return Array.from({ length: 8 }, (_, phase) => Array.from({ length: 4 }, (_, offset) => `F${phase}-${String(offset + 1).padStart(2, '0')}`)).flat();
+  return [
+    ...Array.from({ length: 8 }, (_, phase) => Array.from({ length: 4 }, (_, offset) => `F${phase}-${String(offset + 1).padStart(2, '0')}`)).flat(),
+    'F8-01',
+    'F8-02',
+    'F8-03',
+  ];
 }

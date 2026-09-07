@@ -207,6 +207,54 @@
       "assumptions": ["The native goal remains uncapped; this estimate is planning data, not a completion criterion.","The phase uses at most two specialists on existing subscriptions and no paid route, reset, or additional service.","Account percentage is monitored separately and is not converted into tokens.","Missing Twinzy, Linux, WSL2, Docker, or incumbent resources remain explicit blockers rather than fabricated evidence.","Parent and child overlap remains unknown unless telemetry proves otherwise; overlapping counters are never summed."],
       "baseline": {"manager":"Adjacent private phase-7 manager records; raw provenance is not committed."},
       "revisionNotes": ["Initial account measurement was 93% used / 7% remaining. Four percentage points are an operational reassessment threshold, not a token budget or native cap.","Revisions 2 and 3 change only the planning forecast. The native goal remains uncapped, acceptance is unchanged, account percentage is not token-convertible, and no reset or paid route is authorized.","Revision 4 is a full-phase forecast assembled from the remaining acceptance work. Historical measured usage, the current account window, and the uncapped native goal remain separate evidence states."]
+    },
+    {
+      "phase": 8,
+      "hardCeiling": false,
+      "confidence": "low",
+      "currentRevision": 2,
+      "estimateTokens": 1100000,
+      "revisions": [
+        {
+          "revision": 1,
+          "estimateTokens": 420000,
+          "allocations": {
+            "managerCoordination": 30000,
+            "implementerOrchestrationAndIntegration": 35000,
+            "specialistDelivery": 235000,
+            "verificationAndRework": 100000,
+            "contingency": 20000
+          },
+          "rationale": "Reassessed from the draft 330,000-token estimate after exact-baseline mapping identified cross-layer blocker UI/API integration, two deterministic export contracts, installed CLI/package coverage, privacy negatives, independent security review, and likely acceptance rework. Established journal, configuration, Console, hashing, and packed-install patterns reduce architecture risk."
+        },
+        {
+          "revision": 2,
+          "estimateTokens": 1100000,
+          "allocations": {
+            "managerCoordination": 60000,
+            "implementerOrchestrationAndIntegration": 400000,
+            "specialistDelivery": 250000,
+            "verificationAndRework": 300000,
+            "contingency": 90000
+          },
+          "rationale": "The native F8 goal reported 846,335 tokens after three specialist implementations and root integration exposed durable Console and readiness-aggregation gaps. The original estimate materially underweighted inherited-context processing, security hardening, integration rework, installed-package verification, and manager acceptance. This revised forecast leaves room for one independent review, focused remediation, exact-head gates, records, and acceptance without changing scope."
+        }
+      ],
+      "assumptions": [
+        "The owner-authorized Phase 8 work proceeds concurrently from the exact unaccepted F7 candidate without altering F7 evidence or claims.",
+        "The native goal is uncapped; this estimate is advisory planning data and cannot weaken acceptance.",
+        "The estimate includes manager coordination, root orchestration, three bounded specialists, independent review, verification, rework, and contingency.",
+        "Specialist counters and parent-child overlap remain unknown unless telemetry proves otherwise; overlapping totals are never summed.",
+        "No provider execution, paid route, publication, product infrastructure mutation, or F7 repair is included."
+      ],
+      "baseline": {
+        "source": "F7 candidate af958a28f8366e91683f3f67615cc2ec5ea0ee88; F7 acceptance remains pending."
+      },
+      "revisionNotes": [
+        "The 330,000-token draft and 420,000-token launch estimates were advisory and are superseded for Phase 8 planning only.",
+        "Revision 2 responds to measured goal telemetry; it is not a reset, hard stop, completion target, or permission for paid work.",
+        "No token_budget was attached to the native goal."
+      ]
     }
   ]
 }

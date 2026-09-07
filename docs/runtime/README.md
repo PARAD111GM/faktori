@@ -93,3 +93,11 @@ transports remain Phase 4 work.
 
 See the executable [interrupted-run example](../../examples/runtime/README.md)
 for a projection rebuild that truthfully retains an unresolved launch.
+
+The same synthetic journal can be exported as a deterministic, redacted
+observation report without repairing or rewriting it:
+
+    faktori run manifest examples/runtime/interrupted-run.jsonl example-run
+
+See [operational clarity](../operational-clarity.md) for the manifest allowlist,
+omission, and digest boundaries.

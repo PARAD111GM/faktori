@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "phase": 8,
+  "generatedAt": "2026-09-07T21:30:54.396Z",
+  "actual": {
+    "input": null,
+    "output": null,
+    "cached": null,
+    "reasoning": null,
+    "total": 1110098,
+    "excludedChildCount": 3,
+    "kind": "overlap-safe-lower-bound"
+  },
+  "estimated": {
+    "total": null
+  },
+  "models": [
+    {
+      "model": "gpt-5.6-sol",
+      "reasoning": "medium",
+      "recordCount": 1
+    }
+  ],
+  "unknown": [
+    {
+      "ticket": "F8-01",
+      "reason": "telemetry:unknown"
+    },
+    {
+      "ticket": "F8-02",
+      "reason": "telemetry:unknown"
+    },
+    {
+      "ticket": "F8-03",
+      "reason": "telemetry:unknown"
+    },
+    {
+      "ticket": "F8-01",
+      "reason": "parent-child-overlap:unknown"
+    },
+    {
+      "ticket": "F8-02",
+      "reason": "parent-child-overlap:unknown"
+    },
+    {
+      "ticket": "F8-03",
+      "reason": "parent-child-overlap:unknown"
+    }
+  ],
+  "coverageGaps": [],
+  "records": {
+    "accepted": 6,
+    "duplicates": 0
+  },
+  "budget": {
+    "estimate": 1100000,
+    "remaining": 0,
+    "percentUsed": 100.92
+  },
+  "notices": [
+    {
+      "threshold": 70,
+      "type": "budget-threshold"
+    },
+    {
+      "threshold": 90,
+      "type": "budget-threshold"
+    },
+    {
+      "threshold": 100,
+      "type": "budget-threshold"
+    }
+  ]
+}

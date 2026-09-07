@@ -47,3 +47,30 @@ The Linux Node browser path is unresolved. WSL2 is unavailable on the observed
 macOS host. The successful Linux package gate and Python baseline do not prove
 the complete Node/Python product matrix, native provider delivery or WSL2, so
 F7-02 remains blocked.
+
+## Subsequent focused diagnosis and environment repair — 2026-09-07
+
+The preserved run configuration left `HOME=/root` while enforcing a read-only
+root filesystem. A diagnostic browser launch recorded concrete environment
+failures: crashpad could not create its database, fontconfig had no writable
+cache directory, and dconf could not create `/root/.cache/dconf`. The same
+focused due-dates base contract happened to pass in that diagnostic, so the
+earlier Playwright-core assertion is not claimed as deterministically caused by
+one of those messages.
+
+The harness environment was repaired without changing a fixture or product
+criterion: `HOME` and `XDG_CACHE_HOME` were pointed at directories on the
+existing ephemeral `/tmp` tmpfs. With the same image digest, public input
+archive, Node/Playwright versions, Chromium channel, network isolation,
+read-only root, dropped capabilities, resource limits and 25-second child
+bounds, the complete Node fixture envelope then passed:
+
+- all frozen checksums passed;
+- task-board starter reproduced its expected RED;
+- due-dates base passed in 2.595 seconds;
+- due-dates feature starter reproduced its expected RED; and
+- the container exited successfully without a forced stop.
+
+This resolves the Linux frozen Node harness baseline. It does not repair either
+starter product, prove a fresh native Linux provider delivery, satisfy WSL2 or
+complete F7-02.

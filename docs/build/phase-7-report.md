@@ -155,9 +155,11 @@ Three bounded repairs/preparations were added after the earlier report:
   not presented as current account usage.
 
 Linux Python reproduced its expected baseline in a constrained container. The
-Linux Node browser path remains unresolved after a bounded hang and repeatable
-Playwright-core assertion. A read-only Triforge audit found no approved isolated
-fixture resource. The owner-selected local TWZ-83 comparison has not launched:
+Linux Node frozen envelope also passes after an environment-only repair assigned
+Chromium a writable ephemeral HOME/cache; the earlier assertion did not
+reproduce reliably enough for a narrower causal claim. A read-only Triforge
+audit found no approved isolated fixture resource. The owner-selected local
+TWZ-83 comparison has not launched:
 host-native Codex, Claude and Cursor processes require direct informed approval
 because they are not an OS filesystem-isolation boundary. No Jira mutation,
 push, merge, deployment, staging write, provider execution, reset or paid route

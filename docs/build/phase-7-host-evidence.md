@@ -131,3 +131,18 @@ sequence are recorded in
 
 This improves host evidence but does not complete F7-02: the Linux browser
 matrix, full native factory/provider delivery and WSL2 remain unproved.
+
+### Linux browser follow-up — 2026-09-07
+
+Focused tracing found that the read-only container retained `HOME=/root`, so
+Chromium reported unwritable crashpad, fontconfig and dconf state. Pointing
+`HOME` and `XDG_CACHE_HOME` at the existing ephemeral `/tmp` tmpfs removed that
+environment defect. Under the same immutable image/input, network isolation,
+read-only root, dropped capabilities, resource limits and unchanged child
+bounds, the full Linux Node fixture envelope passed checksums, expected
+task-board RED, due-dates base GREEN and expected due-dates feature RED.
+
+The earlier Playwright-core assertion did not reproduce reliably, so it is not
+attributed more narrowly than the invalid browser-cache environment. The Linux
+frozen Node baseline is now observed; native Linux factory/provider delivery,
+completed candidate products and WSL2 remain unproved, keeping F7-02 blocked.

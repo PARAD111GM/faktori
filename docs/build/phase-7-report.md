@@ -180,7 +180,13 @@ The remaining blockers require authority or resources not present in this
 checkout:
 
 - F7-01 needs an approved provider-authentication profile created by a fresh
-  vendor-owned login inside the hardened isolated worker.
+  vendor-owned login inside the hardened isolated worker. One such profile and
+  directly authorized run were completed on 2026-09-07: public provisioning,
+  replay, and genuine frozen acceptance passed, but the required final commit
+  failed because the provisioned repository lacked local author identity. npm
+  also created two internal `.bin` symlinks, so the literal complete-tree link
+  criterion was not satisfied. Commit `9f0cdba` repairs the Git prerequisite;
+  no second provider run was authorized.
 - F7-02 needs full Linux Node/Python factory-provider-product delivery under a
   supported isolated container or independent instance. WSL2 is explicitly
   unverified because no real host is available, but its absence alone is not a

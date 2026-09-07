@@ -979,7 +979,7 @@
       },
       "notes": [
         "Three fresh temporary factories preserved the observed path: the first exposed missing product assembly, the second produced a behaviorally correct but scope-invalid product, and the single manager-authorized bounded rerun passed restart but used a hand-written dependency compatibility package after the genuine offline install failed. Its substituted harness reported pass, while a genuine-Playwright rerun failed delete-after-restart; absence of all outside-path reads was also not proved.",
-        "The trusted Node 24/Chromium envelope now reproduces the unchanged frozen baseline, but a new F7-01 run is still gated on an approved isolated provider-authentication profile. No host provider credentials were copied into the retired container route."
+        "The trusted Node 24/Chromium envelope reproduces the unchanged frozen baseline. A fresh dedicated vendor login and one directly authorized isolated run then passed public provisioning, replay, genuine product-local Playwright acceptance, and an independent credential-free rerun, but stopped at the required final commit because the repository lacked local Git identity. Two npm-internal bin symlinks also prevented the literal complete-tree no-link criterion. Commit 9f0cdba repairs the Git prerequisite; no second provider run was authorized."
       ],
       "evidence": [
         {
@@ -1001,6 +1001,10 @@
         {
           "label": "Trusted harness continuation evidence",
           "url": "docs/build/evidence/phase-7-trusted-harness-2026-09-06.md"
+        },
+        {
+          "label": "Isolated cold-start attempt and exact blocker",
+          "url": "docs/build/evidence/phase-7-isolated-cold-start-2026-09-07.md"
         }
       ]
     },

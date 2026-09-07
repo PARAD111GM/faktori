@@ -126,3 +126,21 @@ explicitly approved equivalent) before public onboarding and product work may
 begin. Native host provider execution for the separate TWZ-83 comparison is a
 different authority decision and does not satisfy this cold-start isolation
 gate.
+
+## 2026-09-07 isolated attempt
+
+After a fresh vendor-owned login and direct informed owner approval, one
+bounded worker used the immutable Node 24/npm 12/Chromium/Codex image and only a
+disposable workspace plus dedicated credential-profile mount. The tracked
+public snapshot remained byte-identical. Public proposal, approval, apply, and
+replay all succeeded; the unchanged browser contract passed in the worker and
+again in a credential-free, network-disabled controller rerun.
+
+The run stopped at the required final product commit because the provisioned
+repository had no local Git author identity. The output therefore remained
+staged and F7-01 was not accepted. Controller inspection also found npm's two
+normal product-internal `.bin` symlinks, so the literal no-symlinks-anywhere
+criterion was not met. Commit `9f0cdba` repairs the isolated commit prerequisite
+with a neutral repository-local Faktori identity and focused tests, but no
+second provider run was authorized. Exact sanitized evidence is in
+`docs/build/evidence/phase-7-isolated-cold-start-2026-09-07.md`.

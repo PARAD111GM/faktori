@@ -39,12 +39,13 @@ the Node version, installed Playwright package, effective channel, resolved
 executable, prewarm result, command output, timings, and exit status. It does
 not install browsers or use the network.
 
-Phase 7 received no isolated incumbent Triforge resource and did not touch the
-active system. Its comparison report therefore keeps every incumbent result
-unknown and publishes no unsupported winner or benchmark claim. A future paired
-run must use these fixtures under the equal, predeclared rubric and evidence
-envelope, remain isolated from active operations, and report unknowns as
-unknowns.
+Phase 7 initially received no isolated incumbent Triforge resource and kept
+every incumbent result unknown. On 2026-09-07 the owner approved an exact local
+resource at tracked Triforge revision `ca0c70d`; the three disposable bundles
+were independently run against these unchanged contracts without credentials
+or network. The comparison report now records the measured cells, retained
+failures, non-commensurate telemetry, and remaining unknowns. It publishes no
+unsupported generalized winner and did not touch active operations.
 
 The target Faktori host paths are macOS and Linux with Node 24 and npm 12.
 Compatibility is claimed per host only after an independent observed run. WSL2

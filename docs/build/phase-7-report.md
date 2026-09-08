@@ -1,8 +1,9 @@
 # Phase 7 implementation report
 
 Status: F7-02 accepted at exact head
-`b0e6800bcb52aae4936d9f78fe0f3695a698d1d6`. F7-03 is owner-deferred and
-F7-04 remains pending. Base was the accepted Phase 6 revision
+`b0e6800bcb52aae4936d9f78fe0f3695a698d1d6`. F7-03 is owner-deferred; F7-04
+comparison evidence is complete but release acceptance remains blocked. Base
+was the accepted Phase 6 revision
 `81c33493881a039923b9a6a94263b05578bfdce7`. Runtime implementation commits are
 `46342a9c0d88e5fe1ec762910221d6dc3ad63d97`,
 `121a4c34f46f1969b5d555be1f7727766bddfe7e`, and
@@ -36,10 +37,12 @@ change, or active Twinzy/Triforge operation.
   stop for the current completion push. No further Twinzy provider execution,
   Jira mutation, auth request, push, merge, deployment, or staging write will be
   performed. The original acceptance requirement remains recorded and unmet.
-- **F7-04 — pending its own admitted run:** frozen inputs, the reproducible
-  harness envelope, and the dimensional rubric remain intact. The owner did not
-  cancel the independent frozen-fixture comparison, but no Triforge run or
-  release claim is inferred from the F7-02 result.
+- **F7-04 — comparison complete, release gate blocked:** the owner-approved
+  isolated Triforge run produced all three local bundles. Independent frozen
+  verification observed Faktori pass all three cases; Triforge passed Python,
+  while task-board and due-dates failed distinct functional assertions. The
+  ticket remains blocked because owner-deferred F7-03 is an unmet canonical
+  dependency; no generalized winner or V1 release is claimed.
 
 ## Delivered product repairs
 
@@ -111,7 +114,10 @@ manager attribution, and parent/child overlap remain unknown. Account capacity
 was observed separately at 97% used / 3% remaining, with no paid credits and
 both reset credits unused.
 
-## Concrete next prerequisites
+## Historical prerequisites recorded on 2026-09-05
+
+This section preserves the earlier exact blockers and is superseded by the
+dated continuations below where later evidence closed them.
 
 Before another F7-01 attempt, resolve the benchmark's test-tool setup gap:
 the frozen task-board manifest declares no Playwright dependency even though
@@ -215,8 +221,8 @@ checkout:
 - F7-03 is owner-deferred. No Twinzy run or further approval request is part of
   the current completion push; its original acceptance requirement remains
   unmet.
-- F7-04 needs a specifically approved isolated Triforge provider-authenticated
-  read-only mirror and result-bundle resource after its dependencies complete.
+- F7-04 now has the approved isolated comparison evidence, but cannot satisfy
+  its release acceptance while F7-03 remains an unmet dependency.
 
 No further local-only execution can honestly satisfy those gates. They remain
 blocked rather than converted into inferred evidence.
@@ -246,5 +252,30 @@ all 40 files / 327 tests plus typecheck, builds, and packed CLI.
 
 F7-03 is now owner-deferred, not accepted or removed. It is excluded from the
 current completion push, and no further Twinzy work is authorized. F7-04's
-frozen comparison is not cancelled; it still requires a separate specifically
-admitted Triforge run and must preserve unknown cells until measured.
+frozen comparison is now measured, but the ticket remains blocked by that unmet
+dependency and does not support a release claim.
+
+## 2026-09-07 F7-04 paired comparison continuation
+
+The owner approved the tracked Triforge harness at exact revision `ca0c70d`
+against only the three disposable frozen mirrors. The jobs used bridge network
+access and the selected read-only auth file with ephemeral provider state; no
+publisher, remote, deployment, Jira, Twinzy, or active Triforge mutation was
+available.
+
+All three SHA-bound bundles were reconstructed and tested without credentials
+or network under the same frozen contracts as the accepted Faktori products.
+Faktori passed task-board, both due-date contracts, and Python 3/3. Triforge
+passed Python 3/3; task-board failed the delete-after-restart assertion, and
+due-dates passed the base board but failed because a task due today remained in
+the overdue view. The first Triforge job also retained an exit-127 packaging
+failure because its image lacked the tracked harness's `jq` dependency. The
+controller added only `jq` to a local derivative image, reconstructed the
+deterministic task metadata from retained bundle inputs, and resumed only the
+two untouched cases.
+
+The dimensional report records non-commensurate token schemas, exact known
+elapsed intervals, unknown direct cost, human/infrastructure intervention,
+change scope, and bundle hashes. This completes the comparison evidence but not
+F7-04 release acceptance: F7-03 remains owner-deferred and unmet. Exact evidence
+is in `docs/build/evidence/phase-7-f704-paired-comparison-2026-09-07.md`.

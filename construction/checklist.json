@@ -14,7 +14,7 @@
       "6": 700000,
       "7": 4200000
     },
-    "progressSummary": "Updated 2026-09-07. Phases 0–6 plus F7-01 and F7-02 are accepted; Phase 7 as a whole is not accepted and V1 remains incomplete. The Build Manager accepted F7-02 at exact head b0e6800 after an owner-approved isolated Codex delivery completed the disposable Linux Node due-date and Python date-boundary products and independent credential-free, network-disabled verification passed their frozen contracts. The final runtime keeps selected credential files read-only and sibling files unmounted, uses ephemeral provider session state, derives only a validated non-root controller identity, and rejects every mutated Docker Codex plan. The pinned repository gate passes typecheck, builds, 40 files / 327 tests and packed CLI; all 20 frozen hashes remain green. F7-03 is owner-deferred, not passed or removed, and no further Twinzy work is authorized for the current completion push. F7-04 remains open and its frozen comparison was not cancelled, but it requires a separate specifically admitted Triforge run and retains F7-03 as an unmet release dependency. WSL2 is explicitly unverified because no real host is available, but its absence alone is not a V1 blocker. Usage telemetry is incomplete. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
+    "progressSummary": "Updated 2026-09-07. Phases 0–6 plus F7-01 and F7-02 are accepted; Phase 7 as a whole is not accepted and V1 remains incomplete. The Build Manager accepted F7-02 at exact head b0e6800 after an owner-approved isolated Codex delivery completed the disposable Linux Node due-date and Python date-boundary products and independent credential-free, network-disabled verification passed their frozen contracts. The pinned repository gate passes typecheck, builds, 40 files / 327 tests and packed CLI; all 20 frozen hashes remain green. A separately owner-approved isolated Triforge run now supplies all three paired comparison cells: Faktori passed task-board, due-dates and Python; the one-shot Triforge candidates passed Python, while task-board failed delete-after-restart and due-dates failed the strict today boundary. The task-board harness also exposed and retained a missing-jq packaging handoff; bundle integrity was independently verified after a local dependency and deterministic metadata repair. F7-03 is owner-deferred, not passed or removed, and no further Twinzy work is authorized for the current completion push. F7-04 comparison evidence is complete but the canonical ticket remains blocked because F7-03 is an unmet release dependency; no winner or V1 release is claimed. WSL2 is explicitly unverified because no real host is available, but its absence alone is not a V1 blocker. Usage telemetry is incomplete and non-commensurate across runners. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
   },
   "tickets": [
     {
@@ -1113,7 +1113,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "F7-02 is complete and the frozen inputs, checksums, reproducible harness envelope, and dimensional rubric remain independently verified. The owner did not cancel this comparison, but no specifically approved isolated Triforge provider run has occurred and F7-03 remains an unmet dependency. Unknown incumbent and candidate cells remain unknown; no winner or release claim is published."
+        "The owner-approved tracked Triforge run at ca0c70dbed3f2ae2bf53292b9e09c346ae6a462d completed three disposable frozen-fixture bundles with no publisher or active-system mutation. Credential-free, network-disabled verification observed Faktori pass task-board, due-dates, and Python; Triforge passed Python, while task-board failed delete-after-restart and due-dates failed the strict today boundary after its base contract passed. Tokens, elapsed time, intervention, maintainability, and evidence visibility are reported separately without an opaque score. The task-board job retained one missing-jq packaging failure and deterministic metadata repair. Comparison evidence is complete, but F7-04 stays blocked because owner-deferred F7-03 remains an unmet canonical dependency and release blockers are therefore unresolved. No generalized winner or V1 release claim is published."
       ],
       "evidence": [
         {
@@ -1131,6 +1131,10 @@
         {
           "label": "Comparison resource audit",
           "url": "docs/build/evidence/phase-7-comparison-resource-audit-2026-09-06.md"
+        },
+        {
+          "label": "Approved paired fixture comparison",
+          "url": "docs/build/evidence/phase-7-f704-paired-comparison-2026-09-07.md"
         }
       ]
     }

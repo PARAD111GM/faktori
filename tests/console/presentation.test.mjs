@@ -115,4 +115,25 @@ describe('Console presentation contract', () => {
     expect(html).toContain('Resume if eligible');
     expect(html).toContain('Cancel run');
   });
+
+  it('finds work by ID, provider, and readable status without losing the original runs', () => {
+    const runs = [
+      { runId: 'r-1', workItem: { id: 'task-alpha' }, provider: 'codex', state: 'running' },
+      { runId: 'r-2', workItem: { id: 'task-beta' }, provider: 'claude', state: 'quota_exhausted' },
+    ];
+    expect(presentation.filterWorkRuns(runs, '  CODEX ')).toEqual([runs[0]]);
+    expect(presentation.filterWorkRuns(runs, 'task-beta')).toEqual([runs[1]]);
+    expect(presentation.filterWorkRuns(runs, 'quota exhausted')).toEqual([runs[1]]);
+    expect(presentation.filterWorkRuns(runs, 'missing')).toEqual([]);
+    expect(presentation.filterWorkRuns(runs, '')).toEqual(runs);
+    expect(runs).toHaveLength(2);
+  });
+
+  it('restores supported pages after refresh and safely defaults unknown links', () => {
+    expect(presentation.viewFromHash('#work')).toBe('work');
+    expect(presentation.viewFromHash('#factory')).toBe('factory');
+    expect(presentation.viewFromHash('#run')).toBe('run');
+    expect(presentation.viewFromHash('#unknown')).toBe('overview');
+  });
+
 });

@@ -165,7 +165,7 @@ function useConsoleState() {
 
 function Status({ connection, state }: { connection: 'connecting' | 'live' | 'disconnected'; state?: ConsoleState }) {
   const stale = state?.stale || connection === 'disconnected';
-  const label = stale ? 'Disconnected — state may be stale' : connection === 'connecting' ? 'Connecting to coordinator' : 'Live coordinator projection';
+  const label = stale ? 'Disconnected — state may be stale' : connection === 'connecting' ? 'Connecting to factory' : 'Connected to factory';
   return <div className={`connection ${stale ? 'is-stale' : ''}`} role="status"><span className="pulse" />{label}<span className="observed">Observed {formatDate(state?.observedAt)}</span></div>;
 }
 
@@ -188,7 +188,7 @@ function Icon({ name }: { name: IconName }) {
   return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
-export function Overview({ state, runs, selectRun }: { state: ConsoleState; runs: Run[]; selectRun: (id: string) => void }) {
+export function Overview({ state, runs, selectRun, openWork }: { state: ConsoleState; runs: Run[]; selectRun: (id: string) => void; openWork?: () => void }) {
   const activeRuns = runs.filter((run) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(run.state)).length;
   const attentionRuns = runs.filter((run) => run.state === 'blocked' || run.state === 'reconciling' || run.providerRequests?.some((request) => request.status === 'pending'));
   const waitingDecisions = attentionRuns.length;
@@ -199,11 +199,11 @@ export function Overview({ state, runs, selectRun }: { state: ConsoleState; runs
     ? <Empty title={emptyTitle} detail={emptyDetail} />
     : <div className="run-list">{items.map((run) => <button className="run-row" key={run.runId} onClick={() => selectRun(run.runId)}><span className="run-work">{run.workItem.id}<small>{run.target.repository ?? 'Repository not observed'}</small></span><RunState state={run.state} /><span>{duration(run.createdAt)}</span></button>)}</div>;
   return <section className="workspace overview-workspace"><div className="overview-bento">
-    <section className="panel panel-primary attention-panel"><div className="panel-heading"><div><h2>Needs your attention</h2><p>Decisions and reconciliation that can move work forward.</p></div><strong className="panel-count">{String(waitingDecisions).padStart(2, '0')}</strong></div>{renderRuns(attentionRuns, 'Nothing needs an owner decision', 'The coordinator has not published blocked, reconciling, or pending-request work in this scope.')}</section>
-    <section className="panel capacity-panel"><div className="panel-heading"><div><h2>Factory capacity</h2><p>Factory-wide resources with scoped run counts.</p></div><strong>{activeRuns} scoped runs</strong></div><dl className="capacity-list"><dt>Factory admission</dt><dd>{state.admissionPaused ? 'Paused' : 'Open'}</dd><dt>Scoped reservations</dt><dd>{count(reservedTokens)}</dd><dt>Factory reported usage</dt><dd>{resources?.reportedUsageCount ? measurement(resources.knownUsageTokens) : 'Unavailable'}</dd><dt>Factory unavailable measurements</dt><dd>{measurement(resources?.unavailableMeasurements ?? resources?.unavailableUsageCount)}</dd></dl><p className="capacity-note">Zero reported measurements remains unavailable telemetry.</p></section>
-    <section className="panel panel-primary active-panel"><div className="panel-heading"><div><h2>Current work</h2><p>All runs published by the coordinator in this scope.</p></div><strong>{runs.length} total</strong></div>{renderRuns(runs, 'No runs in the coordinator projection', 'Start eligible work from Work after the coordinator has admitted it.')}</section>
-    <section className="panel panel-support blocker-panel"><div className="panel-heading"><div><h2>Factory admission blockers</h2><p>Factory-wide, read-only coordinator diagnoses.</p></div><strong>{state.blockers?.length ?? 0}</strong></div>{state.blockers?.length ? <Blockers blockers={state.blockers} /> : <Empty title="No active blocker diagnoses" detail="No factory-wide admission conflict is published." />}</section>
-    <section className="panel panel-muted signal-panel"><div className="panel-heading"><div><h2>Scoped run signals</h2><p>Observed counts from the current product and pod filters.</p></div></div><div className="metric-row"><Metric label="Active work" value={count(activeRuns)} /><Metric label="Waiting decisions" value={count(waitingDecisions)} /><Metric label="Failed runs" value={count(failedRuns)} /><Metric label="Reserved tokens" value={count(reservedTokens)} /></div></section>
+    <section className="panel panel-primary attention-panel"><div className="panel-heading"><div><h2>Needs your attention</h2><p>Review requests and work that needs a decision.</p></div><strong className="panel-count">{String(waitingDecisions).padStart(2, '0')}</strong></div>{renderRuns(attentionRuns, 'You’re all caught up', 'No runs in this view are waiting for a decision or recovery.')}</section>
+    <section className="panel capacity-panel"><div className="panel-heading"><div><h2>Factory capacity</h2><p>Factory-wide resources with scoped run counts.</p></div><strong>{activeRuns} scoped runs</strong></div><dl className="capacity-list"><dt>Factory admission</dt><dd>{state.admissionPaused ? 'Paused' : 'Open'}</dd><dt>Scoped reservations</dt><dd>{count(reservedTokens)}</dd><dt>Factory reported usage</dt><dd>{resources?.reportedUsageCount ? measurement(resources.knownUsageTokens) : 'Unavailable'}</dd><dt>Factory unavailable measurements</dt><dd>{measurement(resources?.unavailableMeasurements ?? resources?.unavailableUsageCount)}</dd></dl><p className="capacity-note">Usage appears when a provider reports it. Unknown usage is never counted as zero.</p></section>
+    <section className="panel panel-primary active-panel"><div className="panel-heading"><div><h2>Current work</h2><p>Runs for the selected product and pod.</p></div><strong>{runs.length} total</strong></div>{renderRuns(runs, 'No work started yet', 'Open Work to start an approved work item. Its progress will appear here.')}{runs.length === 0 && openWork && <button onClick={openWork}>Open Work</button>}</section>
+    <section className="panel panel-support blocker-panel"><div className="panel-heading"><div><h2>Factory blockers</h2><p>Issues preventing work from starting across the factory.</p></div><strong>{state.blockers?.length ?? 0}</strong></div>{state.blockers?.length ? <Blockers blockers={state.blockers} /> : <Empty title="No blockers reported" detail="No issues preventing admission have been reported." />}</section>
+    <section className="panel panel-muted signal-panel"><div className="panel-heading"><div><h2>At a glance</h2><p>Activity for the selected product and pod.</p></div></div><div className="metric-row"><Metric label="Active work" value={count(activeRuns)} /><Metric label="Waiting decisions" value={count(waitingDecisions)} /><Metric label="Failed runs" value={count(failedRuns)} /><Metric label="Reserved tokens" value={count(reservedTokens)} /></div></section>
   </div></section>;
 }
 
@@ -237,11 +237,14 @@ function WorkHierarchy({ hierarchy, filter }: { hierarchy?: Hierarchy; filter: S
   return <div className="split-section hierarchy-section"><section className="panel panel-primary"><h2>Hierarchy</h2>{nodes.length === 0 ? <Empty title="No hierarchy nodes match this scope" detail="Choose another product or pod filter to inspect the published work hierarchy." /> : <div className="hierarchy-tree">{roots.map((node) => <HierarchyBranch key={node.id} node={node} children={children} />)}</div>}</section><section className="panel panel-support"><h2>Dependencies</h2>{dependencies.length === 0 ? <Empty title="No dependency edges match this scope" detail="Dependencies are shown only when the coordinator projection publishes an explicit edge." /> : <ul className="dependency-list">{dependencies.map((edge) => <li key={`${edge.from}-${edge.to}`}><span>{allNodeLabels.get(edge.from) ?? edge.from}</span><b>depends on</b><span>{allNodeLabels.get(edge.to) ?? edge.to}</span></li>)}</ul>}</section></div>;
 }
 
-function Work({ state, runs, filter, selectRun, submit }: { state: ConsoleState; runs: Run[]; filter: ScopeFilter; selectRun: (id: string) => void; submit: (command: Command) => void }) {
+export function Work({ state, runs, filter, selectRun, submit }: { state: ConsoleState; runs: Run[]; filter: ScopeFilter; selectRun: (id: string) => void; submit: (command: Command) => void }) {
   const [workItemId, setWorkItemId] = useState('');
+  const [query, setQuery] = useState('');
+  const matchingRuns = filterWorkRuns(runs, query);
   const columns = ['queued', 'admitted', 'launching', 'running', 'blocked', 'reconciling', 'succeeded', 'failed', 'cancelled'];
-  return <section className="workspace"><div className="panel panel-primary section-header work-header"><div><h2>Work</h2><p>Coordinator-backed work items. Relationships only appear when the projection supplies them.</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="work-123" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
-  <div className="panel panel-muted board" aria-label="Work board">{columns.map((column) => { const items = runs.filter((run) => run.state === column); return <div className="board-column" key={column}><h3>{stateLabel(column)} <span>{items.length}</span></h3>{items.length === 0 ? <p className="quiet">None</p> : items.map((run) => <button className="work-item" key={run.runId} onClick={() => selectRun(run.runId)}><strong>{run.workItem.id}</strong><span>{run.target.productId ?? 'Product unreported'}</span><small>{run.provider ?? 'Provider unreported'} · {duration(run.createdAt)}</small></button>)}</div>; })}</div>
+  return <section className="workspace"><div className="panel panel-primary section-header work-header"><div><h2>Work</h2><p>Track work from the queue through completion. Scroll the board to see every stage.</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
+  <div className="board-toolbar"><label>Find work<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search work ID, provider, or status" /></label><span role="status">{matchingRuns.length} of {runs.length} runs{query && <button type="button" onClick={() => setQuery('')}>Clear search</button>}</span></div>
+  <div className="panel panel-muted board" tabIndex={0} aria-label="Work board">{columns.map((column) => { const items = matchingRuns.filter((run) => run.state === column); return <div className="board-column" key={column}><h3>{stateLabel(column)} <span>{items.length}</span></h3>{items.length === 0 ? <p className="quiet">None</p> : items.map((run) => <button className="work-item" key={run.runId} onClick={() => selectRun(run.runId)}><strong>{run.workItem.id}</strong><span>{run.target.productId ?? 'Product unreported'}</span><small>{run.provider ?? 'Provider unreported'} · {duration(run.createdAt)}</small></button>)}</div>; })}</div>
   <WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
 }
 
@@ -258,7 +261,7 @@ function ProviderRequests({ run, submit }: { run: Run; submit: (command: Command
 
 export function RunDetail({ run, submit, blockers }: { run?: Run; submit: (command: Command) => void; blockers: Blocker[] }) {
   const [message, setMessage] = useState('');
-  if (!run) return <section className="workspace"><div className="panel panel-primary"><Empty title="Select a run" detail="Choose a run from Overview or Work to inspect its durable coordinator projection." /></div></section>;
+  if (!run) return <section className="workspace"><div className="panel panel-primary"><Empty title="Select a run" detail="Choose a run from Overview or Work to see its progress, evidence, and messages." /></div></section>;
   const timeline = [
     { label: 'Admitted to coordinator', at: run.createdAt, detail: `Reservation: ${run.reservation?.status ?? 'not observed'}` },
     ...(run.messages ?? []).map((entry) => ({ label: 'Owner instruction queued', at: entry.createdAt, detail: entry.delivery ?? 'delivery not observed' })),
@@ -303,9 +306,27 @@ export function ScopeFilters({ hierarchy, filter, setFilter }: { hierarchy?: Hie
   return <div className="scope-filters" aria-label="Console scope filters"><label><span>Product</span><select value={filter.productId} onChange={(event) => setFilter({ productId: event.target.value, podId: '' })}><option value="">All products</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label><label><span>Pod</span><select value={filter.podId} onChange={(event) => setFilter({ ...filter, podId: event.target.value })} disabled={pods.length === 0}><option value="">All pods</option>{pods.map((pod) => <option key={pod.id} value={pod.id}>{pod.id}</option>)}</select></label></div>;
 }
 
+export function filterWorkRuns(runs: Run[], query: string): Run[] {
+  const needle = query.trim().toLocaleLowerCase();
+  return runs.filter((run) => [run.workItem.id, run.runId, run.provider ?? '', stateLabel(run.state)].join(' ').toLocaleLowerCase().includes(needle));
+}
+
+export function viewFromHash(hash: string): 'overview' | 'work' | 'run' | 'factory' {
+  const view = hash.slice(1);
+  return view === 'work' || view === 'run' || view === 'factory' ? view : 'overview';
+}
+
 function App() {
   const { state, connection, error, refresh } = useConsoleState();
-  const [view, setView] = useState<'overview' | 'work' | 'run' | 'factory'>('overview');
+  const [view, setView] = useState<'overview' | 'work' | 'run' | 'factory'>(() => viewFromHash(window.location.hash));
+  useEffect(() => {
+    const onHashChange = () => {
+      if (['#overview', '#work', '#run', '#factory'].includes(window.location.hash)) setView(viewFromHash(window.location.hash));
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+  useEffect(() => { window.history.replaceState(null, '', '#' + view); }, [view]);
   const [selectedRunId, setSelectedRunId] = useState<string>();
   const [filter, setFilter] = useState<ScopeFilter>({ productId: '', podId: '' });
   const [token, setToken] = useState(() => document.querySelector<HTMLMetaElement>('meta[name="faktori-console-token"]')?.content ?? '');
@@ -355,10 +376,10 @@ function App() {
   const title = view === 'run' ? 'Run detail' : view[0].toUpperCase() + view.slice(1);
   return <main className="app-shell">
     <a className="skip-link" href="#console-content">Skip to content</a>
-    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className="brand-name">FAKTORI<small>LOCAL CONSOLE</small></span></a><nav aria-label="Console views">{views.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item === 'run' ? 'Run detail' : item}</span></button>)}</nav><div className="session-key"><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></div></aside>
-    <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><span className="eyebrow">{state.format ?? 'faktori.console-state/v1'}</span><h1>{title}</h1></div><div className="header-controls"><ScopeFilters hierarchy={state.hierarchy} filter={filter} setFilter={setFilter} /><button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
+    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className="brand-name">FAKTORI<small>LOCAL CONSOLE</small></span></a><nav aria-label="Console views">{views.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item === 'run' ? 'Run detail' : item}</span></button>)}</nav><details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details></aside>
+    <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><span className="eyebrow">{state.hierarchy?.nodes?.find((node) => node.kind === 'factory')?.label ?? 'Local factory'}</span><h1>{title}</h1></div><div className="header-controls"><ScopeFilters hierarchy={state.hierarchy} filter={filter} setFilter={setFilter} /><button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
     {error && <div className="alert" role="alert">{error}</div>}{pending.length > 0 && <div className="pending" role="status"><strong>{pending.length} command{pending.length === 1 ? '' : 's'} pending</strong>{pending.map((entry) => <span key={entry.id}>{entry.command.type.replaceAll('_', ' ')} {entry.status === 'failed' ? `failed: ${entry.detail}` : 'awaiting confirmation'}<button type="button" onClick={() => retry(entry)}>{entry.status === 'failed' ? 'Replay safely' : 'Retry with same identity'}</button></span>)}</div>}
-    {view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
+    {view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
   </main>;
 }
 

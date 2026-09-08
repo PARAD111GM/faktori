@@ -1,6 +1,6 @@
 <div align="center">
 
-# FAKTORI
+<img src="docs/assets/faktori-logo.png" alt="Faktori — Seize the means of software production. Industrial letterpress wordmark with a cogwheel and factory roof." width="1100">
 
 ### Seize the means of software production.
 
@@ -35,17 +35,11 @@ Start with one developer, one product, and one provider. Add products, pods,
 or specialists when the work calls for them. A to-do app does not require a
 Ministry of Agent Coordination.
 
-```text
-                       Your intent
-                            │
-                  Interview + configuration
-                            │
-          Plan → Design → Build → Test → Deploy → Maintain
-                            │                       │
-                  Your coding agents          New work + feedback
-                            │
-             Shared artifacts · Explicit authority · Evidence
-```
+![The Software Works: intent enters Plan, followed by Design, Build, Test, Deploy, and Maintain. Feedback returns from Maintain to Plan. Human management still required.](docs/assets/software-works.png)
+
+*Conceptual lifecycle, not a Console screenshot.* Intent and configuration guide
+the work; shared artifacts, explicit authority, and evidence connect the stages.
+Testing also happens throughout implementation, not just at one inspection station.
 
 ## Your new means of production
 

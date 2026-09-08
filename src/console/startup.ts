@@ -23,6 +23,7 @@ import type { RunIntent, WorkerIdentity } from '../runtime/contracts.ts';
 import { evaluateInstalledPreflight } from '../diagnostics/local-preflight.ts';
 import type { PreflightResult } from '../diagnostics/preflight.ts';
 import { createConsoleSettings } from './settings.ts';
+import { FileConsoleSettingsEditor, type ConsoleSettingsEditor } from './settings-edit.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -198,6 +199,8 @@ export interface LocalConsoleDependencies {
   /** Test/host seam for the Console coordinator process itself. */
   coordinatorIdentityProbe?: NativeIdentityProbeContract;
   healthPollIntervalMs?: number;
+  /** Server-owned edit boundary; only file startup configures this in production. */
+  settingsEditor?: ConsoleSettingsEditor;
 }
 
 function observedNativeProcess(value: Awaited<ReturnType<NativeIdentityProbeContract['inspect']>>): value is Exclude<typeof value, { status: 'absent' | 'unknown' } | undefined> {
@@ -561,7 +564,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies);
     gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
     observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration) });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor });
     const listeningApp = app;
     pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();
@@ -587,7 +590,10 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   }
 }
 
-export async function startLocalConsoleFromFile(path: string): Promise<StartedConsole> {
-  const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown;
-  return startLocalConsole(parseLocalConsoleConfiguration(parsed));
+export async function startLocalConsoleFromFile(path: string, dependencies: LocalConsoleDependencies = {}): Promise<StartedConsole> {
+  const content = await readFile(path, 'utf8');
+  const parsed = JSON.parse(content) as unknown;
+  const configuration = parseLocalConsoleConfiguration(parsed);
+  const settingsEditor = new FileConsoleSettingsEditor({ path, loadedContent: content, validate: parseLocalConsoleConfiguration });
+  return startLocalConsole(configuration, undefined, { ...dependencies, settingsEditor });
 }

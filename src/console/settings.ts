@@ -45,6 +45,12 @@ export interface ConsoleSettings {
     configured: boolean;
     routineActions: string[];
   };
+  persistence?: {
+    editable: boolean;
+    loadedRevision: string;
+    savedRevision: string;
+    restartRequired: boolean;
+  };
 }
 
 const PROVIDERS: ConsoleProviderId[] = ['codex', 'claude', 'cursor'];

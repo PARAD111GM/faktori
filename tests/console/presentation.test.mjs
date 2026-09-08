@@ -150,11 +150,20 @@ describe('Console presentation contract', () => {
     expect(html).toContain('Catalog only');
     expect(html).toContain('Unverified');
     expect(html).toContain('No runtime route');
-    expect(html).toContain('Read-only configuration');
+    expect(html).toContain('Currently running');
     expect(html).toContain('Concurrent runs');
     expect(html).not.toContain('Save changes');
     const missing = renderToStaticMarkup(createElement(Settings));
     expect(missing).toContain('Settings unavailable');
+  });
+
+  it('offers persistent editing only when supported and identifies specific reviewed changes', async () => {
+    const { SettingsEditor, changes } = await server.ssrLoadModule('/console/src/settings-editor.tsx');
+    const html = renderToStaticMarkup(createElement(SettingsEditor, { settings: {}, token: '', onSaved() {} }));
+    expect(html).toContain('Edit settings');
+    expect(html).toContain('Saved settings take effect after the Console is restarted');
+    expect(changes({limits:{maxConcurrentRuns:1}}, {limits:{maxConcurrentRuns:2}})).toEqual(['limits.maxConcurrentRuns: 1 → 2']);
+    expect(changes({limits:{maxTokens:0}}, {limits:{maxTokens:0}})).toEqual([]);
   });
 
 });

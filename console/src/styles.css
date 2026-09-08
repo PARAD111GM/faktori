@@ -1,5 +1,15 @@
 :root { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #171819; background: #252525; font-synthesis: none; --shell: #252525; --paper: #f3f3f0; --support: #dadbd8; --muted: #c5c8c6; --ink: #171819; --secondary: #545957; --line: #b9bebb; --accent: #e65326; --gap: 4px; }
 .settings-page { display: grid; gap: 4px; }
+.settings-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }.settings-editor h3 { margin-top: 24px; }
+.settings-form-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,220px),1fr)); gap: 12px; margin: 12px 0; }
+.settings-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--support); border-radius: 3px; }
+.settings-toggle input, .settings-risk input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: #bc411a; }
+.settings-edit-section { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 6px; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }.settings-actions button:not(:first-child) { background: transparent; color: var(--ink); }
+.settings-review { padding: 18px; background: var(--support); border-radius: 3px; margin-top: 16px; }.settings-review h3 { margin-top: 0; }
+.settings-risk { display: flex; align-items: start; gap: 10px; margin-top: 12px; padding: 12px; background: #f3e5d2; }.settings-risk small { display: block; margin-top: 6px; font-weight: 400; }
+.settings-change-list { font-size: 13px; line-height: 1.7; padding-left: 20px; overflow-wrap: anywhere; }
+.settings-success { padding: 12px; background: #dcebdc; color: #254b2b; }.settings-restart { background: #f3e5d2; }.settings-restart p { margin: 8px 0 0; }
 .settings-intro { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
 .settings-intro p { margin-bottom: 0; }
 .settings-providers { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; }

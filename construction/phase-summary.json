@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "phase": 6,
-  "generatedAt": "2026-09-05T18:05:09.032Z",
+  "phase": 7,
+  "generatedAt": "2026-09-05T19:45:30.692Z",
   "actual": {
     "input": null,
     "output": null,
     "cached": null,
     "reasoning": null,
-    "total": 645987,
-    "excludedChildCount": 2,
+    "total": 1230468,
+    "excludedChildCount": 4,
     "kind": "overlap-safe-lower-bound"
   },
   "estimated": {
@@ -23,31 +23,47 @@
   ],
   "unknown": [
     {
-      "ticket": "F6-01..F6-03",
+      "ticket": "F7-01",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F6-04",
+      "ticket": "F7-02,F7-04",
       "reason": "telemetry:unknown"
     },
     {
-      "ticket": "F6-01..F6-03",
+      "ticket": "F7-01..F7-04",
+      "reason": "phase-attribution:unknown"
+    },
+    {
+      "ticket": "F7-01",
       "reason": "parent-child-overlap:unknown"
     },
     {
-      "ticket": "F6-04",
+      "ticket": "F7-02,F7-04",
       "reason": "parent-child-overlap:unknown"
+    },
+    {
+      "ticket": "F7-01",
+      "reason": "parent-child-overlap:unknown"
+    },
+    {
+      "ticket": "F7-01",
+      "reason": "parent-child-overlap:unknown"
+    },
+    {
+      "ticket": "Snapshot freshness",
+      "reason": "Historical 2026-09-05 telemetry, not live account limits. Subsequent repairs and manager consumption not fully attributed. Estimates are advisory."
     }
   ],
   "coverageGaps": [],
   "records": {
-    "accepted": 4,
+    "accepted": 8,
     "duplicates": 0
   },
   "budget": {
-    "estimate": 700000,
-    "remaining": 54013,
-    "percentUsed": 92.28
+    "estimate": 1300000,
+    "remaining": 69532,
+    "percentUsed": 94.65
   },
   "notices": [
     {

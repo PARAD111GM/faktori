@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 6,
+    "currentPhase": 7,
     "source": "docs/implementation-plan.md",
     "phaseBudgets": {
       "0": 360000,
@@ -11,8 +11,10 @@
       "3": 2400000,
       "4": 650000,
       "5": 800000,
-      "6": 700000
-    }
+      "6": 700000,
+      "7": 1300000
+    },
+    "progressSummary": "Resumed Phase 7. Phases 0–6 accepted; 28/32 tickets complete, V1 still incomplete. Independently verified: GitHub login-discovery fix bf2d9f2 (live read-only adapter and 16 focused tests); committed fixture envelope 7797200 reproduces all frozen baselines in 14.3 seconds with original time limits. Earlier failed runs remain retained. Linux package evidence remains 313 tests, not full product acceptance. TWZ-83 independent clone/branch is prepared; native provider execution awaits explicit owner approval. Fresh isolated onboarding, complete host/stack product proofs, comparison and final acceptance remain outstanding. Phase estimate revised to 4.2 million tokens (advisory); the usage panel below is historical incomplete telemetry, not current account quota."
   },
   "tickets": [
     {
@@ -965,21 +967,43 @@
       "id": "F7-01",
       "phase": 7,
       "title": "Conduct cold-start onboarding",
-      "status": "not_started",
+      "status": "blocked",
       "dependencies": [
         "F6-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "fresh cold-start specialist",
+        "agentId": "cold_start",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Three fresh temporary factories preserved the observed path: the first exposed missing product assembly, the second produced a behaviorally correct but scope-invalid product, and the single manager-authorized bounded rerun passed restart but used a hand-written dependency compatibility package after the genuine offline install failed. Its substituted harness reported pass, while a genuine-Playwright rerun failed delete-after-restart; absence of all outside-path reads was also not proved."
+      ],
+      "evidence": [
+        {
+          "label": "Cold-start attempts and repair evidence",
+          "url": "docs/build/phase-7-cold-start.md"
+        },
+        {
+          "label": "Approval-bound product import and Console preparation",
+          "url": "src/provisioning/index.ts"
+        },
+        {
+          "label": "Bounded native Codex route",
+          "url": "src/providers/codex.ts"
+        },
+        {
+          "label": "Attempt 3 trusted-contract failure",
+          "url": "docs/build/evidence/phase-7-attempt3-trusted-contract.txt"
+        }
+      ]
     },
     {
       "id": "F7-02",
       "phase": 7,
       "title": "Verify supported host and stack paths",
-      "status": "not_started",
+      "status": "blocked",
       "dependencies": [
         "F6-01",
         "F6-02",
@@ -987,16 +1011,34 @@
         "F6-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "host and frozen-fixture evidence specialist",
+        "agentId": "host_fixture_audit",
+        "model": "gpt-5.6-luna",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "macOS package verification passed. Linux arm64 package gate now passes 313 tests / 39 files, typecheck, builds and packed CLI after explicit cache preparation, retaining the updater's offline policy. Full native Linux factory/provider delivery, complete Node/Python product matrix and WSL2 verification remain outstanding. Package checks do not complete this ticket."
+      ],
+      "evidence": [
+        {
+          "label": "Host and frozen-input evidence",
+          "url": "docs/build/phase-7-host-evidence.md"
+        },
+        {
+          "label": "Compatibility matrix",
+          "url": "docs/maintenance/compatibility.md"
+        },
+        {
+          "label": "Final Linux package pass",
+          "url": "docs/build/evidence/phase-7-linux-portability-repair.md"
+        }
+      ]
     },
     {
       "id": "F7-03",
       "phase": 7,
       "title": "Run the isolated Twinzy proof",
-      "status": "not_started",
+      "status": "blocked",
       "dependencies": [
         "F3-04",
         "F4-04",
@@ -1005,29 +1047,120 @@
         "F6-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase implementer-orchestrator",
+        "agentId": "phase-7-implementer",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "A live read-only Jira re-query found no eligible small ready unclaimed Twinzy item. TWZ-1 and TWZ-17 are epics; TWZ-80 remains blocked by TWZ-83 and changes staging credentials; TWZ-81 changes active Triforge delivery; TWZ-83 is a large security-boundary migration. New-ticket authority remains unanswered and was not inferred."
+      ],
+      "evidence": [
+        {
+          "label": "Phase 7 release and authority audit",
+          "url": "docs/build/phase-7-report.md"
+        }
+      ]
     },
     {
       "id": "F7-04",
       "phase": 7,
       "title": "Run the paired comparison and finalize release evidence",
-      "status": "not_started",
+      "status": "blocked",
       "dependencies": [
         "F7-01",
         "F7-02",
         "F7-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase implementer-orchestrator",
+        "agentId": "phase-7-implementer",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Frozen inputs and the dimensional rubric were reverified, but no isolated Triforge comparison resource/run exists and F7-01 through F7-03 are incomplete. Unknown incumbent and candidate cells remain unknown; no winner or release claim is published."
+      ],
+      "evidence": [
+        {
+          "label": "Candid dimensional comparison report",
+          "url": "docs/build/phase-7-comparison-report.md"
+        },
+        {
+          "label": "Frozen comparison contract",
+          "url": "docs/comparison/README.md"
+        },
+        {
+          "label": "Final deterministic repository gate",
+          "url": "docs/build/evidence/phase-7-final-check.txt"
+        }
+      ]
     }
   ],
   "history": [
+    {
+      "eventId": "phase-7-start-f7-01",
+      "at": "2026-09-05T18:12:00Z",
+      "ticketId": "F7-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Exact accepted base verified; a fresh public-instructions-only cold-start specialist began isolated local onboarding.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-start-f7-02",
+      "at": "2026-09-05T18:12:01Z",
+      "ticketId": "F7-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Independent host inventory and frozen Node/Python path checks began without product or infrastructure mutation.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-block-f7-03",
+      "at": "2026-09-05T18:13:00Z",
+      "ticketId": "F7-03",
+      "from": "not_started",
+      "to": "blocked",
+      "reason": "Live read-only Jira re-query found no eligible small ready unclaimed Twinzy item; authority to create a new isolated proof ticket remains unanswered.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-start-f7-04",
+      "at": "2026-09-05T18:13:01Z",
+      "ticketId": "F7-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Frozen checksum verification, existing-evidence compatibility review, and release-requirement audit began while live incumbent prerequisites remain explicit.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-block-f7-02",
+      "at": "2026-09-05T19:15:08Z",
+      "ticketId": "F7-02",
+      "from": "in_progress",
+      "to": "blocked",
+      "reason": "Observed macOS evidence is recorded, but no independent Linux or WSL2 host exists and the Python product stopped at its native-profile configuration gate before execution.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-block-f7-04",
+      "at": "2026-09-05T19:15:09Z",
+      "ticketId": "F7-04",
+      "from": "in_progress",
+      "to": "blocked",
+      "reason": "No isolated Triforge comparison resource/run exists, and the required cold-start, host, and Twinzy prerequisites remain incomplete; the report preserves unknowns without a release claim.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-block-f7-01",
+      "at": "2026-09-05T19:30:00Z",
+      "ticketId": "F7-01",
+      "from": "in_progress",
+      "to": "blocked",
+      "reason": "The one authorized bounded rerun passed restart but substituted a hand-written compatibility package after the genuine offline dependency was unavailable; a genuine-Playwright rerun failed delete-after-restart, and absence of all outside-path reads was not proved. No retry was authorized.",
+      "actor": "phase-7-orchestrator"
+    },
     {
       "eventId": "phase-0-start-f0-01",
       "at": "2026-09-04T23:11:17Z",

@@ -1,0 +1,118 @@
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createServer } from 'vite';
+
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+let server;
+let presentation;
+
+beforeAll(async () => {
+  server = await createServer({
+    root,
+    configFile: false,
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  presentation = await server.ssrLoadModule('/console/src/main.tsx');
+});
+
+afterAll(async () => {
+  await server?.close();
+});
+
+describe('Console presentation contract', () => {
+  it('renders scoped run counts without promoting absent usage telemetry to zero', () => {
+    const runs = [
+      {
+        runId: 'run-visible',
+        workItem: { id: 'work-visible' },
+        target: { factoryId: 'factory', productId: 'product-a', podId: 'pod-a', repository: 'owner/repo' },
+        state: 'running',
+        createdAt: '2026-09-08T12:00:00.000Z',
+        reservation: { estimatedTokens: 125, status: 'held' },
+      },
+      {
+        runId: 'run-other-product',
+        workItem: { id: 'work-other' },
+        target: { factoryId: 'factory', productId: 'product-b', podId: 'pod-b' },
+        state: 'failed',
+        reservation: { estimatedTokens: 900, status: 'held' },
+      },
+    ];
+    const filter = { productId: 'product-a', podId: 'pod-a' };
+    const visibleRuns = runs.filter((run) => presentation.runMatches(run, filter));
+    const state = {
+      admissionPaused: false,
+      blockers: [],
+      resources: { knownUsageTokens: 0, reportedUsageCount: 0, unavailableMeasurements: 2 },
+    };
+
+    const html = renderToStaticMarkup(createElement(presentation.Overview, { state, runs: visibleRuns, selectRun() {} }));
+
+    expect(html).toContain('1 scoped runs');
+    expect(html).toContain('Scoped reservations</dt><dd>125</dd>');
+    expect(html).not.toContain('900');
+    expect(html).toContain('Factory reported usage</dt><dd>Unavailable</dd>');
+    expect(html).toContain('Factory unavailable measurements</dt><dd>2</dd>');
+
+    const factoryHtml = renderToStaticMarkup(createElement(presentation.Factory, {
+      state: { resources: { knownUsageTokens: 0, reportedUsageCount: 0, unavailableMeasurements: 0 } },
+      runs: [],
+      submit() {},
+    }));
+    expect(factoryHtml).toContain('Known reported usage</dt><dd>Unavailable</dd>');
+    expect(factoryHtml).toContain('Reported measurements</dt><dd>0</dd>');
+    expect(factoryHtml).toContain('Unavailable measurements</dt><dd>0</dd>');
+  });
+
+  it('keeps product and pod filters labeled and preserves every primary view in the shell', async () => {
+    const filterHtml = renderToStaticMarkup(createElement(presentation.ScopeFilters, {
+      hierarchy: { filters: { products: [{ id: 'product-a', name: 'Product A' }], pods: [{ id: 'pod-a', productId: 'product-a' }] } },
+      filter: { productId: '', podId: '' },
+      setFilter() {},
+    }));
+    const source = await readFile(join(root, 'console/src/main.tsx'), 'utf8');
+
+    expect(filterHtml).toContain('<span>Product</span>');
+    expect(filterHtml).toContain('<span>Pod</span>');
+    expect(filterHtml).toContain('All products');
+    expect(filterHtml).toContain('All pods');
+    expect(source).toContain("const views = ['overview', 'work', 'run', 'factory'] as const;");
+    expect(source).toContain('className="session-key"');
+    expect(source).toContain('className="header-controls"');
+  });
+
+  it('renders a populated run detail with its real controls, evidence, and pending provider request', () => {
+    const run = {
+      runId: 'run-detail',
+      workItem: { id: 'work-detail' },
+      target: { repository: 'owner/repo' },
+      provider: 'codex',
+      model: 'configured-model',
+      profile: 'native',
+      state: 'blocked',
+      createdAt: '2026-09-08T12:00:00.000Z',
+      reservation: { status: 'held' },
+      authority: { epoch: 4, revoked: false },
+      messages: [{ messageId: 'message-1', createdAt: '2026-09-08T12:01:00.000Z', delivery: 'queued' }],
+      providerRequests: [{ requestId: 'request-1', method: 'permission', prompt: 'Allow the bounded check?', options: ['Allow', 'Deny'], status: 'pending', observedAt: '2026-09-08T12:02:00.000Z' }],
+      result: { outcome: 'blocked', summary: 'Waiting for owner input.', verification: ['Typecheck observed'] },
+    };
+
+    const html = renderToStaticMarkup(createElement(presentation.RunDetail, { run, blockers: [], submit() {} }));
+
+    expect(html).toContain('run-detail');
+    expect(html).toContain('configured-model');
+    expect(html).toContain('Typecheck observed');
+    expect(html).toContain('Allow the bounded check?');
+    expect(html).toContain('Open authoritative record');
+    expect(html).toContain('Queue instruction');
+    expect(html).toContain('Resume if eligible');
+    expect(html).toContain('Cancel run');
+  });
+});

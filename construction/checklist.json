@@ -14,7 +14,7 @@
       "6": 700000,
       "7": 4200000
     },
-    "progressSummary": "Updated 2026-09-07. Phases 0–6 and F7-01 are accepted; Phase 7 as a whole is not accepted and V1 remains incomplete. The Linux arm64 package gate passes 313 tests / 39 files, typecheck, builds and packed CLI. The committed Node 24/Chromium fixture envelope and an independent manager rerun reproduce every frozen expected RED/base GREEN outcome without changing fixture bytes or timeouts. The equivalent constrained Linux Node envelope also passes after assigning Chromium a writable ephemeral HOME/cache; the Build Manager independently reproduced that pass from the checksum-verified archive and immutable image digest. Linux Python reproduces its expected frozen baseline. The GitHub controller authentication repair passed an independent live read-only Twinzy observation. The Build Manager accepted F7-01 at exact head a4dff21 after harness-assisted fresh-agent installed projection-only Console validation using the retained approved factory. Full Linux Node/Python factory-provider-product delivery under supported isolation, the owner-controlled TWZ-83 all-provider run, a valid paired Triforge resource and final Phase 7 exact-head Build Manager acceptance remain outstanding; three Phase 7 tickets stay blocked. WSL2 is explicitly unverified because no real host is available, but its absence alone is not a V1 blocker. Usage telemetry is historical and incomplete. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
+    "progressSummary": "Updated 2026-09-07. Phases 0–6 plus F7-01 and F7-02 are accepted; Phase 7 as a whole is not accepted and V1 remains incomplete. The Build Manager accepted F7-02 at exact head b0e6800 after an owner-approved isolated Codex delivery completed the disposable Linux Node due-date and Python date-boundary products and independent credential-free, network-disabled verification passed their frozen contracts. The final runtime keeps selected credential files read-only and sibling files unmounted, uses ephemeral provider session state, derives only a validated non-root controller identity, and rejects every mutated Docker Codex plan. The pinned repository gate passes typecheck, builds, 40 files / 327 tests and packed CLI; all 20 frozen hashes remain green. F7-03 is owner-deferred, not passed or removed, and no further Twinzy work is authorized for the current completion push. F7-04 remains open and its frozen comparison was not cancelled, but it requires a separate specifically admitted Triforge run and retains F7-03 as an unmet release dependency. WSL2 is explicitly unverified because no real host is available, but its absence alone is not a V1 blocker. Usage telemetry is incomplete. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
   },
   "tickets": [
     {
@@ -1025,7 +1025,7 @@
       "id": "F7-02",
       "phase": 7,
       "title": "Verify supported host and stack paths",
-      "status": "blocked",
+      "status": "complete",
       "dependencies": [
         "F6-01",
         "F6-02",
@@ -1039,7 +1039,7 @@
         "reasoning": "medium"
       },
       "notes": [
-        "macOS package verification passed. Linux arm64 package gate passes 313 tests / 39 files, typecheck, builds and packed CLI after explicit cache preparation, retaining the updater's offline policy. Network-disabled Python 3.12 and Node 24/Chromium containers reproduce their expected frozen baselines; the Node envelope passed after an environment-only repair assigned Chromium a writable ephemeral HOME/cache on the otherwise read-only container, and the Build Manager independently reproduced the pass from the checksum-verified archive and immutable image digest. Full Linux Node/Python factory-provider-product delivery under supported isolation and completed candidate products remain outstanding. WSL2 is explicitly unverified because unavailable, but is not an independent V1 blocker. Package and frozen starting-state checks do not complete this ticket."
+        "Build Manager accepted exact head b0e6800bcb52aae4936d9f78fe0f3695a698d1d6. An owner-approved isolated bridge-network Codex run completed and committed only the disposable Node due-date and Python date-boundary products. Independent credential-free, network-disabled Linux verification passed both frozen Node browser contracts and Python 3/3; both product repositories were clean and all 20 frozen hashes remained green. The repaired runtime mounts only selected credential files read-only with ephemeral session state, admits only a private non-root controller identity, and unconditionally rejects changed Docker Codex plans. The pinned full repository gate passed 40 files / 327 tests, typecheck, builds and packed CLI. WSL2 remains explicitly unverified because unavailable, but is not an independent V1 blocker."
       ],
       "evidence": [
         {
@@ -1057,6 +1057,14 @@
         {
           "label": "Linux Node and Python fixture evidence",
           "url": "docs/build/evidence/phase-7-linux-node-python-2026-09-06.md"
+        },
+        {
+          "label": "Linux Node and Python product delivery",
+          "url": "docs/build/evidence/phase-7-f702-linux-products-2026-09-07.md"
+        },
+        {
+          "label": "F7-02 Build Manager acceptance",
+          "url": "docs/build/phase-7-f702-manager-acceptance.md"
         }
       ]
     },
@@ -1079,7 +1087,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "The owner selected TWZ-83 for a separate-branch, local-only all-provider comparison at the exact approved base, with no Jira mutation, push, merge, deployment or staging write. The Faktori GitHub controller authentication repair passed an independent live read-only observation. Native Codex, Claude and Cursor execution is still pending direct informed approval because those host processes are not an OS filesystem-isolation boundary. No provider run was launched."
+        "Owner-deferred on 2026-09-07 and excluded from the current completion push; this ticket is not passed, waived, or removed. The read-only eligibility audit found no small ready unclaimed Twinzy item. No further Twinzy provider run, Jira mutation, auth request, push, merge, deployment, or staging write is authorized. The original all-provider contribution and verified deployment acceptance requirement remains unmet."
       ],
       "evidence": [
         {
@@ -1105,7 +1113,7 @@
         "reasoning": "high"
       },
       "notes": [
-        "Frozen inputs, checksums, the committed reproducible harness envelope and the dimensional rubric were independently reverified, but no isolated Triforge comparison resource/run exists and F7-02 through F7-03 are incomplete. The available Triforge checkout documents the intended untrusted-runner/trusted-publisher boundary but does not supply an approved provider-authenticated read-only mirror or result-bundle path for this comparison. Unknown incumbent and candidate cells remain unknown; no winner or release claim is published."
+        "F7-02 is complete and the frozen inputs, checksums, reproducible harness envelope, and dimensional rubric remain independently verified. The owner did not cancel this comparison, but no specifically approved isolated Triforge provider run has occurred and F7-03 remains an unmet dependency. Unknown incumbent and candidate cells remain unknown; no winner or release claim is published."
       ],
       "evidence": [
         {
@@ -1777,6 +1785,15 @@
       "from": "blocked",
       "to": "complete",
       "reason": "Build Manager accepted exact head a4dff21b6ae83cd627c1e32970316efd23e5c035 for harness-assisted fresh-agent validation of the repaired installed projection Console using the retained approved factory; this does not accept Phase 7 or provider orchestration."
+    },
+    {
+      "eventId": "phase-7-complete-f7-02-20260907",
+      "at": "2026-09-07T23:59:00Z",
+      "ticketId": "F7-02",
+      "from": "blocked",
+      "to": "complete",
+      "reason": "Build Manager accepted exact head b0e6800bcb52aae4936d9f78fe0f3695a698d1d6 after bounded isolated Linux Node/Python product delivery, independent frozen-contract verification, credential-boundary hardening, and the pinned full repository gate.",
+      "actor": "phase-7-orchestrator"
     }
   ]
 }

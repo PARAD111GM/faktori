@@ -1,8 +1,8 @@
 # Phase 7 implementation report
 
-Status: F7-02 candidate evidence complete; Build Manager exact-head review of
-the Faktori repair remains required. F7-03 is owner-deferred and F7-04 remains
-pending. Base was the accepted Phase 6 revision
+Status: F7-02 accepted at exact head
+`b0e6800bcb52aae4936d9f78fe0f3695a698d1d6`. F7-03 is owner-deferred and
+F7-04 remains pending. Base was the accepted Phase 6 revision
 `81c33493881a039923b9a6a94263b05578bfdce7`. Runtime implementation commits are
 `46342a9c0d88e5fe1ec762910221d6dc3ad63d97`,
 `121a4c34f46f1969b5d555be1f7727766bddfe7e`, and
@@ -24,12 +24,13 @@ change, or active Twinzy/Triforge operation.
   recomputed all bound hashes, and accepted exact head `a4dff21` for the
   outstanding scope. This is harness-assisted validation using the retained
   factory, not a new unaided cold start or provider orchestration proof.
-- **F7-02 — candidate complete, manager review pending:** an owner-approved
+- **F7-02 — complete:** an owner-approved
   isolated bridge-network Codex run completed and committed the disposable Node
   due-date and Python date-boundary products. Independent credential-free,
   network-disabled Linux verification passed the frozen contracts, both product
   repositories are clean, and all frozen checksums remain unchanged. The
-  private-profile compatibility repair still requires exact-head acceptance.
+  private-profile compatibility repair passed exact-head Build Manager
+  acceptance.
 - **F7-03 — owner-deferred, not passed:** the read-only eligibility audit found
   no small ready unclaimed Twinzy item. The owner directed that Twinzy testing
   stop for the current completion push. No further Twinzy provider execution,
@@ -211,13 +212,9 @@ F7-01 previously required an approved provider-authentication profile created by
 The remaining blockers require authority or resources not present in this
 checkout:
 
-- F7-02 needs full Linux Node/Python factory-provider-product delivery under a
-  supported isolated container or independent instance. WSL2 is explicitly
-  unverified because no real host is available, but its absence alone is not a
-  V1 blocker.
-- F7-03 needs direct informed approval for host-native Codex, Claude and Cursor
-  access (or an approved isolated alternative) before the owner-controlled,
-  push-disabled TWZ-83 comparison may launch.
+- F7-03 is owner-deferred. No Twinzy run or further approval request is part of
+  the current completion push; its original acceptance requirement remains
+  unmet.
 - F7-04 needs a specifically approved isolated Triforge provider-authenticated
   read-only mirror and result-bundle resource after its dependencies complete.
 
@@ -240,8 +237,12 @@ The Node provider committed `a80e05362fac9aa63a89c73e944cacc0c96d6421`;
 the Python provider committed `56f78304f995838cc3fdbc96441afcfba435526c`.
 Independent network-disabled Linux runs passed the frozen Node base and feature
 contracts and all three Python assertions. Both repositories are clean and all
-20 frozen checksums remain green. F7-02 is ready for exact-head Build Manager
-review.
+20 frozen checksums remain green. The Build Manager accepted F7-02 at exact
+head `b0e6800bcb52aae4936d9f78fe0f3695a698d1d6` after independently checking
+the focused execution boundary, frozen hashes, disposable product trees, and
+Python contract. Its full-gate attempt was limited by sandbox-denied process
+and loopback operations; the orchestrator's unrestricted exact-head gate passed
+all 40 files / 327 tests plus typecheck, builds, and packed CLI.
 
 F7-03 is now owner-deferred, not accepted or removed. It is excluded from the
 current completion push, and no further Twinzy work is authorized. F7-04's

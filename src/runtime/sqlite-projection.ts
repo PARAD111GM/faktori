@@ -14,10 +14,35 @@ type Database = {
   transaction<T extends (...arguments_: never[]) => unknown>(fn: T): T;
   close(): void;
 };
-type DatabaseConstructor = new(path: string) => Database;
+type DatabaseConstructor = new(path: string, options?: { readonly?: boolean; fileMustExist?: boolean }) => Database;
 
 const require = createRequire(import.meta.url);
 const BetterSqlite3 = require('better-sqlite3') as DatabaseConstructor;
+
+export type ProjectionInspection = 'ready' | 'missing' | 'invalid';
+
+/** Opens an existing projection strictly read-only and validates its Faktori table shape. */
+export function inspectProjectionReadOnly(path: string, expectedFactoryId?: string): ProjectionInspection {
+  let database: Database | undefined;
+  try {
+    database = new BetterSqlite3(path, { readonly: true, fileMustExist: true });
+    const table = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'run_events'").get();
+    if (table?.name !== 'run_events') return 'invalid';
+    database.prepare('SELECT event_id, run_id, occurred_at, kind, payload, digest FROM run_events LIMIT 0').all();
+    if (expectedFactoryId !== undefined) {
+      for (const row of database.prepare("SELECT payload FROM run_events WHERE kind = 'run.admitted'").all()) {
+        const event = JSON.parse(String(row.payload)) as { data?: { intent?: { target?: { factoryId?: unknown } } } };
+        if (event.data?.intent?.target?.factoryId !== expectedFactoryId) return 'invalid';
+      }
+    }
+    return 'ready';
+  } catch (error) {
+    const code = error !== null && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+    return code === 'SQLITE_CANTOPEN' ? 'missing' : 'invalid';
+  } finally {
+    database?.close();
+  }
+}
 
 export class RuntimeSemanticConflictError extends Error {
   constructor(message: string) {

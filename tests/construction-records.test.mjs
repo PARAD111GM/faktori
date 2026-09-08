@@ -16,14 +16,14 @@ function assertCurrentPhaseConsistent(checklist, estimates, summary) {
   assert.equal(summary.budget.estimate, phase.estimateTokens);
 }
 
-test('canonical construction state contains exactly F0-01 through F7-04 with valid dependencies', async () => {
+test('canonical construction state contains F0-01 through F8-03 with valid dependencies', async () => {
   const checklist = await json('construction/checklist.json');
   const expected = Array.from({ length: 8 }, (_, phase) =>
     Array.from({ length: 4 }, (_, offset) => `F${phase}-${String(offset + 1).padStart(2, '0')}`),
-  ).flat();
+  ).flat().concat(['F8-01', 'F8-02', 'F8-03']);
   const ids = checklist.tickets.map(({ id }) => id);
   assert.deepEqual(ids, expected);
-  assert.equal(new Set(ids).size, 32);
+  assert.equal(new Set(ids).size, 35);
   const known = new Set(ids);
   for (const ticket of checklist.tickets) {
     assert.match(ticket.title, /\S/);
@@ -61,10 +61,11 @@ test('phase estimate revisions preserve history and each allocation sums to its 
 });
 
 test('public summary and dashboard expose current sanitized usage without native identities', async () => {
-  const summary = await json('construction/phase-summary.json');
   const checklist = await json('construction/checklist.json');
+  const artifactPrefix = checklist.project.currentPhase === 8 ? 'phase-8-' : '';
+  const summary = await json(`construction/${artifactPrefix}summary.json`);
   const estimates = await json('construction/phase-estimates.json');
-  const dashboard = await readFile(new URL('construction/dashboard.html', root), 'utf8');
+  const dashboard = await readFile(new URL(`construction/${artifactPrefix}dashboard.html`, root), 'utf8');
   assertCurrentPhaseConsistent(checklist, estimates, summary);
   assert.throws(() => assertCurrentPhaseConsistent(checklist, estimates, { ...summary, phase: summary.phase + 1 }));
   assert.throws(() => assertCurrentPhaseConsistent(checklist, estimates, { ...summary, budget: { ...summary.budget, estimate: summary.budget.estimate + 1 } }));
@@ -76,6 +77,9 @@ test('public summary and dashboard expose current sanitized usage without native
     for (let offset = 1; offset <= 4; offset += 1) {
       assert.match(dashboard, new RegExp(`F${phase}-${String(offset).padStart(2, '0')}`));
     }
+  }
+  for (let offset = 1; offset <= 3; offset += 1) {
+    assert.match(dashboard, new RegExp(`F8-${String(offset).padStart(2, '0')}`));
   }
   assert.match(dashboard, /Completion history/);
   assert.match(dashboard, /Token budget consumption/);

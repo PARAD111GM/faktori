@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
 import { DurableDelegationService, DelegationPreconditionError } from '../../src/runtime/delegation.ts';
+import { structuredBlockersFromEvents } from '../../src/diagnostics/blockers.ts';
 
 async function directory() {
   return mkdtemp(join(tmpdir(), 'faktori-delegation-'));
@@ -117,7 +118,7 @@ describe('durable delegation', () => {
         secondService.admit(request({ delegationId: 'review', workstreamId: 'review', ownership: { paths: ['src'], mode: 'exclusive' } })),
       ]);
       expect([first.accepted, second.accepted].filter(Boolean)).toHaveLength(1);
-      expect([first, second].find((result) => !result.accepted)).toEqual({ accepted: false, reason: 'ownership_conflicts_with_active_child' });
+      expect([first, second].find((result) => !result.accepted)).toEqual(expect.objectContaining({ accepted: false, reason: 'ownership_conflicts_with_active_child' }));
       await close(owner);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -129,12 +130,32 @@ describe('durable delegation', () => {
       const delegation = service(owner, { authorizeSerialization: () => true });
       const first = await delegation.admit(request());
       const conflict = await delegation.admit(request({ delegationId: 'review', workstreamId: 'review', ownership: { paths: ['src'], mode: 'exclusive' } }));
-      expect(conflict).toEqual({ accepted: false, reason: 'ownership_conflicts_with_active_child' });
+      expect(conflict).toEqual(expect.objectContaining({ accepted: false, reason: 'ownership_conflicts_with_active_child' }));
+      expect(structuredBlockersFromEvents(owner.journal.events())).toHaveLength(1);
       const serialized = await delegation.admit(request({ delegationId: 'review', workstreamId: 'review', ownership: { paths: ['src'], mode: 'serialized', serializedAfter: ['implement'] } }));
       expect(serialized).toEqual(expect.objectContaining({ accepted: true }));
+      expect(structuredBlockersFromEvents(owner.journal.events())).toEqual([]);
       expect(delegation.canLaunch('parent', serialized.child.childRunId)).toBe(false);
       await owner.record('provider.final', first.child.childRunId, { result: { outcome: 'completed', usage: { availability: 'unavailable', unavailableReason: 'fixture' }, nativeCancellationReceipt: false } });
       expect(delegation.canLaunch('parent', serialized.child.childRunId)).toBe(true);
+      await close(owner);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('returns a stable, bounded blocker with observed identities and safe overlap paths', async () => {
+    const root = await directory();
+    try {
+      const owner = await coordinator(root);
+      const delegation = service(owner);
+      const first = await delegation.admit(request());
+      const second = await delegation.admit(request({ delegationId: 'review', workstreamId: 'review', ownership: { paths: ['src', 'src/feature.ts'], mode: 'exclusive' } }));
+      expect(second).toEqual(expect.objectContaining({ accepted: false, reason: 'ownership_conflicts_with_active_child', blocker: expect.objectContaining({ format: 'faktori.blocker/v1', reasonCode: 'ownership_conflicts_with_active_child', decisionOwnerRole: 'parent_coordinator', related: expect.objectContaining({ parentRunId: 'parent', workstreamId: 'review', delegationId: 'review' }) }) }));
+      expect(second.blocker.overlaps).toEqual([{ requestedPath: 'src', existingPath: 'src/feature.ts', existingChildRunId: first.child.childRunId, existingDelegationId: 'implement' }, { requestedPath: 'src/feature.ts', existingPath: 'src/feature.ts', existingChildRunId: first.child.childRunId, existingDelegationId: 'implement' }]);
+      expect(owner.journal.events()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ runId: 'parent', kind: 'provider.event', data: expect.objectContaining({ type: 'delegation.blocked', blocker: expect.objectContaining({ blockerId: second.blocker.blockerId }) }) }),
+      ]));
+      const repeat = await delegation.admit(request({ delegationId: 'review', workstreamId: 'review', ownership: { paths: ['src/feature.ts', 'src'], mode: 'exclusive' } }));
+      expect(repeat.blocker.blockerId).toBe(second.blocker.blockerId);
       await close(owner);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -149,7 +170,7 @@ describe('durable delegation', () => {
       const firstService = service(owner, { allocate: (_parent, candidate) => ({ workspaceId: `workspace-${candidate.delegationId}`, workspacePath: '/private/tmp/shared-child-workspace', profile: 'native', providerId: 'codex', model: 'trusted-model', maxRuntimeMinutes: 4, estimatedTokens: 200 }) });
       expect((await firstService.admit(request())).accepted).toBe(true);
       const siblingAlias = service(owner, { allocate: () => ({ workspaceId: 'different-child-id', workspacePath: '/private/tmp/shared-child-workspace', profile: 'native', providerId: 'codex', model: 'trusted-model', maxRuntimeMinutes: 4, estimatedTokens: 200 }) });
-      expect(await siblingAlias.admit(request({ delegationId: 'docs', workstreamId: 'docs', ownership: { paths: ['docs/readme.md'], mode: 'exclusive' } }))).toEqual({ accepted: false, reason: 'workspace_path_conflicts_with_active_child' });
+      expect(await siblingAlias.admit(request({ delegationId: 'docs', workstreamId: 'docs', ownership: { paths: ['docs/readme.md'], mode: 'exclusive' } }))).toEqual(expect.objectContaining({ accepted: false, reason: 'workspace_path_conflicts_with_active_child' }));
       await close(owner);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -160,7 +181,7 @@ describe('durable delegation', () => {
       const owner = await coordinator(root, { maxTokens: 500 });
       const delegation = service(owner, { allocate: (_parent, candidate, childRunId) => ({ workspaceId: `workspace-${candidate.delegationId}`, workspacePath: `/private/tmp/${childRunId}`, profile: 'native', providerId: 'codex', model: 'trusted-model', maxRuntimeMinutes: 4, estimatedTokens: 250 }) });
       expect((await delegation.admit(request())).accepted).toBe(true);
-      expect(await delegation.admit(request({ delegationId: 'docs', workstreamId: 'docs', ownership: { paths: ['docs/readme.md'], mode: 'exclusive' } }))).toEqual({ accepted: false, reason: 'token_reservation_exceeded' });
+      expect(await delegation.admit(request({ delegationId: 'docs', workstreamId: 'docs', ownership: { paths: ['docs/readme.md'], mode: 'exclusive' } }))).toEqual(expect.objectContaining({ accepted: false, reason: 'token_reservation_exceeded' }));
       await close(owner);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -177,7 +198,7 @@ describe('durable delegation', () => {
       const implementation = await delegation.admit(request({ delegationId: 'implementation', workstreamId: 'implementation', ownership: { paths: ['src/feature.ts'], mode: 'exclusive' }, artifactReferences: [{ artifactId: 'implementation-plan', digest: 'plan-output-digest' }] }));
       expect(implementation).toEqual(expect.objectContaining({ accepted: true }));
       expect(implementation.child.snapshot.intent.execution.approvedInputDigests).toContain('plan-output-digest');
-      expect(await delegation.admit(request({ delegationId: 'forged', workstreamId: 'forged', ownership: { paths: ['src/forged.ts'], mode: 'exclusive' }, artifactReferences: [{ artifactId: 'implementation-plan', digest: 'forged-digest' }] }))).toEqual({ accepted: false, reason: 'artifact_reference_not_approved_for_parent' });
+      expect(await delegation.admit(request({ delegationId: 'forged', workstreamId: 'forged', ownership: { paths: ['src/forged.ts'], mode: 'exclusive' }, artifactReferences: [{ artifactId: 'implementation-plan', digest: 'forged-digest' }] }))).toEqual(expect.objectContaining({ accepted: false, reason: 'artifact_reference_not_approved_for_parent' }));
       await close(owner);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -195,7 +216,7 @@ describe('durable delegation', () => {
       const foreign = await delegation.admit(request({ parentRunId: 'foreign-parent', delegationId: 'foreign-plan', workstreamId: 'foreign-planning', ownership: { paths: ['docs/foreign.md'], mode: 'exclusive' } }));
       await owner.record('provider.final', foreign.child.childRunId, { result: { outcome: 'completed', usage: { availability: 'unavailable', unavailableReason: 'fixture' }, nativeCancellationReceipt: false } });
       await delegation.handoff('foreign-parent', foreign.child.childRunId, [{ artifactId: 'foreign-plan', digest: 'foreign-output-digest' }]);
-      expect(await delegation.admit(request({ delegationId: 'cross-parent', workstreamId: 'cross-parent', ownership: { paths: ['src/cross-parent.ts'], mode: 'exclusive' }, artifactReferences: [{ artifactId: 'foreign-plan', digest: 'foreign-output-digest' }] }))).toEqual({ accepted: false, reason: 'artifact_reference_not_approved_for_parent' });
+      expect(await delegation.admit(request({ delegationId: 'cross-parent', workstreamId: 'cross-parent', ownership: { paths: ['src/cross-parent.ts'], mode: 'exclusive' }, artifactReferences: [{ artifactId: 'foreign-plan', digest: 'foreign-output-digest' }] }))).toEqual(expect.objectContaining({ accepted: false, reason: 'artifact_reference_not_approved_for_parent' }));
       await close(owner);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -300,7 +321,8 @@ describe('durable delegation', () => {
       delegation = service(owner, { allocate: () => ({ workspaceId: orphan.intent.execution.workspaceId, workspacePath: orphan.intent.execution.workspacePath, profile: 'native', providerId: 'codex', model: 'trusted-model', maxRuntimeMinutes: 4, estimatedTokens: 200 }) });
       // This request has independent paths, so without durable/orphan discovery
       // it would be admitted into the crashed child's exact workspace.
-      expect(await delegation.admit(request({ delegationId: 'docs', workstreamId: 'docs', ownership: { paths: ['docs/readme.md'], mode: 'exclusive' }, artifactReferences: [] }))).toEqual({ accepted: false, reason: 'orphaned_delegated_child_admission_requires_identical_recovery' });
+      const blocked = await delegation.admit(request({ delegationId: 'docs', workstreamId: 'docs', ownership: { paths: ['docs/readme.md'], mode: 'exclusive' }, artifactReferences: [] }));
+      expect(blocked).toEqual(expect.objectContaining({ accepted: false, reason: 'orphaned_delegated_child_admission_requires_identical_recovery', blocker: expect.objectContaining({ ownership: { state: 'missing_or_orphaned', paths: [], omittedPathCount: 0 }, related: expect.objectContaining({ parentRunId: 'parent', workstreamId: 'docs' }) }) }));
       const recovered = await delegation.admit(request());
       expect(recovered).toEqual(expect.objectContaining({ accepted: true }));
       expect(owner.journal.events().filter((event) => event.runId === recovered.child.childRunId && event.kind === 'provider.event' && event.data.type === 'delegation.child-admitted')).toHaveLength(1);

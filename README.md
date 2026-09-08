@@ -117,6 +117,8 @@ For a small read-only configuration example:
 
 ```sh
 npm run faktori -- config resolve examples/config/solo.json
+npm run faktori -- run manifest examples/runtime/interrupted-run.jsonl example-run
+npm run faktori -- preflight examples/diagnostics/preflight-projection.json
 ```
 
 To configure and launch the Console, follow the

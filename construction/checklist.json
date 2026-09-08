@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 7,
+    "currentPhase": 8,
     "source": "docs/implementation-plan.md",
     "phaseBudgets": {
       "0": 360000,
@@ -12,9 +12,10 @@
       "4": 650000,
       "5": 800000,
       "6": 700000,
-      "7": 4200000
+      "7": 4200000,
+      "8": 1700000
     },
-    "progressSummary": "Updated 2026-09-07. Phases 0–6 plus F7-01 and F7-02 are accepted; Phase 7 as a whole is not accepted and V1 remains incomplete. The Build Manager accepted F7-02 at exact head b0e6800 after an owner-approved isolated Codex delivery completed the disposable Linux Node due-date and Python date-boundary products and independent credential-free, network-disabled verification passed their frozen contracts. The pinned repository gate passes typecheck, builds, 40 files / 327 tests and packed CLI; all 20 frozen hashes remain green. A separately owner-approved isolated Triforge run now supplies all three paired comparison cells: Faktori passed task-board, due-dates and Python; the one-shot Triforge candidates passed Python, while task-board failed delete-after-restart and due-dates failed the strict today boundary. The task-board harness also exposed and retained a missing-jq packaging handoff; bundle integrity was independently verified after a local dependency and deterministic metadata repair. F7-03 is owner-deferred, not passed or removed, and no further Twinzy work is authorized for the current completion push. F7-04 comparison evidence is complete but the canonical ticket remains blocked because F7-03 is an unmet release dependency; no winner or V1 release is claimed. WSL2 is explicitly unverified because no real host is available, but its absence alone is not a V1 blocker. Usage telemetry is incomplete and non-commensurate across runners. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
+    "progressSummary": "Updated 2026-09-07. Phases 0–6 plus F7-01 and F7-02 are accepted; Phase 7 as a whole is not accepted and V1 remains incomplete. The Build Manager accepted F7-02 at exact head b0e6800 after an owner-approved isolated Codex delivery completed the disposable Linux Node due-date and Python date-boundary products and independent credential-free, network-disabled verification passed their frozen contracts. A separately owner-approved isolated Triforge run supplies the paired comparison cells: Faktori passed all three cases; the one-shot Triforge candidates passed Python while task-board and due-dates failed distinct functional assertions. The result is one bounded case study with non-commensurate usage schemas, not a generalized winner. F7-03 is owner-deferred, not passed or removed; F7-04 comparison evidence is complete but its canonical release dependency remains unmet, so no V1 release is claimed. Phase 8 was independently accepted at exact head f968bbc and adds structured admission blockers, deterministic redacted run manifests, and fail-closed read-only preflight/remediation without changing Phase 7 authority or acceptance. WSL2 remains unverified because no real host is available. All construction estimates remain advisory rather than native caps, completion criteria, or current account measurements; specialist counters and parent-child inclusion remain unknown."
   },
   "tickets": [
     {
@@ -1137,6 +1138,72 @@
           "url": "docs/build/evidence/phase-7-f704-paired-comparison-2026-09-07.md"
         }
       ]
+    },
+    {
+      "id": "F8-01",
+      "phase": 8,
+      "title": "Add structured blocker details",
+      "status": "complete",
+      "dependencies": [],
+      "owner": {
+        "role": "blocker diagnostics specialist",
+        "agentId": "f8_01_impl",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
+      },
+      "notes": [
+        "Implemented deterministic redacted blocker details in rejection values and durable journal observations, with read-only Console projection and terminal-conflict resolution. Admission, authority, cancellation, and F7 behavior are unchanged.",
+        "Independent review findings for credential signatures and multi-child terminal resolution were remediated before candidacy."
+      ],
+      "evidence": [
+        "tests/diagnostics/blockers.test.mjs",
+        "tests/runtime/delegation.test.mjs",
+        "tests/console/service.test.mjs"
+      ]
+    },
+    {
+      "id": "F8-02",
+      "phase": 8,
+      "title": "Export a redacted run manifest",
+      "status": "complete",
+      "dependencies": [],
+      "owner": {
+        "role": "run manifest specialist",
+        "agentId": "f8_02_map",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
+      },
+      "notes": [
+        "Implemented a deterministic observation-only manifest and read-only CLI using exact object schemas, field-specific value formats, credential-signature rejection, omission reasons, and canonical SHA-256 content digests."
+      ],
+      "evidence": [
+        "tests/runtime/run-manifest.test.mjs",
+        "tests/cli.test.mjs",
+        "scripts/verify-packed-cli.mjs"
+      ]
+    },
+    {
+      "id": "F8-03",
+      "phase": 8,
+      "title": "Add unified read-only preflight and remediation",
+      "status": "complete",
+      "dependencies": [],
+      "owner": {
+        "role": "preflight diagnostics specialist",
+        "agentId": "f8_03_map",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
+      },
+      "notes": [
+        "Implemented deterministic data-only preflight across configuration, Console, execution, resources, provider, integrations, and live-evidence sections. Public JSON assertions cannot self-certify readiness; negative observations remain fail-closed and provider conflicts are fail-dominant.",
+        "After Build Manager rejection of the first candidate, added one shared read-only installed SQLite projection inspector for CLI and Console, actual factory/configuration binding, specific missing/invalid remediation, and credential-safe caller diagnostic IDs."
+      ],
+      "evidence": [
+        "tests/diagnostics/preflight.test.mjs",
+        "tests/console/prepare.test.mjs",
+        "tests/cli.test.mjs",
+        "scripts/verify-packed-cli.mjs"
+      ]
     }
   ],
   "history": [
@@ -1798,6 +1865,78 @@
       "to": "complete",
       "reason": "Build Manager accepted exact head b0e6800bcb52aae4936d9f78fe0f3695a698d1d6 after bounded isolated Linux Node/Python product delivery, independent frozen-contract verification, credential-boundary hardening, and the pinned full repository gate.",
       "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-8-start-f8-01",
+      "at": "2026-09-07T20:27:28Z",
+      "ticketId": "F8-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Owner-authorized concurrent F8 development began from exact F7 candidate af958a28f8366e91683f3f67615cc2ec5ea0ee88; structured blocker diagnostics is first priority.",
+      "actor": "phase-8-orchestrator"
+    },
+    {
+      "eventId": "phase-8-start-f8-02",
+      "at": "2026-09-07T20:27:28Z",
+      "ticketId": "F8-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Independent redacted manifest implementation began while shared CLI and exports remain orchestrator-owned.",
+      "actor": "phase-8-orchestrator"
+    },
+    {
+      "eventId": "phase-8-start-f8-03",
+      "at": "2026-09-07T20:27:28Z",
+      "ticketId": "F8-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Independent pure preflight diagnostics implementation began; Console integration is serialized behind blocker UI work.",
+      "actor": "phase-8-orchestrator"
+    },
+    {
+      "eventId": "phase-8-complete-f8-01",
+      "at": "2026-09-07T21:20:00Z",
+      "ticketId": "F8-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Structured blocker behavior, durable projection, redaction negatives, and terminal-conflict clearing passed focused and full local verification; candidate still requires Build Manager acceptance.",
+      "actor": "phase-8-orchestrator"
+    },
+    {
+      "eventId": "phase-8-complete-f8-02",
+      "at": "2026-09-07T21:20:01Z",
+      "ticketId": "F8-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Redacted run manifest, read-only CLI, credential-signature negatives, and packed installed behavior passed local verification; candidate still requires Build Manager acceptance.",
+      "actor": "phase-8-orchestrator"
+    },
+    {
+      "eventId": "phase-8-complete-f8-03",
+      "at": "2026-09-07T21:20:02Z",
+      "ticketId": "F8-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Unified data-only preflight, fail-closed self-assertion handling, CLI, and Console projection passed local verification; candidate still requires Build Manager acceptance.",
+      "actor": "phase-8-orchestrator"
+    },
+    {
+      "eventId": "phase-8-reopen-f8-03-manager-review",
+      "at": "2026-09-07T21:37:00Z",
+      "ticketId": "F8-03",
+      "from": "complete",
+      "to": "in_progress",
+      "reason": "Build Manager rejected exact head 08c914d because projection readiness had no supported trusted path and caller-controlled prerequisite IDs could be emitted.",
+      "actor": "phase-8-manager"
+    },
+    {
+      "eventId": "phase-8-recomplete-f8-03-manager-remediation",
+      "at": "2026-09-07T22:04:00Z",
+      "ticketId": "F8-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Manager-requested remediation now has focused green evidence: actual read-only projection happy/missing/scope paths, shared CLI/Console behavior, non-forgeable core API, and credential-safe IDs; exact-head and manager acceptance remain pending.",
+      "actor": "phase-8-orchestrator"
     }
   ]
 }

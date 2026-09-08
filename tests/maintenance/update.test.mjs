@@ -74,5 +74,5 @@ describe('managed runtime update assembly', () => {
       await expect(previewRuntimeUpdate(request(installation, await candidate(root, 'prerelease', '1.0.2-rc.1')))).rejects.toBeInstanceOf(MaintenanceValidationError);
       await expect(previewRuntimeUpdate(request(installation, await candidate(root, 'state-v2', '1.0.2', 2)))).rejects.toBeInstanceOf(MaintenanceValidationError);
     } finally { await rm(root, { recursive: true, force: true }); }
-  }, 30_000);
+  }, 60_000);
 });

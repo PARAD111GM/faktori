@@ -7,10 +7,13 @@ import {
   createDiscoveryRecord,
   createFactoryBackup,
   createProvisioningProposal,
+  createRunManifest,
+  evaluateInstalledPreflightDocument,
   initializeRuntimeInstallation,
   applyRuntimeUpdate,
   previewRuntimeUpdate,
   previewNewProduct,
+  parseRunManifestJournal,
   prepareLocalCodexConsole,
   provisionApprovedProposal,
   provisionApprovedNewProduct,
@@ -31,6 +34,8 @@ const HELP = `Usage:
   faktori product preview <request.json>
   faktori product new <approved-bundle.json> <absolute-root>
   faktori runtime rebuild <journal.jsonl> <projection.sqlite>
+  faktori run manifest <journal.jsonl> <run-id>
+  faktori preflight <request.json>
   faktori backup create <request.json> <backup-directory>
   faktori backup restore <backup-directory> <restore-request.json>
   faktori backup reconcile <request.json>
@@ -143,6 +148,24 @@ async function run(argv: string[]): Promise<void> {
     } finally {
       projection.close();
     }
+    return;
+  }
+
+  if (group === 'run' && action === 'manifest') {
+    if (argv.length !== 4 || !source || !extra) throw new Error('run manifest requires exactly one operational journal path and one run ID');
+    let contents: string;
+    try {
+      contents = await readFile(source, 'utf8');
+    } catch (error) {
+      throw new Error(`operational journal could not be read from ${source}: ${errorMessage(error)}`);
+    }
+    print(createRunManifest(parseRunManifestJournal(contents), extra));
+    return;
+  }
+
+  if (group === 'preflight') {
+    if (argv.length !== 2 || !action) throw new Error('preflight requires exactly one request JSON path');
+    print(evaluateInstalledPreflightDocument(await json(action, 'preflight request')));
     return;
   }
 

@@ -4,6 +4,7 @@ import { normalize } from 'node:path';
 import type { ProviderOutcome, QueuedMessage, RunIntent, RunSnapshot, WorkerIdentity } from './contracts.ts';
 import { isTerminalRunState } from './contracts.ts';
 import type { DurableCoordinator } from './coordinator.ts';
+import { createDelegationBlocker, ownershipPathsOverlap, type StructuredBlocker } from '../diagnostics/blockers.ts';
 
 export type DelegationOwnershipMode = 'exclusive' | 'serialized';
 
@@ -89,6 +90,8 @@ export interface ChildAdmissionResult {
   accepted: boolean;
   child?: DelegatedChild;
   reason?: string;
+  /** Versioned read-only diagnosis; it grants neither resume nor authority. */
+  blocker?: StructuredBlocker;
 }
 
 export interface ChildCancellationResult {
@@ -235,10 +238,6 @@ function parseRequest(value: unknown): DelegationRequest {
     artifactReferences,
     message,
   };
-}
-
-function overlaps(left: readonly string[], right: readonly string[]): boolean {
-  return left.some((a) => right.some((b) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)));
 }
 
 function envelopeFrom(value: unknown): DelegationEnvelope | undefined {
@@ -403,12 +402,12 @@ export class DurableDelegationService {
   private async admitExclusive(request: DelegationRequest): Promise<ChildAdmissionResult> {
     const parent = this.requireActiveParent(request.parentRunId);
     if (request.artifactReferences?.some((artifact) => !this.artifactAllowedForParent(parent, artifact))) {
-      return { accepted: false, reason: 'artifact_reference_not_approved_for_parent' };
+      return this.rejected(request, 'artifact_reference_not_approved_for_parent');
     }
     const existing = this.children(request.parentRunId).find((child) => child.delegationId === request.delegationId);
     if (existing !== undefined) {
       const expected = this.initialDigest(request, existing.childRunId);
-      if (existing.envelope.payloadDigest !== expected) return { accepted: false, reason: 'delegation_id_conflicts_with_existing_request' };
+      if (existing.envelope.payloadDigest !== expected) return this.rejected(request, 'delegation_id_conflicts_with_existing_request', { childRunId: existing.childRunId });
       await this.queueOnce(existing.childRunId, existing.envelope, `delegation-initial-${existing.childRunId}-${existing.envelope.payloadDigest}`);
       return { accepted: true, child: { ...existing, snapshot: this.#coordinator.snapshot(existing.childRunId) as RunSnapshot } };
     }
@@ -426,7 +425,7 @@ export class DurableDelegationService {
     const alreadyAdmitted = this.#coordinator.snapshot(childRunId);
     if (alreadyAdmitted !== undefined) {
       const expectedKey = `delegation:${request.parentRunId}:${request.delegationId}:${envelope.payloadDigest}`;
-      if (alreadyAdmitted.intent.admissionKey !== expectedKey) return { accepted: false, reason: 'child_run_id_conflicts_with_existing_intent' };
+      if (alreadyAdmitted.intent.admissionKey !== expectedKey) return this.rejected(request, 'child_run_id_conflicts_with_existing_intent', { childRunId });
       await this.recordAdmission(childRunId, envelope);
       await this.queueOnce(childRunId, envelope, `delegation-initial-${childRunId}-${envelope.payloadDigest}`);
       return { accepted: true, child: { delegationId: request.delegationId, parentRunId: request.parentRunId, childRunId, envelope, snapshot: this.#coordinator.snapshot(childRunId) as RunSnapshot } };
@@ -437,16 +436,16 @@ export class DurableDelegationService {
     // child must fail closed because neither ownership nor workspace isolation
     // can be safely reconstructed from a provider message that never landed.
     if (this.orphanedAdmissions(request.parentRunId).length > 0) {
-      return { accepted: false, reason: 'orphaned_delegated_child_admission_requires_identical_recovery' };
+      return this.rejected(request, 'orphaned_delegated_child_admission_requires_identical_recovery', { orphaned: true });
     }
     if (request.ownership.mode === 'serialized' && (request.ownership.serializedAfter ?? []).some((delegationId) => !siblings.some((child) => child.delegationId === delegationId))) {
-      return { accepted: false, reason: 'serialized_predecessor_is_not_a_durable_sibling' };
+      return this.rejected(request, 'serialized_predecessor_is_not_a_durable_sibling');
     }
     const conflicting = siblings.filter((child) => !isTerminalRunState(child.snapshot.state)
-      && overlaps(request.ownership.paths, child.envelope.ownership.paths));
+      && ownershipPathsOverlap(request.ownership.paths, child.envelope.ownership.paths));
     for (const child of conflicting) {
       const named = request.ownership.mode === 'serialized' && request.ownership.serializedAfter?.includes(child.delegationId) === true;
-      if (!named || !await this.#authorizeSerialization(parent, request, child)) return { accepted: false, reason: 'ownership_conflicts_with_active_child' };
+      if (!named || !await this.#authorizeSerialization(parent, request, child)) return this.rejected(request, 'ownership_conflicts_with_active_child', { conflicting });
     }
     const allocation = await this.#allocate(parent, request, childRunId);
     const workspacePath = this.validateAllocation(parent, allocation);
@@ -456,7 +455,7 @@ export class DurableDelegationService {
       if (!shared && !sharedPath) continue;
       const named = request.ownership.mode === 'serialized' && request.ownership.serializedAfter?.includes(child.delegationId) === true;
       if (!named || !await this.#authorizeSerialization(parent, request, child)) {
-        return { accepted: false, reason: sharedPath ? 'workspace_path_conflicts_with_active_child' : 'workspace_conflicts_with_active_child' };
+        return this.rejected(request, sharedPath ? 'workspace_path_conflicts_with_active_child' : 'workspace_conflicts_with_active_child', { conflicting: [child] });
       }
     }
     const intent: RunIntent = {
@@ -480,13 +479,28 @@ export class DurableDelegationService {
       createdAt: parent.intent.createdAt,
     };
     const admitted = await this.#coordinator.admit(intent);
-    if (!admitted.accepted || admitted.snapshot === undefined) return { accepted: false, reason: admitted.reason };
+    if (!admitted.accepted || admitted.snapshot === undefined) return this.rejected(request, admitted.reason ?? 'child_admission_rejected', { childRunId });
     // This event is the authoritative child ownership envelope. It is recorded
     // before the first child message, so a restart can discover scope, parent,
     // delegation and workspace identity without trusting provider output.
     await this.recordAdmission(childRunId, envelope);
     await this.queueOnce(childRunId, envelope, `delegation-initial-${childRunId}-${envelope.payloadDigest}`);
     return { accepted: true, child: { delegationId: request.delegationId, parentRunId: request.parentRunId, childRunId, envelope, snapshot: this.#coordinator.snapshot(childRunId) as RunSnapshot } };
+  }
+
+  private async rejected(request: DelegationRequest, reason: string, options: { childRunId?: string; conflicting?: DelegatedChild[]; orphaned?: boolean } = {}): Promise<ChildAdmissionResult> {
+    const blocker = createDelegationBlocker({
+      reasonCode: reason, parentRunId: request.parentRunId, childRunId: options.childRunId,
+      workstreamId: request.workstreamId, delegationId: request.delegationId,
+      requestedPaths: request.ownership.paths, orphaned: options.orphaned,
+      conflicting: options.conflicting?.map((child) => ({ paths: child.envelope.ownership.paths, childRunId: child.childRunId, delegationId: child.delegationId })),
+    });
+    try {
+      await this.#coordinator.record('provider.event', request.parentRunId, { type: 'delegation.blocked', blocker });
+    } catch {
+      // A diagnostic write must not widen or otherwise change a safe rejection.
+    }
+    return { accepted: false, reason, blocker };
   }
 
   private async handoffExclusive(parentRunId: string, childRunId: string, artifacts: Array<{ artifactId: string; digest: string }>): Promise<void> {

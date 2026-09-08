@@ -4,6 +4,13 @@ Open **Settings → Edit settings** to change the factory name, provider catalog
 factory defaults, coordinator limits, product and pod assignments, approval
 policies, and compatible models on existing execution routes.
 
+Factory defaults include optional **Role assignments**. Add manager, builder,
+reviewer, merge-captain, or any custom role; choose its configured provider ID,
+optional model, and reasoning preference. One provider can fill several roles.
+Roles inherit into products and pods unless overridden. They are saved planning
+preferences, not new execution routes: they do not launch workers, grant merge
+authority, or override an explicitly configured work-item execution plan.
+
 1. Edit the fields you need. Expanding a section does not change it.
 2. Choose **Review changes**. The service validates the proposed configuration
    against the current file and displays changes and material risks.

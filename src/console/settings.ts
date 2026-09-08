@@ -1,4 +1,4 @@
-import type { Authority, Budget, EnvironmentKind, ExecutionProfile, ProviderCapability, ResolvedFactoryConfiguration } from '../config/index.ts';
+import type { Authority, Budget, EnvironmentKind, ExecutionProfile, FactoryRoleAssignment, ProviderCapability, ResolvedFactoryConfiguration } from '../config/index.ts';
 import type { AdmissionLimits } from '../runtime/index.ts';
 import type { LocalConsoleConfiguration, LocalProviderRoute } from './startup.ts';
 
@@ -11,6 +11,7 @@ export interface ConsoleSettingsScope {
   requiredCapabilities: ProviderCapability[];
   budget: Budget;
   authority: Authority;
+  roleAssignments?: FactoryRoleAssignment[];
 }
 
 export interface ConsoleSettings {
@@ -23,6 +24,7 @@ export interface ConsoleSettings {
   providers: Array<{
     id: ConsoleProviderId;
     configured: boolean;
+    configuredIds: string[];
     enabled: boolean;
     authentication: {
       status: 'unknown';
@@ -89,6 +91,7 @@ function scopeSummary(scope: ResolvedFactoryConfiguration['factory']['defaults']
       allowLocalDeployment: scope.authority.allowLocalDeployment,
       allowSeparateBilling: scope.authority.allowSeparateBilling,
     },
+    ...(scope.roleAssignments === undefined ? {} : { roleAssignments: scope.roleAssignments.map((assignment) => ({ role: assignment.role, providerId: assignment.providerId, ...(assignment.model === undefined ? {} : { model: assignment.model }), ...(assignment.reasoning === undefined ? {} : { reasoning: assignment.reasoning }) })) }),
   };
 }
 
@@ -115,6 +118,7 @@ export function createConsoleSettings(configuration: LocalConsoleConfiguration):
       return {
         id,
         configured: catalogEntries.length > 0,
+        configuredIds: catalogEntries.map((provider) => provider.id),
         enabled: routes.length > 0,
         authentication: {
           status: 'unknown',

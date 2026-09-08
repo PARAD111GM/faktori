@@ -1,5 +1,7 @@
 :root { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #171819; background: #252525; font-synthesis: none; --shell: #252525; --paper: #f3f3f0; --support: #dadbd8; --muted: #c5c8c6; --ink: #171819; --secondary: #545957; --line: #b9bebb; --accent: #e65326; --gap: 4px; }
 .settings-page { display: grid; gap: 4px; }
+.role-assignments { margin: 16px 0 20px; }.role-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr) auto; gap: 10px; align-items: end; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 13px; }.role-row > strong { text-transform: capitalize; }.role-row small { align-self: center; }.role-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }.role-suggestions button { background: var(--support); color: var(--ink); font-size: 12px; padding: 7px 10px; }.role-row input, .role-row select { font-size: 12px; }
+@media(max-width: 1000px) { .role-row { grid-template-columns: repeat(2,minmax(0,1fr)); }.role-row > button { justify-self: start; } }
 .settings-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }.settings-editor h3 { margin-top: 24px; }
 .settings-form-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,220px),1fr)); gap: 12px; margin: 12px 0; }
 .settings-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--support); border-radius: 3px; }

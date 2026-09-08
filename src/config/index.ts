@@ -3,20 +3,21 @@
 type Issue = { path: string; message: string };
 type InputRecord = Record<string, unknown>;
 type ResolvedScope = { providerId?: string; environmentId?: string; executionProfile: ExecutionProfile; requiredCapabilities: ProviderCapability[] };
-type ResolvedProduct = { id?: string; name?: string } & ResolvedScope & { budget: Budget; authority: Authority };
-type ResolvedPod = { id?: string; productId?: string } & ResolvedScope & { budget: Budget; authority: Authority };
+type ResolvedProduct = { id?: string; name?: string } & ResolvedScope & { budget: Budget; authority: Authority; roleAssignments?: FactoryRoleAssignment[] };
+type ResolvedPod = { id?: string; productId?: string } & ResolvedScope & { budget: Budget; authority: Authority; roleAssignments?: FactoryRoleAssignment[] };
 export type ProviderKind = 'claude-code' | 'codex' | 'cursor';
 export type ProviderCapability = 'isolated' | 'native' | 'subagents' | 'token-limit';
 export type EnvironmentKind = 'local' | 'preview' | 'production';
 export type ExecutionProfile = 'isolated' | 'native';
 export interface Budget { maxConcurrentRuns: number; maxRetries: number; maxRuntimeMinutes: number; maxTokens: number; strictSpending: boolean; }
 export interface Authority { requireIntentApproval: boolean; requireSpecificationApproval: boolean; requireIndependentReview: boolean; mergeAuthority: 'human' | 'coordinator'; productionReleaseAuthority: 'human' | 'coordinator'; allowPreviewDeployment: boolean; allowLocalDeployment: boolean; allowSeparateBilling: boolean; }
+export interface FactoryRoleAssignment { role: string; providerId: string; model?: string; reasoning?: 'low' | 'medium' | 'high'; }
 export type BudgetOverride = Partial<Budget>;
 export type AuthorityOverride = Partial<Authority> & { riskAcknowledgements?: Partial<Record<keyof Authority, string>> };
 export interface ScopeOverride { providerId?: string; environmentId?: string; executionProfile?: ExecutionProfile; requiredCapabilities?: ProviderCapability[]; }
-export interface TargetOverrides extends ScopeOverride { budget?: BudgetOverride; authority?: AuthorityOverride; }
+export interface TargetOverrides extends ScopeOverride { budget?: BudgetOverride; authority?: AuthorityOverride; roleAssignments?: FactoryRoleAssignment[]; }
 export interface FactoryConfiguration { factory: { id: string; name: string; defaults?: TargetOverrides }; providers: Array<{ id: string; kind: ProviderKind; capabilities: ProviderCapability[] }>; environments: Array<{ id: string; kind: EnvironmentKind }>; products: Array<{ id: string; name: string; overrides?: TargetOverrides }>; pods: Array<{ id: string; productId: string; overrides?: TargetOverrides }>; }
-export interface ResolvedTarget extends Required<ScopeOverride> { budget: Budget; authority: Authority; }
+export interface ResolvedTarget extends Required<ScopeOverride> { budget: Budget; authority: Authority; roleAssignments?: FactoryRoleAssignment[]; }
 export interface ResolvedFactoryConfiguration { factory: { id: string; name: string; defaults: ResolvedTarget }; providers: FactoryConfiguration['providers']; environments: FactoryConfiguration['environments']; products: Array<{ id: string; name: string } & ResolvedTarget>; pods: Array<{ id: string; productId: string } & ResolvedTarget>; }
 
 /** @typedef {'claude-code' | 'codex' | 'cursor'} ProviderKind */
@@ -264,6 +265,33 @@ function validateResolvedTarget(providers: Map<string, { id: string; capabilitie
   }
 }
 
+function mergeRoleAssignments(base: FactoryRoleAssignment[] | undefined, sparse: unknown, path: string, providers: Map<string, unknown>, issues: Issue[]): FactoryRoleAssignment[] | undefined {
+  if (sparse === undefined) return base?.map((assignment) => ({ ...assignment }));
+  if (!Array.isArray(sparse)) {
+    addIssue(issues, path, 'must be an array');
+    return base?.map((assignment) => ({ ...assignment }));
+  }
+  const roles = new Set<string>();
+  const assignments: FactoryRoleAssignment[] = [];
+  sparse.forEach((value, index) => {
+    const itemPath = `${path}[${index}]`;
+    const assignment = record(value, itemPath, issues);
+    rejectUnknownKeys(assignment, new Set(['role', 'providerId', 'model', 'reasoning']), itemPath, issues);
+    const role = requiredString(assignment.role, `${itemPath}.role`, issues);
+    const providerId = requiredString(assignment.providerId, `${itemPath}.providerId`, issues);
+    if (role !== undefined && (role.length > 64 || !/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/.test(role))) addIssue(issues, `${itemPath}.role`, 'must be a lowercase role slug of at most 64 characters');
+    if (role !== undefined && roles.has(role)) addIssue(issues, `${itemPath}.role`, `duplicates role "${role}"`);
+    if (role !== undefined) roles.add(role);
+    if (providerId !== undefined && !providers.has(providerId)) addIssue(issues, `${itemPath}.providerId`, `unknown provider "${providerId}"`);
+    const model = assignment.model;
+    if (model !== undefined && (typeof model !== 'string' || model.trim().length === 0 || model.length > 128)) addIssue(issues, `${itemPath}.model`, 'must be a bounded non-empty string');
+    const reasoning = assignment.reasoning;
+    if (reasoning !== undefined && reasoning !== 'low' && reasoning !== 'medium' && reasoning !== 'high') addIssue(issues, `${itemPath}.reasoning`, 'must be "low", "medium", or "high"');
+    if (role !== undefined && providerId !== undefined) assignments.push({ role, providerId, ...(typeof model === 'string' && model.trim().length > 0 && model.length <= 128 ? { model } : {}), ...(reasoning === 'low' || reasoning === 'medium' || reasoning === 'high' ? { reasoning } : {}) });
+  });
+  return assignments;
+}
+
 /**
  * Parse and resolve a versioned factory configuration. A missing property inherits;
  * a present property is always validated, including false, zero, and empty values.
@@ -278,7 +306,7 @@ export function resolveFactoryConfig(configuration: unknown) {
   const factoryId = requiredString(factory.id, 'factory.id', issues);
   const factoryName = requiredString(factory.name, 'factory.name', issues);
   const defaults = factory.defaults === undefined ? {} : record(factory.defaults, 'factory.defaults', issues);
-  rejectUnknownKeys(defaults, new Set(['providerId', 'environmentId', 'executionProfile', 'requiredCapabilities', 'budget', 'authority']), 'factory.defaults', issues);
+  rejectUnknownKeys(defaults, new Set(['providerId', 'environmentId', 'executionProfile', 'requiredCapabilities', 'budget', 'authority', 'roleAssignments']), 'factory.defaults', issues);
 
   const providers = new Map();
   const providerValues = Array.isArray(config.providers) ? config.providers : [];
@@ -317,6 +345,7 @@ export function resolveFactoryConfig(configuration: unknown) {
   const factoryScope = mergeScope(undefined, defaults, 'factory.defaults', issues);
   const factoryBudget = mergeBudget(undefined, defaults.budget, 'factory.defaults.budget', issues);
   const factoryAuthority = mergeAuthority(undefined, defaults.authority, 'factory.defaults.authority', issues);
+  const factoryRoleAssignments = mergeRoleAssignments(undefined, defaults.roleAssignments, 'factory.defaults.roleAssignments', providers, issues);
 
   const productIds = new Set();
   const products: ResolvedProduct[] = [];
@@ -333,17 +362,18 @@ export function resolveFactoryConfig(configuration: unknown) {
       productIds.add(id);
     }
     const overrides = product.overrides === undefined ? {} : record(product.overrides, `${path}.overrides`, issues);
-    rejectUnknownKeys(overrides, new Set([...SCOPE_KEYS, 'budget', 'authority']), `${path}.overrides`, issues);
+    rejectUnknownKeys(overrides, new Set([...SCOPE_KEYS, 'budget', 'authority', 'roleAssignments']), `${path}.overrides`, issues);
     const scope = mergeScope(factoryScope, overrides, `${path}.overrides`, issues);
     const budget = mergeBudget(factoryBudget, overrides.budget, `${path}.overrides.budget`, issues);
     const authority = mergeAuthority(factoryAuthority, overrides.authority, `${path}.overrides.authority`, issues);
+    const roleAssignments = mergeRoleAssignments(factoryRoleAssignments, overrides.roleAssignments, `${path}.overrides.roleAssignments`, providers, issues);
     validateResolvedTarget(providers, environments, { ...scope, budget }, path, issues, {
       providerId: hasOwn(overrides, 'providerId') ? `${path}.overrides.providerId` : undefined,
       environmentId: hasOwn(overrides, 'environmentId') ? `${path}.overrides.environmentId` : undefined,
       executionProfile: hasOwn(overrides, 'executionProfile') ? `${path}.overrides.executionProfile` : undefined,
       requiredCapabilities: hasOwn(overrides, 'requiredCapabilities') ? `${path}.overrides.requiredCapabilities` : undefined,
     });
-    products.push({ id, name, ...scope, budget, authority });
+    products.push({ id, name, ...scope, budget, authority, ...(roleAssignments === undefined ? {} : { roleAssignments }) });
   });
 
   const resolvedProducts = new Map(products.filter((product) => product.id).map((product) => [product.id, product]));
@@ -364,22 +394,23 @@ export function resolveFactoryConfig(configuration: unknown) {
     const product = productId ? resolvedProducts.get(productId) : undefined;
     if (productId && !product) addIssue(issues, `${path}.productId`, `unknown product "${productId}"`);
     const overrides = pod.overrides === undefined ? {} : record(pod.overrides, `${path}.overrides`, issues);
-    rejectUnknownKeys(overrides, new Set([...SCOPE_KEYS, 'budget', 'authority']), `${path}.overrides`, issues);
+    rejectUnknownKeys(overrides, new Set([...SCOPE_KEYS, 'budget', 'authority', 'roleAssignments']), `${path}.overrides`, issues);
     const scope = mergeScope(product ?? factoryScope, overrides, `${path}.overrides`, issues);
     const budget = mergeBudget(product?.budget ?? factoryBudget, overrides.budget, `${path}.overrides.budget`, issues);
     const authority = mergeAuthority(product?.authority ?? factoryAuthority, overrides.authority, `${path}.overrides.authority`, issues);
+    const roleAssignments = mergeRoleAssignments(product?.roleAssignments ?? factoryRoleAssignments, overrides.roleAssignments, `${path}.overrides.roleAssignments`, providers, issues);
     validateResolvedTarget(providers, environments, { ...scope, budget }, path, issues, {
       providerId: hasOwn(overrides, 'providerId') ? `${path}.overrides.providerId` : undefined,
       environmentId: hasOwn(overrides, 'environmentId') ? `${path}.overrides.environmentId` : undefined,
       executionProfile: hasOwn(overrides, 'executionProfile') ? `${path}.overrides.executionProfile` : undefined,
       requiredCapabilities: hasOwn(overrides, 'requiredCapabilities') ? `${path}.overrides.requiredCapabilities` : undefined,
     });
-    pods.push({ id, productId, ...scope, budget, authority });
+    pods.push({ id, productId, ...scope, budget, authority, ...(roleAssignments === undefined ? {} : { roleAssignments }) });
   });
 
   if (issues.length > 0) throw new ConfigValidationError(issues);
   return {
-    factory: { id: factoryId, name: factoryName, defaults: { ...factoryScope, budget: factoryBudget, authority: factoryAuthority } },
+    factory: { id: factoryId, name: factoryName, defaults: { ...factoryScope, budget: factoryBudget, authority: factoryAuthority, ...(factoryRoleAssignments === undefined ? {} : { roleAssignments: factoryRoleAssignments }) } },
     providers: [...providers.values()].map((provider) => ({ ...provider, capabilities: [...provider.capabilities] })),
     environments: [...environments.values()],
     products,

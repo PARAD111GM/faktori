@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { startLocalConsoleFromFile } from '../../src/console/startup.ts';
+import { parseLocalConsoleConfiguration } from '../../src/console/startup.ts';
+import { FileConsoleSettingsEditor } from '../../src/console/settings-edit.ts';
+import { createConsoleSettings } from '../../src/console/settings.ts';
 
 function identityProbe() {
   const current = { pid: process.pid, processStartedAt: 'settings-test-process', processGroupId: process.pid, running: true };
@@ -133,5 +136,53 @@ describe('editable Console settings', () => {
       expect([left.statusCode, right.statusCode].sort()).toEqual([200, 409]);
       expect(['First writer', 'Second writer']).toContain(JSON.parse(await readFile(configPath, 'utf8')).factoryConfiguration.factory.name);
     } finally { await started?.close().catch(() => undefined); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('persists custom default roles across restart, preserves sparse inheritance, and can clear them without changing authority', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-settings-roles-'));
+    const configPath = join(root, 'console.json');
+    const factoryConfiguration = JSON.parse(await readFile(new URL('../../examples/config/solo.json', import.meta.url), 'utf8'));
+    factoryConfiguration.providers.push({ id: 'review-provider', kind: 'codex', capabilities: ['native', 'token-limit'] });
+    const raw = { factoryId: 'solo-studio', factoryConfiguration, journalPath: join(root, 'operations.jsonl'), projectionPath: join(root, 'projection.sqlite'), port: 0, commandToken: 'role-token', allowedOrigins: ['http://127.0.0.1:4173'], limits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 45, maxTokens: 30_000, strictSpending: true, strictSpendingSupported: true } };
+    const content = `${JSON.stringify(raw, null, 2)}\n`;
+    await writeFile(configPath, content);
+    try {
+      const parsed = parseLocalConsoleConfiguration(raw);
+      expect(createConsoleSettings(parsed).providers[0].configuredIds).toEqual(['codex', 'review-provider']);
+      const originalAuthority = structuredClone(raw.factoryConfiguration.factory.defaults.authority);
+      let editor = new FileConsoleSettingsEditor({ path: configPath, loadedContent: content, validate: parseLocalConsoleConfiguration });
+      const edit = await editor.edit();
+      const withRoles = structuredClone(edit.draft);
+      withRoles.defaults.roleAssignments = [
+        { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high' },
+        { role: 'merge_captain', providerId: 'review-provider', reasoning: 'medium' },
+      ];
+      const preview = await editor.preview({ revision: edit.revision, draft: withRoles });
+      expect(preview.risks).toEqual([]);
+      expect(preview.draft.products[0].overrides.roleAssignments).toEqual(withRoles.defaults.roleAssignments);
+      expect(preview.draft.pods[0].overrides.roleAssignments).toEqual(withRoles.defaults.roleAssignments);
+      const saved = await editor.save({ revision: edit.revision, draft: withRoles, confirm: true, acknowledgedRiskIds: [] });
+      const persisted = JSON.parse(await readFile(configPath, 'utf8'));
+      expect(persisted.factoryConfiguration.factory.defaults.roleAssignments).toEqual(withRoles.defaults.roleAssignments);
+      expect(persisted.factoryConfiguration.products[0]).not.toHaveProperty('overrides');
+      expect(persisted.factoryConfiguration.pods[0]).not.toHaveProperty('overrides');
+      expect(persisted.factoryConfiguration.factory.defaults.authority).toEqual(originalAuthority);
+
+      const restartedContent = await readFile(configPath, 'utf8');
+      editor = new FileConsoleSettingsEditor({ path: configPath, loadedContent: restartedContent, validate: parseLocalConsoleConfiguration });
+      const restarted = await editor.edit();
+      expect(restarted.revision).toBe(saved.revision);
+      expect(restarted.draft.defaults.roleAssignments).toEqual(withRoles.defaults.roleAssignments);
+      const cleared = structuredClone(restarted.draft);
+      cleared.defaults.roleAssignments = [];
+      const clearPreview = await editor.preview({ revision: restarted.revision, draft: cleared });
+      expect(clearPreview.draft.products[0].overrides.roleAssignments).toEqual([]);
+      const clearSaved = await editor.save({ revision: restarted.revision, draft: cleared, confirm: true, acknowledgedRiskIds: [] });
+      expect(clearSaved.changed).toBe(true);
+      const clearedRaw = JSON.parse(await readFile(configPath, 'utf8'));
+      expect(clearedRaw.factoryConfiguration.factory.defaults.roleAssignments).toEqual([]);
+      expect(clearedRaw.factoryConfiguration.products[0]).not.toHaveProperty('overrides');
+      expect(clearedRaw.factoryConfiguration.factory.defaults.authority).toEqual(originalAuthority);
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

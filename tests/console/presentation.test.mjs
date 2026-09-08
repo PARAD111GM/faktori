@@ -26,6 +26,20 @@ afterAll(async () => {
 });
 
 describe('Console presentation contract', () => {
+  it('offers flexible role assignments without implying merge authority', async () => {
+    const { RoleAssignments } = await server.ssrLoadModule('/console/src/role-assignments.tsx');
+    const settings = {providers:[{id:'codex',configuredIds:['my-codex']}]};
+    const html = renderToStaticMarkup(createElement(RoleAssignments, {settings, assignments:[{role:'merge-captain',providerId:'my-codex',model:'model-a',reasoning:'high'}], onChange() {}}));
+    expect(html).toContain('my-codex');
+    expect(html).toContain('model-a');
+    expect(html).toContain('Remove role merge-captain');
+    expect(html).toContain('+ manager');
+    expect(html).toContain('+ Custom role');
+    expect(html).toContain('does not change merge authority');
+    const empty = renderToStaticMarkup(createElement(RoleAssignments, {settings}));
+    expect(empty).toContain('No roles assigned');
+    expect(empty).not.toContain('<input');
+  });
   it('renders scoped run counts without promoting absent usage telemetry to zero', () => {
     const runs = [
       {

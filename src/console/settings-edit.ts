@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
-import type { Authority, Budget, ExecutionProfile, ProviderCapability, ResolvedFactoryConfiguration } from '../config/index.ts';
+import type { Authority, Budget, ExecutionProfile, FactoryRoleAssignment, ProviderCapability, ResolvedFactoryConfiguration } from '../config/index.ts';
 import type { AdmissionLimits } from '../runtime/index.ts';
 import type { LocalConsoleConfiguration } from './startup.ts';
 import type { ConsoleProviderId, ConsoleSettingsScope } from './settings.ts';
@@ -51,7 +51,7 @@ const PROVIDERS: ConsoleProviderId[] = ['codex', 'claude', 'cursor'];
 const CAPABILITIES: ProviderCapability[] = ['isolated', 'native', 'subagents', 'token-limit'];
 const AUTHORITY_KEYS: Array<keyof Authority> = ['requireIntentApproval', 'requireSpecificationApproval', 'requireIndependentReview', 'mergeAuthority', 'productionReleaseAuthority', 'allowPreviewDeployment', 'allowLocalDeployment', 'allowSeparateBilling'];
 const BUDGET_KEYS: Array<keyof Budget> = ['maxConcurrentRuns', 'maxRetries', 'maxRuntimeMinutes', 'maxTokens', 'strictSpending'];
-const SCOPE_KEYS = ['providerId', 'environmentId', 'executionProfile', 'requiredCapabilities', 'budget', 'authority'] as const;
+const SCOPE_KEYS = ['providerId', 'environmentId', 'executionProfile', 'requiredCapabilities', 'budget', 'authority', 'roleAssignments'] as const;
 const STANDARD_PROVIDERS: Record<ConsoleProviderId, { id: string; kind: 'codex' | 'claude-code' | 'cursor'; capabilities: ProviderCapability[] }> = {
   codex: { id: 'codex', kind: 'codex', capabilities: ['isolated', 'native', 'subagents', 'token-limit'] },
   claude: { id: 'claude', kind: 'claude-code', capabilities: ['native', 'subagents'] },
@@ -100,11 +100,30 @@ function authority(value: unknown, path: string): Authority {
   return item as unknown as Authority;
 }
 
+function roleAssignments(value: unknown, path: string): FactoryRoleAssignment[] {
+  if (!Array.isArray(value)) throw new Error(`${path} must be an array`);
+  const roles = new Set<string>();
+  return value.map((entry, index) => {
+    const itemPath = `${path}[${index}]`;
+    const item = object(entry, itemPath, ['role', 'providerId', 'model', 'reasoning']);
+    const role = text(item.role, `${itemPath}.role`);
+    const providerId = text(item.providerId, `${itemPath}.providerId`);
+    if (role.length > 64 || !/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/.test(role)) throw new Error(`${itemPath}.role must be a lowercase role slug of at most 64 characters`);
+    if (roles.has(role)) throw new Error(`${itemPath}.role duplicates role ${role}`);
+    roles.add(role);
+    const model = item.model;
+    if (model !== undefined && (typeof model !== 'string' || model.trim().length === 0 || model.length > 128)) throw new Error(`${itemPath}.model must be a bounded non-empty string`);
+    const reasoning = item.reasoning;
+    if (reasoning !== undefined && reasoning !== 'low' && reasoning !== 'medium' && reasoning !== 'high') throw new Error(`${itemPath}.reasoning is invalid`);
+    return { role, providerId, ...(typeof model === 'string' ? { model } : {}), ...(reasoning === 'low' || reasoning === 'medium' || reasoning === 'high' ? { reasoning } : {}) };
+  });
+}
+
 function scope(value: unknown, path: string): ConsoleSettingsScope {
   const item = object(value, path, SCOPE_KEYS);
   const executionProfile = item.executionProfile;
   if (executionProfile !== 'native' && executionProfile !== 'isolated') throw new Error(`${path}.executionProfile is invalid`);
-  return { providerId: text(item.providerId, `${path}.providerId`), environmentId: text(item.environmentId, `${path}.environmentId`), executionProfile, requiredCapabilities: strings(item.requiredCapabilities, `${path}.requiredCapabilities`, CAPABILITIES), budget: budget(item.budget, `${path}.budget`), authority: authority(item.authority, `${path}.authority`) };
+  return { providerId: text(item.providerId, `${path}.providerId`), environmentId: text(item.environmentId, `${path}.environmentId`), executionProfile, requiredCapabilities: strings(item.requiredCapabilities, `${path}.requiredCapabilities`, CAPABILITIES), budget: budget(item.budget, `${path}.budget`), authority: authority(item.authority, `${path}.authority`), ...(item.roleAssignments === undefined ? {} : { roleAssignments: roleAssignments(item.roleAssignments, `${path}.roleAssignments`) }) };
 }
 
 function limits(value: unknown): ConsoleEditableLimits {
@@ -133,7 +152,7 @@ function same(left: unknown, right: unknown): boolean { return JSON.stringify(le
 function rawObject(value: unknown, path: string): JsonObject { return object(value, path); }
 
 function scopeDraft(value: ResolvedFactoryConfiguration['factory']['defaults']): ConsoleSettingsScope {
-  return { providerId: value.providerId, environmentId: value.environmentId, executionProfile: value.executionProfile, requiredCapabilities: [...value.requiredCapabilities], budget: { ...value.budget }, authority: { ...value.authority } };
+  return { providerId: value.providerId, environmentId: value.environmentId, executionProfile: value.executionProfile, requiredCapabilities: [...value.requiredCapabilities], budget: { ...value.budget }, authority: { ...value.authority }, ...(value.roleAssignments === undefined ? {} : { roleAssignments: value.roleAssignments.map((assignment) => ({ ...assignment })) }) };
 }
 
 function toDraft(configuration: LocalConsoleConfiguration): ConsoleSettingsDraft {
@@ -178,6 +197,7 @@ function patchScope(target: JsonObject, baseline: ConsoleSettingsScope, desired:
     recordAuthorityAcknowledgement(authorityTarget, key, inherited.authority, desired.authority);
   }
   if (Object.keys(authorityTarget).length === 0) delete target.authority; else target.authority = authorityTarget;
+  if (!same(desired.roleAssignments, baseline.roleAssignments)) setOrDelete(target, 'roleAssignments', desired.roleAssignments, inherited.roleAssignments);
 }
 
 function patchFactoryDefaults(target: JsonObject, baseline: ConsoleSettingsScope, desired: ConsoleSettingsScope): void {
@@ -191,6 +211,9 @@ function patchFactoryDefaults(target: JsonObject, baseline: ConsoleSettingsScope
     recordAuthorityAcknowledgement(authorityTarget, key, DEFAULT_AUTHORITY, desired.authority);
   }
   if (Object.keys(authorityTarget).length > 0) target.authority = authorityTarget;
+  if (!same(desired.roleAssignments, baseline.roleAssignments)) {
+    if (desired.roleAssignments === undefined) delete target.roleAssignments; else target.roleAssignments = clone(desired.roleAssignments);
+  }
 }
 
 function routeKey(value: { providerId: string; profile: string }): string { return `${value.providerId}:${value.profile}`; }

@@ -102,6 +102,47 @@ describe('resolveFactoryConfig', () => {
     expect(resolved.products[0].requiredCapabilities).toEqual([]);
   });
 
+  it('inherits optional custom role assignments without changing authority', () => {
+    const before = resolveFactoryConfig(BASE_CONFIG);
+    const resolved = resolveFactoryConfig(withConfig((config) => {
+      config.providers.push({ id: 'review-provider', kind: 'codex', capabilities: ['native', 'token-limit'] });
+      config.factory.defaults.roleAssignments = [
+        { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high' },
+        { role: 'release_captain', providerId: 'review-provider' },
+      ];
+      config.pods[0].overrides = { roleAssignments: [] };
+      return config;
+    }));
+
+    expect(resolved.factory.defaults.roleAssignments).toEqual([
+      { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high' },
+      { role: 'release_captain', providerId: 'review-provider' },
+    ]);
+    expect(resolved.products[0].roleAssignments).toEqual(resolved.factory.defaults.roleAssignments);
+    expect(resolved.pods[0].roleAssignments).toEqual([]);
+    expect(resolved.factory.defaults.authority).toEqual(before.factory.defaults.authority);
+    expect(resolved.products[0].authority).toEqual(before.products[0].authority);
+  });
+
+  it('keeps role assignments absent for existing configurations and rejects malformed assignments', () => {
+    const existing = resolveFactoryConfig(BASE_CONFIG);
+    expect(existing.factory.defaults).not.toHaveProperty('roleAssignments');
+    expect(existing.products[0]).not.toHaveProperty('roleAssignments');
+    expect(existing.pods[0]).not.toHaveProperty('roleAssignments');
+
+    const invalid = [
+      [{ role: 'Bad Role', providerId: 'codex' }, /lowercase role slug/],
+      [[{ role: 'builder', providerId: 'codex' }, { role: 'builder', providerId: 'cursor' }], /duplicates role/],
+      [{ role: 'builder', providerId: 'missing' }, /unknown provider/],
+      [{ role: 'builder', providerId: 'codex', model: 'x'.repeat(129) }, /bounded non-empty string/],
+      [{ role: 'builder', providerId: 'codex', reasoning: 'ultra' }, /must be "low", "medium", or "high"/],
+      [{ role: 'builder', providerId: 'codex', command: 'forbidden' }, /not a supported setting/],
+    ];
+    for (const [assignments, expected] of invalid) {
+      expect(() => resolveFactoryConfig(withConfig((config) => { config.factory.defaults.roleAssignments = Array.isArray(assignments) ? assignments : [assignments]; return config; }))).toThrow(expected);
+    }
+  });
+
   it('does not invent a pod for a product that has none', () => {
     const resolved = resolveFactoryConfig(withConfig((config) => {
       config.products.push({

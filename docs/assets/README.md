@@ -23,6 +23,14 @@ as verified GPT-image-2 outputs. No separately billed API route was used.
   ivory, coal-black, and vermilion woodcut palette. Generated with the built-in
   image tool and visually checked for readable, accurate lettering.
 
-All were generated as new flat artwork, not screenshots or runtime evidence.
+- `faktori-recruitment-parody.png`: generated with the built-in image tool using
+  the owner's supplied pointing-officer poster as a composition reference.
+  Preserve its mustachioed officer, ivory paper, red-and-blue border, and giant
+  red YOU; replace the glove with an articulated brass-and-steel mechanical
+  hand, insignia with factory gears, and copy with “THE 4TH INDUSTRIAL
+  REVOLUTION NEEDS YOU” and “FAKTORI — HUMAN MANAGEMENT STILL REQUIRED”.
+  This variant closes the README; the earlier recruitment artwork is retained.
+
+All are illustrative artwork, not screenshots or runtime evidence.
 Lettering, stage order, and feedback direction were visually inspected. README
 text preserves the diagram's meaning independently of the raster image.

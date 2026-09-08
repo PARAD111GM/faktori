@@ -61,6 +61,7 @@ nav button:hover { background: #303532; }
 .attention-panel, .capacity-panel { min-height: 225px; }
 .active-panel, .blocker-panel { min-height: 250px; }
 .capacity-panel { background: #1b1f1d; color: #f5f6f3; border: 1px solid #545c56; }
+.overview-bento > .capacity-panel { background: #3b3b3b; border-color: #555; }
 .capacity-panel p { color: #b4beb6; }.capacity-panel .panel-heading strong { color: #ff824f; }
 .capacity-list, .resource-list, .inspection dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); gap: 12px; margin: 0; font-size: 13px; }
 dt { color: var(--secondary); }dd { margin: 0; text-align: right; font-weight: 650; overflow-wrap: anywhere; }

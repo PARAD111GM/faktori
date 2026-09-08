@@ -2,10 +2,10 @@
 
 # FAKTORI
 
-### Your agents. Your workflow. Your software factory.
+### Seize the means of software production.
 
-Turn product intent into a coordinated software delivery loop.<br>
-Self-hosted. Open source. Built to work across coding agents.
+The Fourth Industrial Revolution has reached your backlog.<br>
+Self-hosted. Open source. Human management still required.
 
 [Get started](#start-with-an-intent) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
@@ -13,19 +13,27 @@ Self-hosted. Open source. Built to work across coding agents.
 
 ---
 
-## Own the factory. Choose the intelligence.
+## Congratulations, you own a factory now.
 
-Coding agents can write software. Running a software operation takes more:
-clear requirements, coordinated work, review, releases, recovery, and a way to
-see what is actually happening.
+The first industrial revolution mechanized labor. The second gave it a production
+line. The third put a computer on everyone's desk. The fourth has three computers
+asking each other whether the tests actually passed.
 
-**Faktori gives those agents a shared operating system for delivery.**
+Progress.
+
+Coding agents can write software. Unfortunately, someone still has to explain
+what to build, coordinate the work, review the result, and establish whether
+“deployment successful” means anything is working.
+
+**Faktori gives those agents a shared operating system for delivery.** Think
+factory floor, not another chat window with a hard hat on its logo.
 Intent, specifications, policies, and evidence stay yours—not trapped in one
 provider's conversation history. Codex, Claude Code, and Cursor work against
 the same source of truth, with explicit scope and portable handoffs.
 
 Start with one developer, one product, and one provider. Add products, pods,
-or specialists when the work calls for them—not because the framework does.
+or specialists when the work calls for them. A to-do app does not require a
+Ministry of Agent Coordination.
 
 ```text
                        Your intent
@@ -39,33 +47,36 @@ or specialists when the work calls for them—not because the framework does.
              Shared artifacts · Explicit authority · Evidence
 ```
 
-## What makes it a factory?
+## Your new means of production
 
 | Capability | What it gives you |
 | --- | --- |
-| **Agent-guided setup** | Discover resources, clarify intent, approve a concrete configuration, and provision with interruption recovery. |
-| **15 bundled skills** | Interviews, research, planning, design, implementation, testing, independent review, deployment, maintenance, and handoffs. No external skill collection required. |
-| **Three provider adapters** | Codex, Claude Code, and Cursor, with explicit sessions and visible capability differences. Use one or combine them. |
-| **A local Console** | Work board and hierarchy, run timelines, waiting decisions, agent state, resource visibility, and factory health. |
-| **Recoverable coordination** | Durable run records, bounded admission, workspaces, cancellation, and reconciliation before retrying uncertain actions. |
-| **Owner-controlled delivery** | GitHub integration, optional Jira, revision-bound evidence, and configurable review and release authority. |
-| **An AI Factory GM** | Diagnose factory problems and propose improvements without taking over product requirements or granting itself authority. |
+| **Agent-guided setup** | Discover resources, clarify intent, approve a configuration, and provision with interruption recovery. The machinery interviews you before ordering more machinery. |
+| **15 bundled skills** | Interview, research, plan, design, build, test, review, deploy, maintain, and hand off. An employee handbook the employees might actually read. |
+| **Three provider adapters** | Codex, Claude Code, and Cursor. Use one or combine them. Supplier loyalty is not an architectural requirement. |
+| **A local Console** | Work board, hierarchy, run timelines, decisions, resource visibility, and health. See the factory floor without opening seventeen tabs. |
+| **Recoverable coordination** | Durable records, bounded admission, workspaces, cancellation, and reconciliation. “We lost the clipboard” is not a recovery strategy. |
+| **Owner-controlled delivery** | GitHub, optional Jira, revision-bound evidence, and configurable release authority. A robot saying “looks good” is not automatically a shipping permit. |
+| **An AI Factory GM** | Diagnose factory problems and propose improvements. Keeps the lights on; cannot promote itself to chairman. |
 
-### Small by default. Yours by design.
+### Industrial capacity. Cottage-industry overhead.
 
-- **Fit the resources you have.** Configure spending, concurrency, providers,
+- **The revolution has a budget.** Configure spending, concurrency, providers,
   and human attention. Missing cost telemetry stays unknown; subscriptions are
   not treated as unlimited inference budgets.
-- **Keep the stack you need.** The lifecycle is stack-neutral. Product commands
+- **Bring your own machinery.** The lifecycle is stack-neutral. Product commands
   and contracts belong with the product, not in a universal framework.
-- **Scale the work, not the ceremony.** A small bug gets a compact record.
+- **No five-year plan for a one-line fix.** A small bug gets a compact record.
   A consequential change gets deeper design and verification.
-- **Keep control.** Defaults favor human approval at consequential boundaries.
+- **Management retains the keys.** Defaults favor human approval at consequential boundaries.
   Owners can change policies after acknowledging the specific risks.
-- **Keep it local.** No required Faktori account, hosted control plane,
+- **Own the factory, not a lease on the lobby.** No required Faktori account, hosted control plane,
   marketplace, or billing service. Provider and integration access remain yours.
 
 ## Start with an intent
+
+Every industrial empire begins with a modest request that will eventually
+require a database migration. Yours begins here.
 
 Clone the repo and open it in your coding agent:
 
@@ -91,7 +102,7 @@ Start with a disposable product and approved test resources. Read
 and the [compatibility matrix](docs/maintenance/compatibility.md) before connecting
 important work.
 
-### Run the source checks
+### Inspect the machinery
 
 Use **Node.js 24 LTS and npm 12**. Native SQLite support may require platform
 build tools. From the source checkout:
@@ -119,10 +130,13 @@ To configure and launch the Console, follow the
 Codex, Claude, and Cursor routes and an isolated Codex route; it does not promise
 identical sandboxing or interaction across all three.
 
-## The operating model
+## The paperwork is load-bearing
 
 **Documents define the work. Providers hold their own records. The coordinator
 records execution. The Console makes it visible.**
+
+This is the unfashionable part of the revolution: writing things down so the
+next shift does not reinvent the company.
 
 Accepted intent, plans, policies, and configuration live in version control.
 Issues, PRs, CI results, and deployments remain authoritative in their configured
@@ -137,6 +151,8 @@ repository; product artifacts normally live beside product code.
 ## Where we are
 
 **Early development. Useful foundations; release validation still in progress.**
+
+The ribbon-cutting committee has been asked to wait for evidence.
 
 `main` includes accepted Phases 0–6 plus the complete SDLC skill kit. The skill
 update passed 301 tests, installed-package checks, and independent instruction
@@ -155,7 +171,7 @@ been proved.
 Longer term: migration assistance, extension tooling, remote workers, and richer
 collaboration. They are directions—not shipped features or prerequisites.
 
-## Go deeper
+## Manuals for the newly industrialized
 
 | Start here | When you need it |
 | --- | --- |
@@ -170,11 +186,13 @@ collaboration. They are directions—not shipped features or prerequisites.
 | [Implementation plan](docs/implementation-plan.md) | Read the full V1 commitment and acceptance criteria. |
 | [Skill verification report](docs/build/sdlc-skills-report.md) | See what was checked and what remains unproved. |
 
-## Build with us
+## Join the works
 
 Bring a real workflow, a reproducible problem, or a smaller way to solve one.
 Read [AGENTS.md](AGENTS.md) before changing code. Keep contributions bounded,
 preserve owner authority, and include behavior-level evidence.
+
+Grand declarations about the future of labor are welcome after the tests pass.
 
 Faktori is licensed under [Apache 2.0](LICENSE). Adapted third-party guidance is
 credited in [the notices](docs/third-party-notices.md).
@@ -183,6 +201,6 @@ credited in [the notices](docs/third-party-notices.md).
 
 <div align="center">
 
-**Better models will keep arriving. Your factory should keep getting better with them.**
+**The means of production are now a Git repository. Please review before merging.**
 
 </div>

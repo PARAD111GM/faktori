@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Get started](#start-with-an-intent) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -87,7 +87,7 @@ cd faktori
 
 Then ask:
 
-> Read AGENTS.md and skills/bootstrap/SKILL.md. Use Faktori to build me a
+> Read INSTALL.md and follow its agent installation instructions. Use Faktori to build me a
 > software factory for **[my product]**. Discover my existing resources, interview
 > me about what matters, and propose the simplest suitable setup before provisioning.
 

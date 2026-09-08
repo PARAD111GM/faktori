@@ -1,7 +1,13 @@
 # Faktori
 
-Build the self-hosted, vendor-neutral software factory specified in `docs/implementation-plan.md`.
-Read that specification, your phase brief, and the latest accepted phase report before work.
+For installation or owner onboarding, start with [INSTALL.md](INSTALL.md) and
+follow its bootstrap route. Do not start construction phases or edit this kit
+when the owner asked you to install a factory.
+
+For development of Faktori itself, read `docs/implementation-plan.md`, your
+phase brief when assigned, and the latest applicable accepted report before work.
+The construction protocol below applies to that development, not to ordinary
+installation or operation of an owner's factory.
 
 ## Construction protocol
 

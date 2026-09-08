@@ -21,6 +21,8 @@
     "provider-entrymaps/source.json",
     "skills",
     "templates",
+    "INSTALL.md",
+    "AGENTS.md",
     "LICENSE",
     "README.md"
   ],

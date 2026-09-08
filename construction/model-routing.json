@@ -1,13 +1,16 @@
 {
   "schemaVersion": 1,
-  "phase": 6,
+  "phase": 7,
   "policy": "Use the least expensive model likely to produce accepted work; escalate only from demonstrated failure.",
   "assignments": [
-    {"role":"phase implementer-orchestrator","tickets":["F6-01","F6-02","F6-03","F6-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Owns recovery and maintenance contracts, runtime integration, installed public-kit proof, canonical records, and acceptance remediation across shared paths."},
-    {"role":"recovery and security tests specialist","tickets":["F6-01","F6-02","F6-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Bounded adversarial recovery, backup/restore, update, and local-service tests in exclusive test paths."},
-    {"role":"public kit documentation specialist","tickets":["F6-04"],"model":"gpt-5.6-luna","reasoning":"medium","rationale":"Bounded operator documentation, compatibility boundary, examples, comparison clarification, and packed-kit verification in exclusive public paths."}
+    {"role":"phase implementer-orchestrator","tickets":["F7-01","F7-02","F7-03","F7-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Owns assembled-product integration, shared records, live-target authority boundaries, defect remediation, claim verification, release audit, and manager coordination."},
+    {"role":"fresh cold-start specialist","tickets":["F7-01"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Independently executes the public onboarding path in temporary local state with only the product request and public repository instructions."},
+    {"role":"host and frozen-fixture evidence specialist","tickets":["F7-02","F7-04"],"model":"gpt-5.6-luna","reasoning":"medium","rationale":"Performs bounded read-only host inventory, checksum verification, fixture execution, and evidence classification without source or incumbent mutations."}
   ],
   "priorAssignments": [
+    {"role":"phase 6 implementer-orchestrator","tickets":["F6-01","F6-02","F6-03","F6-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Owned recovery and maintenance contracts, runtime integration, installed public-kit proof, canonical records, and acceptance remediation across shared paths."},
+    {"role":"phase 6 recovery and security tests specialist","tickets":["F6-01","F6-02","F6-03"],"model":"gpt-5.6-terra","reasoning":"medium","rationale":"Owned bounded adversarial recovery, backup/restore, update, and local-service tests."},
+    {"role":"phase 6 public kit documentation specialist","tickets":["F6-04"],"model":"gpt-5.6-luna","reasoning":"medium","rationale":"Owned bounded operator documentation, compatibility, examples, comparison clarification, and packed-kit verification."},
     {"role":"phase implementer-orchestrator","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-sol","reasoning":"high","rationale":"Shared contracts, integration, package and CLI, canonical records, consequential verification, and manager coordination."},
     {"role":"shared contract architect","tickets":["F2-01","F2-02","F2-03","F2-04"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"One bounded read-only pass settled recovery, identity, telemetry, provider-outcome, cancellation, and caller-authentication seams before writer fan-out."},
     {"role":"durable state specialist","tickets":["F2-01"],"model":"gpt-5.6-terra","reasoning":"high","rationale":"Append-only recovery, exclusive ownership, atomic reservations, and SQLite reconstruction are concurrency and authority sensitive."},

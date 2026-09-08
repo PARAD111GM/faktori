@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { GitHubDraftPullRequestExecutor, GitHubIssueLinkExecutor, GitHubRepositoryObserver, InMemoryGitHubPublicationStore, probeInstalledGh, spawnGit } from '../../src/integrations/github.ts';
+import { createSpawnGh, GitHubDraftPullRequestExecutor, GitHubIssueLinkExecutor, GitHubRepositoryObserver, InMemoryGitHubPublicationStore, probeInstalledGh, spawnGit } from '../../src/integrations/github.ts';
 
 const target = Object.freeze({ repository: 'example/factory-fixture', branch: 'faktori/run-7', baseRefName: 'develop', baseRevision: 'base-commit-c0', expectedRevision: 'c0ffee', publisherRemote: 'controller-owned-only', publisherWorktree: '/controller-owned' });
 
@@ -90,6 +90,43 @@ describe('controller-owned GitHub draft publication', () => {
 
   it('observes the installed gh binary without authenticating or calling an external resource', async () => {
     await expect(probeInstalledGh()).resolves.toMatch(/^gh version \d+/);
+  });
+
+  it('discovers provider-owned gh auth through explicit controller paths without inheriting worker overrides', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'faktori-gh-environment-'));
+    const bin = join(root, 'bin');
+    const home = join(root, 'controller-home');
+    const config = join(root, 'controller-gh');
+    mkdirSync(bin);
+    mkdirSync(home);
+    mkdirSync(config);
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh
+printf '{"path":"%s","home":"%s","config":"%s","token":"%s","repo":"%s","gitDir":"%s","prompt":"%s"}\\n' "$PATH" "$HOME" "$GH_CONFIG_DIR" "\${GH_TOKEN-unset}" "\${GH_REPO-unset}" "\${GIT_DIR-unset}" "$GH_PROMPT_DISABLED"
+`);
+    chmodSync(join(bin, 'gh'), 0o755);
+
+    const prior = { GH_TOKEN: process.env.GH_TOKEN, GH_REPO: process.env.GH_REPO, GIT_DIR: process.env.GIT_DIR };
+    process.env.GH_TOKEN = 'dummy-worker-token';
+    process.env.GH_REPO = 'worker/project';
+    process.env.GIT_DIR = '/worker/project/.git';
+    let result;
+    try {
+      const command = createSpawnGh({ path: bin, home, configDirectory: config });
+      result = await command(['repo', 'view', 'example/factory']);
+    } finally {
+      for (const [name, value] of Object.entries(prior)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ path: bin, home, config, token: 'unset', repo: 'unset', gitDir: 'unset', prompt: '1' });
+  });
+
+  it('rejects relative controller auth paths rather than consulting a project directory', () => {
+    expect(() => createSpawnGh({ path: '/usr/bin', home: '.worker-home' })).toThrow('github_controller_home_must_be_absolute');
+    expect(() => createSpawnGh({ path: '/usr/bin', configDirectory: '.gh' })).toThrow('github_controller_config_directory_must_be_absolute');
   });
 
   it('uses a controller-owned bare remote and disables untrusted hooks/config before publishing', async () => {

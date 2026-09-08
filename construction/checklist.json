@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori V1",
-    "currentPhase": 6,
+    "currentPhase": 7,
     "source": "docs/implementation-plan.md",
     "phaseBudgets": {
       "0": 360000,
@@ -11,8 +11,10 @@
       "3": 2400000,
       "4": 650000,
       "5": 800000,
-      "6": 700000
-    }
+      "6": 700000,
+      "7": 4200000
+    },
+    "progressSummary": "Updated 2026-09-07. Phases 0–6 plus F7-01 and F7-02 are accepted; Phase 7 as a whole is not accepted and V1 remains incomplete. The Build Manager accepted F7-02 at exact head b0e6800 after an owner-approved isolated Codex delivery completed the disposable Linux Node due-date and Python date-boundary products and independent credential-free, network-disabled verification passed their frozen contracts. The pinned repository gate passes typecheck, builds, 40 files / 327 tests and packed CLI; all 20 frozen hashes remain green. A separately owner-approved isolated Triforge run now supplies all three paired comparison cells: Faktori passed task-board, due-dates and Python; the one-shot Triforge candidates passed Python, while task-board failed delete-after-restart and due-dates failed the strict today boundary. The task-board harness also exposed and retained a missing-jq packaging handoff; bundle integrity was independently verified after a local dependency and deterministic metadata repair. F7-03 is owner-deferred, not passed or removed, and no further Twinzy work is authorized for the current completion push. F7-04 comparison evidence is complete but the canonical ticket remains blocked because F7-03 is an unmet release dependency; no winner or V1 release is claimed. WSL2 is explicitly unverified because no real host is available, but its absence alone is not a V1 blocker. Usage telemetry is incomplete and non-commensurate across runners. The 4,200,000-token forecast is advisory, not a native cap, completion criterion or current account measurement."
   },
   "tickets": [
     {
@@ -965,21 +967,65 @@
       "id": "F7-01",
       "phase": 7,
       "title": "Conduct cold-start onboarding",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F6-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "fresh cold-start specialist",
+        "agentId": "cold_start",
+        "model": "gpt-5.6-terra",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Three fresh temporary factories preserved the observed path: the first exposed missing product assembly, the second produced a behaviorally correct but scope-invalid product, and the single manager-authorized bounded rerun passed restart but used a hand-written dependency compatibility package after the genuine offline install failed. Its substituted harness reported pass, while a genuine-Playwright rerun failed delete-after-restart; absence of all outside-path reads was also not proved.",
+        "The trusted Node 24/Chromium envelope reproduces the unchanged frozen baseline. A fresh dedicated vendor login and one directly authorized isolated run then passed public provisioning, replay, genuine product-local Playwright acceptance, and an independent credential-free rerun, but stopped at the required final commit because the repository lacked local Git identity. Two npm-internal bin symlinks also prevented the literal complete-tree no-link criterion. Commit 9f0cdba repairs the Git prerequisite.",
+        "One later owner-authorized repaired rerun passed proposal, approval, apply/replay, genuine product-local Playwright 1.63 with bin links disabled, final commits, clean complete-tree link checks, retained configuration, and both worker and independent frozen browser acceptance. A runtime-only continuation then completed the narrow SQLite observation but found that public Console preparation required a native non-strict-spending work item and could not prepare the approved isolated factory. Commit 5784f41 adds explicit approval-bound projection-only preparation with no provider/work/GM authority and a real loopback hierarchy test. A fresh agent on public revision af958a28 subsequently built and installed the package, exercised SQLite, prepared through the installed CLI, observed the canonical hierarchy over real TCP HTTP before and after a clean SIGTERM restart, and recorded no execution authority or provider/work/command/GM events. The Build Manager inspected the harness and retained artifacts, recomputed all evidence hashes, and accepted exact head a4dff21 for this harness-assisted retained-factory scope. This does not prove a new unaided cold start or provider orchestration through projection mode."
+      ],
+      "evidence": [
+        {
+          "label": "Cold-start attempts and repair evidence",
+          "url": "docs/build/phase-7-cold-start.md"
+        },
+        {
+          "label": "Approval-bound product import and Console preparation",
+          "url": "src/provisioning/index.ts"
+        },
+        {
+          "label": "Bounded native Codex route",
+          "url": "src/providers/codex.ts"
+        },
+        {
+          "label": "Attempt 3 trusted-contract failure",
+          "url": "docs/build/evidence/phase-7-attempt3-trusted-contract.txt"
+        },
+        {
+          "label": "Trusted harness continuation evidence",
+          "url": "docs/build/evidence/phase-7-trusted-harness-2026-09-06.md"
+        },
+        {
+          "label": "Isolated cold-start attempt and exact blocker",
+          "url": "docs/build/evidence/phase-7-isolated-cold-start-2026-09-07.md"
+        },
+        {
+          "label": "Repaired cold-start rerun and remaining runtime gap",
+          "url": "docs/build/evidence/phase-7-isolated-cold-start-rerun-2026-09-07.md"
+        },
+        {
+          "label": "Console continuation blocker and projection-only repair",
+          "url": "docs/build/evidence/phase-7-console-continuation-2026-09-07.md"
+        },
+        {
+          "label": "Fresh installed Console validation",
+          "url": "docs/build/evidence/phase-7-console-fresh-validation-2026-09-07.md"
+        }
+      ]
     },
     {
       "id": "F7-02",
       "phase": 7,
       "title": "Verify supported host and stack paths",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "F6-01",
         "F6-02",
@@ -987,16 +1033,46 @@
         "F6-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "host and frozen-fixture evidence specialist",
+        "agentId": "host_fixture_audit",
+        "model": "gpt-5.6-luna",
+        "reasoning": "medium"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Build Manager accepted exact head b0e6800bcb52aae4936d9f78fe0f3695a698d1d6. An owner-approved isolated bridge-network Codex run completed and committed only the disposable Node due-date and Python date-boundary products. Independent credential-free, network-disabled Linux verification passed both frozen Node browser contracts and Python 3/3; both product repositories were clean and all 20 frozen hashes remained green. The repaired runtime mounts only selected credential files read-only with ephemeral session state, admits only a private non-root controller identity, and unconditionally rejects changed Docker Codex plans. The pinned full repository gate passed 40 files / 327 tests, typecheck, builds and packed CLI. WSL2 remains explicitly unverified because unavailable, but is not an independent V1 blocker."
+      ],
+      "evidence": [
+        {
+          "label": "Host and frozen-input evidence",
+          "url": "docs/build/phase-7-host-evidence.md"
+        },
+        {
+          "label": "Compatibility matrix",
+          "url": "docs/maintenance/compatibility.md"
+        },
+        {
+          "label": "Final Linux package pass",
+          "url": "docs/build/evidence/phase-7-linux-portability-repair.md"
+        },
+        {
+          "label": "Linux Node and Python fixture evidence",
+          "url": "docs/build/evidence/phase-7-linux-node-python-2026-09-06.md"
+        },
+        {
+          "label": "Linux Node and Python product delivery",
+          "url": "docs/build/evidence/phase-7-f702-linux-products-2026-09-07.md"
+        },
+        {
+          "label": "F7-02 Build Manager acceptance",
+          "url": "docs/build/phase-7-f702-manager-acceptance.md"
+        }
+      ]
     },
     {
       "id": "F7-03",
       "phase": 7,
       "title": "Run the isolated Twinzy proof",
-      "status": "not_started",
+      "status": "blocked",
       "dependencies": [
         "F3-04",
         "F4-04",
@@ -1005,26 +1081,62 @@
         "F6-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase implementer-orchestrator",
+        "agentId": "phase-7-implementer",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "Owner-deferred on 2026-09-07 and excluded from the current completion push; this ticket is not passed, waived, or removed. The read-only eligibility audit found no small ready unclaimed Twinzy item. No further Twinzy provider run, Jira mutation, auth request, push, merge, deployment, or staging write is authorized. The original all-provider contribution and verified deployment acceptance requirement remains unmet."
+      ],
+      "evidence": [
+        {
+          "label": "Phase 7 release and authority audit",
+          "url": "docs/build/phase-7-report.md"
+        }
+      ]
     },
     {
       "id": "F7-04",
       "phase": 7,
       "title": "Run the paired comparison and finalize release evidence",
-      "status": "not_started",
+      "status": "blocked",
       "dependencies": [
         "F7-01",
         "F7-02",
         "F7-03"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "phase implementer-orchestrator",
+        "agentId": "phase-7-implementer",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
-      "notes": [],
-      "evidence": []
+      "notes": [
+        "The owner-approved tracked Triforge run at ca0c70dbed3f2ae2bf53292b9e09c346ae6a462d completed three disposable frozen-fixture bundles with no publisher or active-system mutation. Credential-free, network-disabled verification observed Faktori pass task-board, due-dates, and Python; Triforge passed Python, while task-board failed delete-after-restart and due-dates failed the strict today boundary after its base contract passed. Tokens, elapsed time, intervention, maintainability, and evidence visibility are reported separately without an opaque score. The task-board job retained one missing-jq packaging failure and deterministic metadata repair. Comparison evidence is complete, but F7-04 stays blocked because owner-deferred F7-03 remains an unmet canonical dependency and release blockers are therefore unresolved. No generalized winner or V1 release claim is published."
+      ],
+      "evidence": [
+        {
+          "label": "Candid dimensional comparison report",
+          "url": "docs/build/phase-7-comparison-report.md"
+        },
+        {
+          "label": "Frozen comparison contract",
+          "url": "docs/comparison/README.md"
+        },
+        {
+          "label": "Final deterministic repository gate",
+          "url": "docs/build/evidence/phase-7-final-check.txt"
+        },
+        {
+          "label": "Comparison resource audit",
+          "url": "docs/build/evidence/phase-7-comparison-resource-audit-2026-09-06.md"
+        },
+        {
+          "label": "Approved paired fixture comparison",
+          "url": "docs/build/evidence/phase-7-f704-paired-comparison-2026-09-07.md"
+        }
+      ]
     }
   ],
   "history": [
@@ -1606,6 +1718,86 @@
       "from": "in_progress",
       "to": "complete",
       "reason": "The public tarball, maintenance docs/examples, comparison boundary, clean installation, and installed CLI reconstruction proof passed."
+    },
+    {
+      "eventId": "phase-7-start-f7-01",
+      "at": "2026-09-05T18:12:00Z",
+      "ticketId": "F7-01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Exact accepted base verified; a fresh public-instructions-only cold-start specialist began isolated local onboarding.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-start-f7-02",
+      "at": "2026-09-05T18:12:01Z",
+      "ticketId": "F7-02",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Independent host inventory and frozen Node/Python path checks began without product or infrastructure mutation.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-block-f7-03",
+      "at": "2026-09-05T18:13:00Z",
+      "ticketId": "F7-03",
+      "from": "not_started",
+      "to": "blocked",
+      "reason": "Live read-only Jira re-query found no eligible small ready unclaimed Twinzy item; authority to create a new isolated proof ticket remains unanswered.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-start-f7-04",
+      "at": "2026-09-05T18:13:01Z",
+      "ticketId": "F7-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Frozen checksum verification, existing-evidence compatibility review, and release-requirement audit began while live incumbent prerequisites remain explicit.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-block-f7-02",
+      "at": "2026-09-05T19:15:08Z",
+      "ticketId": "F7-02",
+      "from": "in_progress",
+      "to": "blocked",
+      "reason": "Observed macOS evidence is recorded, but no independent Linux or WSL2 host exists and the Python product stopped at its native-profile configuration gate before execution.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-block-f7-04",
+      "at": "2026-09-05T19:15:09Z",
+      "ticketId": "F7-04",
+      "from": "in_progress",
+      "to": "blocked",
+      "reason": "No isolated Triforge comparison resource/run exists, and the required cold-start, host, and Twinzy prerequisites remain incomplete; the report preserves unknowns without a release claim.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "phase-7-block-f7-01",
+      "at": "2026-09-05T19:30:00Z",
+      "ticketId": "F7-01",
+      "from": "in_progress",
+      "to": "blocked",
+      "reason": "The one authorized bounded rerun passed restart but substituted a hand-written compatibility package after the genuine offline dependency was unavailable; a genuine-Playwright rerun failed delete-after-restart, and absence of all outside-path reads was not proved. No retry was authorized.",
+      "actor": "phase-7-orchestrator"
+    },
+    {
+      "eventId": "status-1788818688561-3cmr6u",
+      "at": "2026-09-07T22:04:48.562Z",
+      "ticketId": "F7-01",
+      "from": "blocked",
+      "to": "complete",
+      "reason": "Build Manager accepted exact head a4dff21b6ae83cd627c1e32970316efd23e5c035 for harness-assisted fresh-agent validation of the repaired installed projection Console using the retained approved factory; this does not accept Phase 7 or provider orchestration."
+    },
+    {
+      "eventId": "phase-7-complete-f7-02-20260907",
+      "at": "2026-09-07T23:59:00Z",
+      "ticketId": "F7-02",
+      "from": "blocked",
+      "to": "complete",
+      "reason": "Build Manager accepted exact head b0e6800bcb52aae4936d9f78fe0f3695a698d1d6 after bounded isolated Linux Node/Python product delivery, independent frozen-contract verification, credential-boundary hardening, and the pinned full repository gate.",
+      "actor": "phase-7-orchestrator"
     }
   ]
 }

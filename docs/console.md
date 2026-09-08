@@ -1,5 +1,100 @@
 # Local Console and Factory GM
 
+## Prepare an approved projection-only Console
+
+An approved isolated or native factory can start the real loopback Console
+without granting provider, work-item, or Factory GM authority. Use the explicit
+projection mode:
+
+```sh
+faktori console prepare /absolute/path/to/projection-request.json > /absolute/path/to/local-console.json
+faktori console serve /absolute/path/to/local-console.json
+```
+
+`projection-request.json` contains only the approved factory root, the same
+canonical configuration bound by provisioning, the explicit mode, and an
+optional loopback port:
+
+```json
+{
+  "mode": "projection",
+  "factoryRoot": "/absolute/path/to/approved-factory",
+  "configuration": { "factory": {}, "providers": [], "environments": [], "products": [], "pods": [] },
+  "port": 4173
+}
+```
+
+Preparation verifies that the supplied configuration still matches the
+approved factory revision. The emitted Console configuration contains the
+canonical factory/product/pod hierarchy and fail-closed coordinator limits, but
+no runtime provider routes, eligible work items, resume plans, or GM template.
+Projection mode rejects provider and work-item fields instead of silently
+ignoring them. Consequently the Console can be inspected and restarted, but it
+cannot launch work; adding execution remains a separate owner-controlled
+configuration step.
+
+## Prepare one approved native Codex proof
+
+The public bootstrap path can derive the otherwise low-level Console file from
+an approved factory and one scoped work item:
+
+```sh
+faktori console prepare /absolute/path/to/console-request.json > /absolute/path/to/local-console.json
+faktori console serve /absolute/path/to/local-console.json
+```
+
+The factory must already have been applied with `faktori provision apply`. Its
+selected product must have been bound through `localProductSources`, must be an
+exact clean Git repository with a named branch and commit, and must resolve to
+a native Codex provider. The preparation command records that exact commit,
+branch, context payload, authority policy, and budget reservation in the
+generated run intent. It rejects a dirty or parent-owned repository.
+
+`console-request.json` has this shape (replace every example value):
+
+```json
+{
+  "factoryRoot": "/absolute/path/to/approved-factory",
+  "configuration": { "factory": {}, "providers": [], "environments": [], "products": [], "pods": [] },
+  "productId": "task-board",
+  "model": "gpt-5.5",
+  "environment": { "PATH": "/owner/controlled/provider/path" },
+  "estimatedTokens": 30000,
+  "contextRevision": "task-board-context@1",
+  "authorityRevision": "task-board-authority@1",
+  "createdAt": "2026-09-05T18:00:00.000Z",
+  "port": 4173,
+  "workItem": {
+    "id": "task-board-implementation",
+    "revision": "task-board-work@1",
+    "objective": "Implement the frozen task-board behavior.",
+    "acceptanceCriteria": ["Run the documented acceptance command successfully."],
+    "constraints": ["Do not change the test oracle.", "Do not use network access."]
+  }
+}
+```
+
+The full canonical factory configuration is required in `configuration`; the
+abbreviated object above only shows its fields. Inherited parent constraints
+belong in `workItem.constraints` and are included in the prompt and its bound
+digest. This convenience route does not implement a hard provider token cap,
+so it truthfully rejects any selected product whose resolved budget has
+`strictSpending: true`. A token estimate and coordinator accounting are not a
+hard spending control.
+
+The generated Codex route uses the unmodified CLI's bounded context mode: it
+ignores user configuration and exec-policy rules, disables memories, apps,
+plugins, and multi-agent fan-out, sets approval policy to `never`, and requests
+`workspace-write`. Authentication may still come from the existing provider
+store. This prevents ambient context injection and escalation; it is not a
+claim that a native provider process cannot read host paths. Only the isolated
+container profile supplies a separately validated filesystem boundary.
+
+This is a convenience for an owner-selected native Codex proof, not the generic
+bootstrap default. The default remains isolated execution, and a complete
+factory evaluation still covers Codex, Claude, and Cursor rather than treating
+one successful native route as universal provider evidence.
+
 Run the installed Console with an owner-controlled JSON file:
 
 ```sh

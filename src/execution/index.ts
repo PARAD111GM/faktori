@@ -4,13 +4,21 @@
  * profile is a selected, pre-staged directory managed by the caller.
  */
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 
 import type { ExecutionProfile } from '../config/index.ts';
 import type { ContainerWorkerIdentity, NativeWorkerIdentity, WorkerIdentity } from '../runtime/contracts.ts';
 
-export const DEFAULT_SHARED_SCRATCH_ROOT = '/private/tmp';
+/**
+ * Docker Desktop commonly shares /private/tmp on macOS. Other supported hosts
+ * use Node's actual temporary-directory root instead of a macOS-only path.
+ */
+export function defaultSharedScratchRoot(platform = process.platform, temporaryDirectory = tmpdir()): string {
+  return platform === 'darwin' ? '/private/tmp' : temporaryDirectory;
+}
+
+export const DEFAULT_SHARED_SCRATCH_ROOT = defaultSharedScratchRoot();
 export const SAFE_ENVIRONMENT_KEYS = ['LANG', 'LC_ALL', 'PATH', 'TERM', 'TMPDIR'] as const;
 
 const FORBIDDEN_ENVIRONMENT_KEY = /^(?:GITHUB|GH|JIRA|ATLASSIAN|AWS|AZURE|GOOGLE|VERCEL|NETLIFY|CLOUDFLARE|DEPLOY|DOCKER|SSH|GIT_ASKPASS|GIT_CONFIG|NPM_TOKEN|NODE_AUTH_TOKEN)(?:_|$)/i;
@@ -34,6 +42,14 @@ export interface CredentialProfile {
   environmentVariable: string;
   /** Opt in only when the unmodified vendor CLI must refresh its own session. */
   writable?: boolean;
+  /**
+   * Opt in only for a private profile owned by the non-root controller user.
+   * The worker then uses that controller UID/GID instead of the fixed nobody
+   * identity; no arbitrary numeric identity is accepted from configuration.
+   */
+  containerUser?: 'controller';
+  /** Selected non-secret filenames linked read-only into a tmpfs-backed provider home. */
+  ephemeralHomeFiles?: readonly string[];
 }
 
 export interface ApprovedInput {
@@ -79,6 +95,15 @@ export interface DockerMount {
   purpose: 'workspace' | 'approved_input' | 'credential_profile';
 }
 
+interface CredentialBoundary {
+  source: string;
+  kind: 'directory' | 'file';
+  device: number;
+  inode: number;
+  ownerUid: number;
+  mode: number;
+}
+
 export interface DockerExecutionPlan {
   profile: 'isolated';
   trustDisclosure: string;
@@ -89,6 +114,9 @@ export interface DockerExecutionPlan {
   env: Readonly<Record<string, string>>;
   mounts: readonly DockerMount[];
   limits: ExecutionResourceLimits;
+  workerUser?: { uid: number; gid: number };
+  credentialProfileBoundary?: CredentialBoundary;
+  credentialFileBoundaries?: CredentialBoundary[];
 }
 
 export interface DockerProfileOptions {
@@ -103,7 +131,24 @@ export interface DockerProfileOptions {
 
 /** True only for an unchanged plan returned by this module's hardened builder. */
 export function isValidatedDockerExecutionPlan(value: DockerExecutionPlan): boolean {
-  return validatedDockerPlans.get(value) === JSON.stringify(value);
+  if (validatedDockerPlans.get(value) !== JSON.stringify(value)) return false;
+  const boundaries = [
+    ...(value.credentialProfileBoundary === undefined ? [] : [value.credentialProfileBoundary]),
+    ...(value.credentialFileBoundaries ?? []),
+  ];
+  try {
+    return boundaries.every((boundary) => {
+      const current = lstatSync(boundary.source);
+      return !current.isSymbolicLink()
+        && (boundary.kind === 'directory' ? current.isDirectory() : current.isFile())
+        && current.dev === boundary.device
+        && current.ino === boundary.inode
+        && current.uid === boundary.ownerUid
+        && (current.mode & 0o7777) === boundary.mode;
+    });
+  } catch {
+    return false;
+  }
 }
 
 export interface ProcessLaunchOptions {
@@ -120,6 +165,7 @@ export interface NativeProcessRunner {
 
 export interface NativeIdentityProbe {
   inspect(pid: number): Promise<NativeIdentityObservation | undefined>;
+  inspectAll?(): Promise<readonly NativeProcessObservation[] | { status: 'unknown' }>;
   inspectProcessGroup?(processGroupId: number): Promise<NativeProcessGroupObservation | undefined>;
 }
 
@@ -166,6 +212,7 @@ export function profileTrustDisclosure(profile: ExecutionProfile): string {
 
 export function buildNativeExecutionPlan(request: ExecutionRequest, inheritedEnvironment: NodeJS.ProcessEnv = process.env): NativeExecutionPlan {
   if (request.networkMode !== undefined) throw new ExecutionPolicyError('networkMode applies only to the isolated Docker profile');
+  if (request.credentialProfile?.containerUser !== undefined || request.credentialProfile?.ephemeralHomeFiles !== undefined) throw new ExecutionPolicyError('credentialProfile container identity and ephemeral home apply only to the isolated Docker profile');
   const workspace = assertRealDirectory(request.workspacePath, 'workspacePath');
   const env = controlledEnvironment(request.environment, inheritedEnvironment, request.credentialProfile, false);
   validateRequest(request);
@@ -183,10 +230,13 @@ export function buildNativeExecutionPlan(request: ExecutionRequest, inheritedEnv
 export function buildDockerExecutionPlan(request: ExecutionRequest, options: DockerProfileOptions): DockerExecutionPlan {
   validateRequest(request);
   validateDockerImage(options.image);
-  const scratchRoot = assertRealDirectory(options.scratchRoot ?? DEFAULT_SHARED_SCRATCH_ROOT, 'scratchRoot');
+  const configuredScratchRoot = options.scratchRoot ?? DEFAULT_SHARED_SCRATCH_ROOT;
+  const scratchRoot = assertRealDirectory(configuredScratchRoot, 'scratchRoot');
   const networkMode = request.networkMode ?? 'none';
   if (networkMode !== 'none' && networkMode !== 'bridge') throw new ExecutionPolicyError('networkMode must be "none" or explicit "bridge"');
-  const allowedSharedScratchRoots = (options.allowedSharedScratchRoots ?? [DEFAULT_SHARED_SCRATCH_ROOT])
+  // Naming scratchRoot is itself an explicit coordinator policy decision. When
+  // no broader allowlist is supplied, admit only that canonical root.
+  const allowedSharedScratchRoots = (options.allowedSharedScratchRoots ?? [configuredScratchRoot])
     .map((path) => assertRealDirectory(path, 'allowedSharedScratchRoots'));
   if (!allowedSharedScratchRoots.some((allowedRoot) => isWithin(allowedRoot, scratchRoot))) {
     throw new ExecutionPolicyError('scratchRoot is not within an explicitly allowed shared scratch root');
@@ -203,20 +253,30 @@ export function buildDockerExecutionPlan(request: ExecutionRequest, options: Doc
     rejectSensitivePath(source, hostHome, controlStorage, `approvedInputs[${index}].path`);
     mounts.push({ source, target: `/inputs/${index}`, readOnly: true, purpose: 'approved_input' });
   }
+  let credentialProfileSource: string | undefined;
   if (request.credentialProfile !== undefined) {
     const source = assertContainedRealDirectory(scratchRoot, request.credentialProfile.path, 'credentialProfile.path');
     rejectSensitivePath(source, hostHome, controlStorage, 'credentialProfile.path');
-    mounts.push({ source, target: '/credentials/profile', readOnly: request.credentialProfile.writable !== true, purpose: 'credential_profile' });
+    credentialProfileSource = source;
+    if (request.credentialProfile.ephemeralHomeFiles === undefined) {
+      mounts.push({ source, target: '/credentials/profile', readOnly: request.credentialProfile.writable !== true, purpose: 'credential_profile' });
+    }
+  }
+  const controllerIdentity = isolatedControllerIdentity(request.credentialProfile, credentialProfileSource);
+  const credentialFiles = isolatedEphemeralCredentialFiles(request.credentialProfile, credentialProfileSource);
+  for (const credentialFile of credentialFiles) {
+    mounts.push({ source: credentialFile.source, target: `/credentials/seed/${basename(credentialFile.source)}`, readOnly: true, purpose: 'credential_profile' });
   }
   assertNoMountSourceOverlap([
     ...mounts,
     ...controlStorage.map((source) => ({ source, purpose: 'control_storage' as const })),
   ]);
   const env = controlledEnvironment(request.environment, {}, request.credentialProfile, true);
-  const dockerArgs = dockerArguments(request, options.image, mounts, env, networkMode);
+  const workerUser = controllerIdentity?.workerUser ?? { uid: 65532, gid: 65532 };
+  const dockerArgs = dockerArguments(request, options.image, mounts, env, networkMode, workerUser, request.credentialProfile?.ephemeralHomeFiles);
   const plan: DockerExecutionPlan = {
     profile: 'isolated',
-    trustDisclosure: dockerTrustDisclosure(networkMode, request.credentialProfile?.writable === true),
+    trustDisclosure: dockerTrustDisclosure(networkMode, request.credentialProfile?.writable === true, controllerIdentity !== undefined, credentialFiles.length > 0),
     image: options.image,
     networkMode,
     args: dockerArgs,
@@ -224,6 +284,9 @@ export function buildDockerExecutionPlan(request: ExecutionRequest, options: Doc
     env,
     mounts,
     limits: { ...request.limits },
+    workerUser,
+    ...(controllerIdentity === undefined ? {} : { credentialProfileBoundary: controllerIdentity.boundary }),
+    ...(credentialFiles.length === 0 ? {} : { credentialFileBoundaries: credentialFiles }),
   };
   validatedDockerPlans.set(plan, JSON.stringify(plan));
   return plan;
@@ -327,6 +390,18 @@ function validateCredentialProfile(profile: CredentialProfile): void {
   if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(profile.environmentVariable) || FORBIDDEN_ENVIRONMENT_KEY.test(profile.environmentVariable)) {
     throw new ExecutionPolicyError('credentialProfile.environmentVariable is not an allowed provider configuration variable');
   }
+  if (profile.containerUser !== undefined && profile.containerUser !== 'controller') {
+    throw new ExecutionPolicyError('credentialProfile.containerUser must be "controller" when selected');
+  }
+  if (profile.ephemeralHomeFiles !== undefined) {
+    if (profile.writable === true) throw new ExecutionPolicyError('credentialProfile cannot be writable when ephemeralHomeFiles is selected');
+    if (profile.containerUser !== 'controller') throw new ExecutionPolicyError('credentialProfile.ephemeralHomeFiles requires the private controller identity');
+    if (!Array.isArray(profile.ephemeralHomeFiles) || profile.ephemeralHomeFiles.length < 1 || profile.ephemeralHomeFiles.length > 8
+      || !profile.ephemeralHomeFiles.every((file) => typeof file === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(file))) {
+      throw new ExecutionPolicyError('credentialProfile.ephemeralHomeFiles must contain one to eight safe filenames');
+    }
+    if (new Set(profile.ephemeralHomeFiles).size !== profile.ephemeralHomeFiles.length) throw new ExecutionPolicyError('credentialProfile.ephemeralHomeFiles must be unique');
+  }
 }
 
 function validateDockerImage(image: string): void {
@@ -346,27 +421,74 @@ function controlledEnvironment(explicit: Readonly<Record<string, string>> | unde
     if (value.length > 4096) throw new ExecutionPolicyError(`environment value for "${key}" exceeds the bounded limit`);
     output[key] = value;
   }
-  if (credentialProfile !== undefined) output[credentialProfile.environmentVariable] = isolated ? '/credentials/profile' : credentialProfile.path;
+  if (credentialProfile !== undefined) output[credentialProfile.environmentVariable] = isolated
+    ? credentialProfile.ephemeralHomeFiles === undefined ? '/credentials/profile' : '/tmp/provider-home'
+    : credentialProfile.path;
   return output;
 }
 
-function dockerArguments(request: ExecutionRequest, image: string, mounts: readonly DockerMount[], env: Readonly<Record<string, string>>, networkMode: 'none' | 'bridge'): string[] {
-  const args = ['run', '--detach', '--rm', '--name', `faktori-${request.runId}`, '--network', networkMode, '--read-only', '--user', '65532:65532', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', String(request.limits.pids), '--memory', String(request.limits.memoryBytes), '--cpus', String(request.limits.cpuCount), '--ulimit', 'nofile=1024:1024', '--stop-timeout', String(Math.min(30, request.limits.maxRuntimeSeconds)), '--workdir', '/workspace', '--tmpfs', '/tmp:rw,noexec,nosuid,size=67108864'];
+function dockerArguments(request: ExecutionRequest, image: string, mounts: readonly DockerMount[], env: Readonly<Record<string, string>>, networkMode: 'none' | 'bridge', workerUser: { uid: number; gid: number }, ephemeralHomeFiles: readonly string[] | undefined): string[] {
+  const args = ['run', '--detach', '--rm', '--name', `faktori-${request.runId}`, '--network', networkMode, '--read-only', '--user', `${workerUser.uid}:${workerUser.gid}`, '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', String(request.limits.pids), '--memory', String(request.limits.memoryBytes), '--cpus', String(request.limits.cpuCount), '--ulimit', 'nofile=1024:1024', '--stop-timeout', String(Math.min(30, request.limits.maxRuntimeSeconds)), '--workdir', '/workspace', '--tmpfs', '/tmp:rw,noexec,nosuid,size=67108864'];
   // Docker's --mount syntax is read-write by default; unlike readonly, `rw`
   // is not a valid bare mount option.
   for (const mount of mounts) args.push('--mount', `type=bind,src=${mount.source},dst=${mount.target}${mount.readOnly ? ',readonly' : ''}`);
   for (const [key, value] of Object.entries(env)) args.push('--env', `${key}=${value}`);
-  args.push(image, request.command, ...request.args);
+  args.push(image);
+  if (ephemeralHomeFiles === undefined) args.push(request.command, ...request.args);
+  else {
+    const links = ephemeralHomeFiles.map((file) => `ln -s /credentials/seed/${file} /tmp/provider-home/${file};`).join(' ');
+    args.push('sh', '-c', `set -eu; mkdir -m 700 /tmp/provider-home; ${links} exec "$@"`, 'faktori-provider-bootstrap', request.command, ...request.args);
+  }
   return args;
 }
 
-function dockerTrustDisclosure(networkMode: 'none' | 'bridge', writableCredentialProfile: boolean): string {
+function dockerTrustDisclosure(networkMode: 'none' | 'bridge', writableCredentialProfile: boolean, controllerIdentity: boolean, selectedFilesOnly: boolean): string {
   const disclosures = ['Container isolation permits only the explicitly mounted workspace and approved inputs.'];
   disclosures.push(networkMode === 'none' ? 'Network is disabled.' : 'Bridge networking is explicitly enabled for this admitted run.');
-  disclosures.push(writableCredentialProfile
+  disclosures.push(selectedFilesOnly
+    ? 'Only the selected vendor credential files are mounted read-only; provider session writes use ephemeral tmpfs.'
+    : writableCredentialProfile
     ? 'The selected vendor credential profile is writable so the unmodified vendor CLI may refresh its own session.'
     : 'The selected vendor credential profile is read-only.');
+  if (controllerIdentity) disclosures.push('The worker uses the non-root controller identity solely to access its private controller-owned credential profile and other explicitly mounted paths.');
   return disclosures.join(' ');
+}
+
+function isolatedControllerIdentity(
+  profile: CredentialProfile | undefined,
+  source: string | undefined,
+): { workerUser: { uid: number; gid: number }; boundary: CredentialBoundary } | undefined {
+  if (profile?.containerUser !== 'controller') return undefined;
+  if (source === undefined) throw new ExecutionPolicyError('controller identity requires an exact credential profile mount');
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  const gid = typeof process.getgid === 'function' ? process.getgid() : undefined;
+  const validId = (value: number | undefined) => Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= 2_147_483_647;
+  if (!validId(uid) || !validId(gid)) throw new ExecutionPolicyError('controller identity requires a supported non-root numeric UID and GID');
+  const stat = lstatSync(source);
+  const mode = stat.mode & 0o7777;
+  if (stat.uid !== uid) throw new ExecutionPolicyError('controller identity requires a credential profile owned by the controller UID');
+  if ((mode & 0o077) !== 0 || (mode & 0o500) !== 0o500 || (profile.writable === true && (mode & 0o200) === 0)) {
+    throw new ExecutionPolicyError('controller identity requires a private owner-readable credential profile with no group or other access');
+  }
+  return {
+    workerUser: { uid: uid as number, gid: gid as number },
+    boundary: { source, kind: 'directory', device: stat.dev, inode: stat.ino, ownerUid: stat.uid, mode },
+  };
+}
+
+function isolatedEphemeralCredentialFiles(
+  profile: CredentialProfile | undefined,
+  source: string | undefined,
+): CredentialBoundary[] {
+  if (profile?.ephemeralHomeFiles === undefined) return [];
+  if (source === undefined) throw new ExecutionPolicyError('ephemeral credential home requires an exact credential profile mount');
+  return profile.ephemeralHomeFiles.map((file) => {
+    const path = assertContainedExistingPath(source, resolve(source, file), `credentialProfile.ephemeralHomeFiles[${file}]`);
+    const stat = lstatSync(path);
+    if (!stat.isFile()) throw new ExecutionPolicyError(`credentialProfile.ephemeralHomeFiles[${file}] must be a regular file`);
+    if (stat.uid !== process.getuid?.()) throw new ExecutionPolicyError(`credentialProfile.ephemeralHomeFiles[${file}] must be owned by the controller UID`);
+    return { source: path, kind: 'file', device: stat.dev, inode: stat.ino, ownerUid: stat.uid, mode: stat.mode & 0o7777 };
+  });
 }
 
 function assertNoMountSourceOverlap(mounts: ReadonlyArray<Pick<DockerMount, 'source' | 'purpose'> | { source: string; purpose: 'control_storage' }>): void {

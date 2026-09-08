@@ -39,9 +39,12 @@ that the installed runtime does not have.
    interview or unanswered decision is not approval.
 5. After approval, use only documented installed commands. In the current
    runtime, `faktori provision proposal`, `faktori provision approve`, and
-   `faktori provision apply` support local scaffolding; remote provisioning and
-   `localProductSources` are not assumed unless the installed runtime advertises
-   them.
+   `faktori provision apply` support local scaffolding. When the request names
+   an existing local product, bind its absolute directory through
+   `localProductSources`; the approved apply imports the source snapshot rather
+   than silently creating an empty scaffold or relying on a later manual copy.
+   Remote provisioning remains pending or unsupported unless the installed
+   runtime advertises it.
 6. Reconcile an interrupted apply from
    `.faktori/provisioning/operations.jsonl` before retrying. Preserve existing
    Git repositories and user changes; stop for drift, an unresolved intended
@@ -57,10 +60,13 @@ that the installed runtime does not have.
   locked versions; local-operation identities and observed results; explicit
   pending/unsupported effects; and a small delivery-loop demonstration plan.
 - Record evidence as `proposal@<revision>`, `config@<revision>`, approver,
-  operation ID, exact root, observed filesystem/Git result, and remaining gate.
+  operation ID, exact root, source-snapshot digest when applicable, observed
+  filesystem/Git result, and remaining gate.
   For example: `local scaffold observed at <root>; remote GitHub repository:
   pending/unsupported; owner approval: approval@<revision>.`
 - Hand the accepted factory profile and its documented kit-root paths to the
-  **product-creation skill**. Escalate instead of widening authority for missing
-  approval, budget uncertainty, credential requests, unsupported effects, or
-  unreconciled recovery.
+  **product-creation skill**. A later product inherits factory defaults, reports
+  incremental cost and workload, and creates no pod automatically. Escalate
+  instead of widening authority for missing approval, changed source snapshots,
+  budget uncertainty, credential requests, unsupported effects, or unreconciled
+  recovery.

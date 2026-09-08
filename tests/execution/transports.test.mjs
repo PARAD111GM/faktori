@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events';
-import { describe, expect, it } from 'vitest';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 
+import { buildDockerExecutionPlan } from '../../src/execution/index.ts';
 import {
   BoundedCommandRunner,
   DockerCliIdentityProbe,
@@ -15,6 +19,24 @@ import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 
 const CWD = process.cwd();
 const ENV = { PATH: process.env.PATH ?? '' };
+const dockerPlanRoots = [];
+const DOCKER_IMAGE = `faktori@sha256:${'d'.repeat(64)}`;
+
+afterEach(async () => {
+  await Promise.all(dockerPlanRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+async function validatedDockerPlan(args) {
+  const root = await mkdtemp(join(tmpdir(), 'faktori-transport-plan-'));
+  dockerPlanRoots.push(root);
+  const workspace = join(root, 'workspace');
+  const control = join(root, 'control');
+  await Promise.all([mkdir(workspace), mkdir(control)]);
+  return buildDockerExecutionPlan({
+    runId: 'transport-plan', profile: 'isolated', command: 'codex', args,
+    workspacePath: workspace, environment: {}, limits: { maxRuntimeSeconds: 1, memoryBytes: 1, cpuCount: 1, pids: 1 },
+  }, { image: DOCKER_IMAGE, scratchRoot: root, controlStoragePaths: [control] });
+}
 
 class FakeChild extends EventEmitter {
   constructor(pid = 4242) {
@@ -131,6 +153,17 @@ describe('argv-only execution transports', () => {
         { pid: 85, processStartedAt: 'Thu Sep  4 21:00:01 2026', processGroupId: 84, running: true },
       ],
     });
+  });
+
+  it('reports a real missing ps executable as an unknown identity without an unhandled process error', async () => {
+    const probe = new NativeIdentityProbe({
+      commands: new BoundedCommandRunner(),
+      cwd: CWD,
+      env: { PATH: '/faktori-missing-process-tools' },
+    });
+
+    expect(await probe.inspect(process.pid)).toEqual({ status: 'unknown' });
+    expect(await probe.inspectAll()).toEqual({ status: 'unknown' });
   });
 
   it('uses exact Docker argv, explicit env, and validates run/inspect output without invoking Docker', async () => {
@@ -423,12 +456,13 @@ describe('argv-only execution transports', () => {
         });
       },
     };
+    const plan = await validatedDockerPlan(['exec']);
     const runner = new DockerCodexProcessRunner({
       docker,
       commands,
       runNonce: 'docker-coalesced',
       identityProbe: { inspect: async (containerId) => ({ containerId, containerStartedAt: 'docker-start', running: true }) },
-      planFor: () => ({ profile: 'isolated', trustDisclosure: 'test', image: 'faktori@sha256:abc', networkMode: 'none', args: ['run', '--detach', 'faktori@sha256:abc', 'codex', 'exec'], cwd: '/workspace', env: {}, mounts: [], limits: { maxRuntimeSeconds: 1, memoryBytes: 1, cpuCount: 1, pids: 1 } }),
+      planFor: () => plan,
     });
     const lifecycle = {
       async onStarted() { started(); },
@@ -472,12 +506,13 @@ describe('argv-only execution transports', () => {
       },
     });
     const docker = new DockerCliRunner({ commands, cwd: CWD, env: { LANG: 'C' }, timeoutMs: 500 });
+    const plan = await validatedDockerPlan(['exec', '--json']);
     const runner = new DockerCodexProcessRunner({
       docker,
       commands,
       runNonce: 'docker-nonce',
       identityProbe: { inspect: async (containerId) => ({ containerId, containerStartedAt: 'container-start', running: true }) },
-      planFor: () => ({ profile: 'isolated', trustDisclosure: 'test', image: 'faktori@sha256:abc', networkMode: 'none', args: ['run', '--detach', 'faktori@sha256:abc', 'codex', 'exec', '--json'], cwd: '/workspace', env: {}, mounts: [], limits: { maxRuntimeSeconds: 1, memoryBytes: 1, cpuCount: 1, pids: 1 } }),
+      planFor: () => plan,
     });
     const lifecycle = {
         onStarted: async (worker) => { order.push(`started:${worker.kind}`); },

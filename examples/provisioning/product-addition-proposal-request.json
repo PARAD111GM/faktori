@@ -1,0 +1,101 @@
+{
+  "configuration": {
+    "factory": {
+      "id": "solo-studio",
+      "name": "Solo Studio",
+      "defaults": {
+        "providerId": "codex",
+        "environmentId": "local",
+        "budget": {
+          "maxConcurrentRuns": 1,
+          "maxRetries": 0,
+          "maxRuntimeMinutes": 45,
+          "maxTokens": 30000,
+          "strictSpending": true
+        }
+      }
+    },
+    "providers": [
+      {
+        "id": "codex",
+        "kind": "codex",
+        "capabilities": ["isolated", "native", "subagents", "token-limit"]
+      }
+    ],
+    "environments": [
+      { "id": "local", "kind": "local" }
+    ],
+    "products": [
+      { "id": "website", "name": "Studio website" },
+      { "id": "api", "name": "Studio API" }
+    ],
+    "pods": [
+      { "id": "website-pod", "productId": "website" }
+    ]
+  },
+  "discovery": {
+    "factoryId": "solo-studio",
+    "inventory": {
+      "existingProducts": ["website"],
+      "providers": ["codex"]
+    },
+    "interview": {
+      "productScope": "Add the Studio API as a separate product",
+      "owner": "owner-1"
+    },
+    "unknowns": []
+  },
+  "componentVersions": {
+    "faktori": "0.0.0",
+    "node": "24.20.0"
+  },
+  "costs": {
+    "recurring": "$0 new recurring services",
+    "incrementalProducts": {
+      "api": "$0 local"
+    }
+  },
+  "humanWorkload": [
+    "Review the incremental product, inherited defaults, and exact local effects."
+  ],
+  "tradeoffs": [
+    "No pod is created automatically; pod ownership remains a separate decision."
+  ],
+  "change": {
+    "kind": "add-product",
+    "productId": "api",
+    "previousConfiguration": {
+      "factory": {
+        "id": "solo-studio",
+        "name": "Solo Studio",
+        "defaults": {
+          "providerId": "codex",
+          "environmentId": "local",
+          "budget": {
+            "maxConcurrentRuns": 1,
+            "maxRetries": 0,
+            "maxRuntimeMinutes": 45,
+            "maxTokens": 30000,
+            "strictSpending": true
+          }
+        }
+      },
+      "providers": [
+        {
+          "id": "codex",
+          "kind": "codex",
+          "capabilities": ["isolated", "native", "subagents", "token-limit"]
+        }
+      ],
+      "environments": [
+        { "id": "local", "kind": "local" }
+      ],
+      "products": [
+        { "id": "website", "name": "Studio website" }
+      ],
+      "pods": [
+        { "id": "website-pod", "productId": "website" }
+      ]
+    }
+  }
+}

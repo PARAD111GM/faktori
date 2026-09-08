@@ -4,9 +4,13 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   appendFileSync,
+  closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   readdirSync,
@@ -45,6 +49,21 @@ export interface LocalGitRepositoryEffect {
   target: string;
   description: string;
   productId: string;
+  source?: {
+    path: string;
+    digest: string;
+    fileCount: number;
+  };
+}
+export interface LocalProductRegistrationEffect {
+  id: string;
+  kind: 'local-product-registration';
+  target: string;
+  description: string;
+  productId: string;
+  previousConfigurationRevision: string;
+  configurationRevision: string;
+  product: JsonObject;
 }
 export interface RemoteProviderEffect {
   id: string;
@@ -55,7 +74,7 @@ export interface RemoteProviderEffect {
   status: 'pending';
   reason: string;
 }
-export type ProvisioningEffect = LocalConfigEffect | LocalGitRepositoryEffect | RemoteProviderEffect;
+export type ProvisioningEffect = LocalConfigEffect | LocalGitRepositoryEffect | LocalProductRegistrationEffect | RemoteProviderEffect;
 export interface ProvisioningRisk {
   id: string;
   productId: string;
@@ -76,6 +95,11 @@ export interface ProvisioningProposal {
   humanWorkload: string[];
   tradeoffs: string[];
   risks: ProvisioningRisk[];
+  change?: {
+    kind: 'add-product';
+    productId: string;
+    previousConfigurationRevision: string;
+  };
   revision: string;
 }
 export interface ProvisioningApproval {
@@ -106,10 +130,12 @@ export interface ProvisioningJournalEntry extends ProvisioningOperation {
 }
 export interface BeforeEffectEvent { operationId: string; effect: ProvisioningEffect; target?: string }
 export interface BeforeGitInitEvent { effect: LocalGitRepositoryEffect; target: string }
+export interface BeforeProductRegistrationWriteEvent { effect: LocalProductRegistrationEffect; target: string }
 export interface AfterEffectEvent { operationId: string; effect: ProvisioningEffect; observed: EffectOutcome }
 export interface ProvisioningCallbacks {
   onBeforeEffect?: (event: BeforeEffectEvent) => void;
   onBeforeGitInit?: (event: BeforeGitInitEvent) => void;
+  onBeforeProductRegistrationWrite?: (event: BeforeProductRegistrationWriteEvent) => void;
   onAfterEffect?: (event: AfterEffectEvent) => void;
 }
 export interface DiscoveryInput {
@@ -126,7 +152,13 @@ export interface ProvisioningProposalInput {
   costs?: JsonObject;
   humanWorkload?: string[];
   tradeoffs?: string[];
+  localProductSources?: Record<string, string>;
   remoteEffects?: Array<{ id: string; target: string; description: string }>;
+  change?: {
+    kind: 'add-product';
+    productId: string;
+    previousResolvedConfig: ResolvedFactoryConfiguration;
+  };
 }
 export interface ProvisioningApprovalInput {
   proposalRevision: string;
@@ -145,8 +177,10 @@ export interface ProvisionApprovedInput extends ProvisioningCallbacks {
   approval: ProvisioningApproval;
   resolvedConfig: ResolvedFactoryConfiguration;
   root: string;
+  previousResolvedConfig?: ResolvedFactoryConfiguration;
   remoteTransport?: FakeRemoteTransport;
 }
+export type ProvisionApprovedNewProductInput = ProvisionApprovedInput;
 export interface ProductPreviewInput {
   resolvedConfig: ResolvedFactoryConfiguration;
   product: JsonObject & { id: string; providerId?: string; environmentId?: string };
@@ -158,6 +192,10 @@ interface ValidatedResolvedConfig {
   factory: { id: string; name: string; defaults: { providerId?: string; environmentId?: string } };
   products: Array<{ id: string; authority: JsonObject }>;
   pods: Array<{ id: string; productId: string }>;
+}
+interface ValidatedProductAddition {
+  change: NonNullable<ProvisioningProposal['change']>;
+  product: JsonObject;
 }
 interface LocalOutcome {
   status: 'completed' | 'reconciled' | 'blocked' | 'failed';
@@ -354,6 +392,7 @@ function proposalPayload(proposal: ProvisioningProposal): Omit<ProvisioningPropo
     humanWorkload: proposal.humanWorkload,
     tradeoffs: proposal.tradeoffs,
     risks: proposal.risks,
+    ...(proposal.change === undefined ? {} : { change: proposal.change }),
   };
 }
 
@@ -387,7 +426,25 @@ function validateEffect(value: unknown, path: string): ProvisioningEffect {
   };
   if (input.kind === 'local-config') return { ...common, kind: 'local-config' };
   if (input.kind === 'local-git-repository') {
-    return { ...common, kind: 'local-git-repository', productId: nonEmpty(input.productId, `${path}.productId`) };
+    const sourceInput = input.source === undefined ? undefined : record(input.source, `${path}.source`);
+    const source = sourceInput === undefined ? undefined : {
+      path: nonEmpty(sourceInput.path, `${path}.source.path`),
+      digest: nonEmpty(sourceInput.digest, `${path}.source.digest`),
+      fileCount: Number.isInteger(sourceInput.fileCount) && Number(sourceInput.fileCount) >= 0
+        ? Number(sourceInput.fileCount)
+        : fail(`${path}.source.fileCount`, 'must be a non-negative integer'),
+    };
+    return { ...common, kind: 'local-git-repository', productId: nonEmpty(input.productId, `${path}.productId`), ...(source === undefined ? {} : { source }) };
+  }
+  if (input.kind === 'local-product-registration') {
+    return {
+      ...common,
+      kind: 'local-product-registration',
+      productId: nonEmpty(input.productId, `${path}.productId`),
+      previousConfigurationRevision: nonEmpty(input.previousConfigurationRevision, `${path}.previousConfigurationRevision`),
+      configurationRevision: nonEmpty(input.configurationRevision, `${path}.configurationRevision`),
+      product: jsonObject(input.product, `${path}.product`),
+    };
   }
   if (input.kind === 'remote-provider') {
     if (input.transport !== 'fake' || input.status !== 'pending') {
@@ -422,6 +479,12 @@ function validateProposal(value: unknown): ProvisioningProposal {
   const factoryInput = record(input.factory, 'proposal.factory');
   if (!Array.isArray(input.effects)) fail('proposal.effects', 'must be an array');
   if (!Array.isArray(input.risks)) fail('proposal.risks', 'must be an array');
+  const changeInput = input.change === undefined ? undefined : record(input.change, 'proposal.change');
+  const change = changeInput === undefined ? undefined : {
+    kind: changeInput.kind === 'add-product' ? 'add-product' as const : fail('proposal.change.kind', 'must be "add-product"'),
+    productId: nonEmpty(changeInput.productId, 'proposal.change.productId'),
+    previousConfigurationRevision: nonEmpty(changeInput.previousConfigurationRevision, 'proposal.change.previousConfigurationRevision'),
+  };
   const proposal: ProvisioningProposal = {
     format: 'faktori.provisioning-proposal/v1',
     id: nonEmpty(input.id, 'proposal.id'),
@@ -437,6 +500,7 @@ function validateProposal(value: unknown): ProvisioningProposal {
     humanWorkload: stringArray(input.humanWorkload, 'proposal.humanWorkload'),
     tradeoffs: stringArray(input.tradeoffs, 'proposal.tradeoffs'),
     risks: input.risks.map((risk, index) => validateRisk(risk, `proposal.risks[${index}]`)),
+    ...(change === undefined ? {} : { change }),
     revision: nonEmpty(input.revision, 'proposal.revision'),
   };
   const effectIds = proposal.effects.map((effect) => effect.id);
@@ -449,9 +513,10 @@ function validateProposal(value: unknown): ProvisioningProposal {
   return proposal;
 }
 
-function authorityRisks(resolvedConfig: ValidatedResolvedConfig): ProvisioningRisk[] {
+function authorityRisks(resolvedConfig: ValidatedResolvedConfig, productIds?: ReadonlySet<string>): ProvisioningRisk[] {
   const risks: ProvisioningRisk[] = [];
   for (const product of resolvedConfig.products) {
+    if (productIds !== undefined && !productIds.has(product.id)) continue;
     for (const [field, safeValue] of Object.entries(SAFE_AUTHORITY)) {
       const selected = product.authority[field];
       if (selected !== undefined && selected !== safeValue) {
@@ -469,7 +534,142 @@ function authorityRisks(resolvedConfig: ValidatedResolvedConfig): ProvisioningRi
   return risks;
 }
 
-function localEffects(resolvedConfig: ValidatedResolvedConfig): ProvisioningEffect[] {
+function sameJson(left: unknown, right: unknown): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return JSON.stringify(stable(normalizeJson(left, 'comparison.left')))
+    === JSON.stringify(stable(normalizeJson(right, 'comparison.right')));
+}
+
+function validateProductAddition(value: unknown, next: ValidatedResolvedConfig): ValidatedProductAddition | undefined {
+  if (value === undefined) return undefined;
+  const input = record(value, 'change');
+  if (input.kind !== 'add-product') fail('change.kind', 'must be "add-product"');
+  const productId = nonEmpty(input.productId, 'change.productId');
+  const previous = validateResolvedConfig(input.previousResolvedConfig);
+  if (!sameJson(previous.value.factory, next.value.factory)
+    || !sameJson(previous.value.providers, next.value.providers)
+    || !sameJson(previous.value.environments, next.value.environments)
+    || !sameJson(previous.value.pods, next.value.pods)) {
+    fail('change', 'add-product must preserve factory defaults, providers, environments, and every existing pod');
+  }
+  if (previous.products.some((product) => product.id === productId)) fail('change.productId', 'already exists in the approved factory');
+  if (next.products.length !== previous.products.length + 1) fail('change', 'must add exactly one product');
+  const previousProducts = new Map((previous.value.products as JsonValue[]).map((entry, index) => {
+    const product = record(entry, `change.previousResolvedConfig.products[${index}]`);
+    return [nonEmpty(product.id, `change.previousResolvedConfig.products[${index}].id`), product] as const;
+  }));
+  const nextProducts = new Map((next.value.products as JsonValue[]).map((entry, index) => {
+    const product = record(entry, `resolvedConfig.products[${index}]`);
+    return [nonEmpty(product.id, `resolvedConfig.products[${index}].id`), product] as const;
+  }));
+  for (const [id, product] of previousProducts) {
+    if (!nextProducts.has(id) || !sameJson(product, nextProducts.get(id))) fail('change', `existing product ${id} changed`);
+  }
+  const added = nextProducts.get(productId);
+  if (added === undefined) fail('change.productId', 'does not identify the one added product');
+  const extraIds = [...nextProducts.keys()].filter((id) => !previousProducts.has(id));
+  if (extraIds.length !== 1 || extraIds[0] !== productId) fail('change', 'must add only the named product');
+  return {
+    change: {
+      kind: 'add-product',
+      productId,
+      previousConfigurationRevision: digest(previous.value, 'change.previousResolvedConfig'),
+    },
+    product: jsonObject(added, 'change.product'),
+  };
+}
+
+interface SourceSnapshot {
+  path: string;
+  digest: string;
+  fileCount: number;
+  files: Array<{ relativePath: string; digest: string; mode: number }>;
+}
+
+function sourceSnapshot(sourcePath: string): SourceSnapshot {
+  if (!isAbsolute(sourcePath)) fail('localProductSources', 'source paths must be absolute');
+  if (!existsSync(sourcePath)) fail('localProductSources', `source does not exist: ${sourcePath}`);
+  const rootStat = lstatSync(sourcePath);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) fail('localProductSources', 'source must be a real directory, not a symlink');
+  const root = realpathSync(sourcePath);
+  const files: SourceSnapshot['files'] = [];
+  const walk = (directory: string, prefix: string): void => {
+    for (const name of readdirSync(directory).sort()) {
+      if (name === '.git') continue;
+      const path = resolve(directory, name);
+      const relativePath = prefix === '' ? name : `${prefix}/${name}`;
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) fail('localProductSources', `source contains symlink: ${relativePath}`);
+      if (stat.isDirectory()) { walk(path, relativePath); continue; }
+      if (!stat.isFile()) fail('localProductSources', `source contains unsupported entry: ${relativePath}`);
+      const bytes = readRegularFileNoFollow(path, relativePath);
+      files.push({ relativePath, digest: createHash('sha256').update(bytes).digest('hex'), mode: stat.mode & 0o777 });
+    }
+  };
+  walk(root, '');
+  return { path: root, digest: digest(files, 'localProductSources.manifest'), fileCount: files.length, files };
+}
+
+function readRegularFileNoFollow(path: string, label: string): Buffer {
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    if (!fstatSync(descriptor).isFile()) fail('localProductSources', `source contains unsupported entry: ${label}`);
+    return readFileSync(descriptor);
+  } catch (error) {
+    if (error instanceof ProvisioningValidationError) throw error;
+    fail('localProductSources', `source file could not be read safely: ${label}`);
+    throw error;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function validatedLocalProductSources(value: unknown, resolvedConfig: ValidatedResolvedConfig): Map<string, SourceSnapshot> {
+  if (value === undefined) return new Map();
+  const sources = record(value, 'localProductSources');
+  const productIds = new Set(resolvedConfig.products.map((product) => product.id));
+  const result = new Map<string, SourceSnapshot>();
+  for (const [productId, pathValue] of Object.entries(sources).sort(([left], [right]) => left.localeCompare(right))) {
+    if (!productIds.has(productId)) fail(`localProductSources.${productId}`, 'does not name a configured product');
+    result.set(productId, sourceSnapshot(nonEmpty(pathValue, `localProductSources.${productId}`)));
+  }
+  return result;
+}
+
+function productRepositoryEffect(productId: string, source: SourceSnapshot | undefined): LocalGitRepositoryEffect {
+  return {
+    id: `local:product-repository:${productId}`,
+    kind: 'local-git-repository',
+    productId,
+    target: `products/${productId}`,
+    description: source === undefined
+      ? `Initialize and commit the local Git scaffold for product ${productId}.`
+      : `Copy the approved ${source.fileCount}-file source snapshot, then initialize and commit the local Git repository for product ${productId}.`,
+    ...(source === undefined ? {} : { source: { path: source.path, digest: source.digest, fileCount: source.fileCount } }),
+  };
+}
+
+function localEffects(resolvedConfig: ValidatedResolvedConfig, sources: Map<string, SourceSnapshot>, addition?: ValidatedProductAddition): ProvisioningEffect[] {
+  if (addition !== undefined) {
+    for (const productId of sources.keys()) {
+      if (productId !== addition.change.productId) fail(`localProductSources.${productId}`, 'an add-product proposal may import only the named new product');
+    }
+    const productId = addition.change.productId;
+    return [
+      {
+        id: `local:product-registration:${productId}`,
+        kind: 'local-product-registration',
+        productId,
+        target: `config/product-revisions/${addition.change.previousConfigurationRevision}.json`,
+        description: `Register approved product ${productId} without changing factory defaults, existing products, repositories, or pods.`,
+        previousConfigurationRevision: addition.change.previousConfigurationRevision,
+        configurationRevision: digest(resolvedConfig.value, 'resolvedConfig'),
+        product: addition.product,
+      },
+      productRepositoryEffect(productId, sources.get(productId)),
+    ];
+  }
   const effects: ProvisioningEffect[] = [{
     id: 'local:factory-profile',
     kind: 'local-config',
@@ -477,13 +677,7 @@ function localEffects(resolvedConfig: ValidatedResolvedConfig): ProvisioningEffe
     description: 'Write the owner-controlled factory profile with the approved revision and component locks.',
   }];
   for (const product of resolvedConfig.products) {
-    effects.push({
-      id: `local:product-repository:${product.id}`,
-      kind: 'local-git-repository',
-      productId: product.id,
-      target: `products/${product.id}`,
-      description: `Initialize the local Git scaffold for product ${product.id}.`,
-    });
+    effects.push(productRepositoryEffect(product.id, sources.get(product.id)));
   }
   return effects;
 }
@@ -516,11 +710,14 @@ export function createProvisioningProposal(input: unknown): ProvisioningProposal
   const value = record(input, 'proposal request');
   const discovery = validateDiscovery(value.discovery);
   const resolvedConfig = validateResolvedConfig(value.resolvedConfig);
+  if (discovery.factoryId !== resolvedConfig.factory.id) fail('discovery.factoryId', 'must match the proposed factory');
   const componentVersions = stringRecord(value.componentVersions, 'componentVersions');
   if (Object.keys(componentVersions).length === 0) fail('componentVersions', 'must lock at least one component version');
   const remoteValues = value.remoteEffects === undefined ? [] : value.remoteEffects;
   if (!Array.isArray(remoteValues)) fail('remoteEffects', 'must be an array');
-  const effects = localEffects(resolvedConfig);
+  const addition = validateProductAddition(value.change, resolvedConfig);
+  const sources = validatedLocalProductSources(value.localProductSources, resolvedConfig);
+  const effects = localEffects(resolvedConfig, sources, addition);
   for (const [index, remoteValue] of remoteValues.entries()) {
     const remote = record(remoteValue, `remoteEffects[${index}]`);
     const remoteId = nonEmpty(remote.id, `remoteEffects[${index}].id`);
@@ -540,7 +737,10 @@ export function createProvisioningProposal(input: unknown): ProvisioningProposal
   const costs = value.costs === undefined
     ? jsonObject({
       recurring: 'unknown',
-      incrementalProducts: Object.fromEntries(resolvedConfig.products.map((product) => [product.id, 'unknown'])),
+      incrementalProducts: Object.fromEntries((addition === undefined
+        ? resolvedConfig.products
+        : resolvedConfig.products.filter((product) => product.id === addition.change.productId))
+        .map((product) => [product.id, 'unknown'])),
     }, 'costs')
     : jsonObject(value.costs, 'costs');
   const payload: Omit<ProvisioningProposal, 'revision'> = {
@@ -558,7 +758,8 @@ export function createProvisioningProposal(input: unknown): ProvisioningProposal
     tradeoffs: value.tradeoffs === undefined
       ? ['Remote resources remain pending until a supported provider transport is implemented.']
       : stringArray(value.tradeoffs, 'tradeoffs'),
-    risks: authorityRisks(resolvedConfig),
+    risks: authorityRisks(resolvedConfig, addition === undefined ? undefined : new Set([addition.change.productId])),
+    ...(addition === undefined ? {} : { change: addition.change }),
   };
   return { ...payload, revision: digest(payload, 'proposal') };
 }
@@ -578,7 +779,10 @@ export function renderProvisioningProposal(value: unknown): string {
   const risks = proposal.risks.length === 0
     ? '- No authority relaxations.'
     : proposal.risks.map((risk) => `- \`${risk.id}\`: ${risk.consequence}`).join('\n');
-  return `# Provisioning proposal: ${proposal.factory.name}\n\nRevision: \`${proposal.revision}\`\nConfiguration revision: \`${proposal.configurationRevision}\`\n\n## Locked components\n\n${Object.entries(proposal.components).map(([name, version]) => `- ${name}: \`${version}\``).join('\n')}\n\n## Concrete effects\n\n${effectLines}\n\n## Cost\n\n${costs}\n\n## Human workload\n\n${bullets(proposal.humanWorkload)}\n\n## Tradeoffs\n\n${bullets(proposal.tradeoffs)}\n\n## Risk acknowledgements required\n\n${risks}\n`;
+  const change = proposal.change === undefined
+    ? ''
+    : `\n## Existing-factory change\n\n- Add product \`${proposal.change.productId}\` after configuration \`${proposal.change.previousConfigurationRevision}\`.\n- Preserve factory defaults, existing products, repositories, and pods; create zero implicit pods.\n`;
+  return `# Provisioning proposal: ${proposal.factory.name}\n\nRevision: \`${proposal.revision}\`\nConfiguration revision: \`${proposal.configurationRevision}\`\n${change}\n## Locked components\n\n${Object.entries(proposal.components).map(([name, version]) => `- ${name}: \`${version}\``).join('\n')}\n\n## Concrete effects\n\n${effectLines}\n\n## Cost\n\n${costs}\n\n## Human workload\n\n${bullets(proposal.humanWorkload)}\n\n## Tradeoffs\n\n${bullets(proposal.tradeoffs)}\n\n## Risk acknowledgements required\n\n${risks}\n`;
 }
 
 /** Binds confirmation to one unchanged proposal, configuration, effect set, and risk set. */
@@ -762,17 +966,197 @@ function profileContents(proposal: ProvisioningProposal): string {
   }, null, 2)}\n`;
 }
 
-function isGitRepository(path: string): boolean {
-  const result = spawnSync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' });
-  return result.status === 0 && result.stdout.trim() === 'true';
+interface ApprovedFactoryState {
+  factory: { id: string; name: string };
+  components: Record<string, string>;
+  baseConfigurationRevision: string;
+  configurationRevision: string;
+}
+
+function registrationPayload(effect: LocalProductRegistrationEffect, proposal: ProvisioningProposal): JsonObject {
+  return {
+    format: 'faktori.product-registration/v1',
+    factory: proposal.factory,
+    productId: effect.productId,
+    previousConfigurationRevision: effect.previousConfigurationRevision,
+    configurationRevision: effect.configurationRevision,
+    proposalRevision: proposal.revision,
+    product: effect.product,
+  };
+}
+
+function registrationContents(effect: LocalProductRegistrationEffect, proposal: ProvisioningProposal): string {
+  const payload = registrationPayload(effect, proposal);
+  return `${JSON.stringify({ ...payload, revision: digest(payload, 'productRegistration') }, null, 2)}\n`;
+}
+
+function parseRegistration(value: unknown, path: string): {
+  productId: string;
+  previousConfigurationRevision: string;
+  configurationRevision: string;
+  revision: string;
+  payload: JsonObject;
+} {
+  const input = record(value, path);
+  if (input.format !== 'faktori.product-registration/v1') fail(`${path}.format`, 'must be a Faktori product registration');
+  const factory = jsonObject(input.factory, `${path}.factory`);
+  const payload: JsonObject = {
+    format: 'faktori.product-registration/v1',
+    factory,
+    productId: nonEmpty(input.productId, `${path}.productId`),
+    previousConfigurationRevision: nonEmpty(input.previousConfigurationRevision, `${path}.previousConfigurationRevision`),
+    configurationRevision: nonEmpty(input.configurationRevision, `${path}.configurationRevision`),
+    proposalRevision: nonEmpty(input.proposalRevision, `${path}.proposalRevision`),
+    product: jsonObject(input.product, `${path}.product`),
+  };
+  const revision = nonEmpty(input.revision, `${path}.revision`);
+  if (revision !== digest(payload, 'productRegistration')) fail(`${path}.revision`, 'does not match the registration contents');
+  return {
+    productId: payload.productId as string,
+    previousConfigurationRevision: payload.previousConfigurationRevision as string,
+    configurationRevision: payload.configurationRevision as string,
+    revision,
+    payload,
+  };
+}
+
+function approvedFactoryState(root: string): ApprovedFactoryState {
+  const profilePath = targetPath(root, 'config/factory-profile.json');
+  if (!existsSync(profilePath)) fail('root', 'does not contain an approved factory profile');
+  const profile = record(JSON.parse(readRegularFileNoFollow(profilePath, 'config/factory-profile.json').toString('utf8')), 'factoryProfile');
+  if (profile.format !== 'faktori.factory-profile/v1') fail('factoryProfile.format', 'must be a Faktori factory profile');
+  const factoryInput = record(profile.factory, 'factoryProfile.factory');
+  const factory = {
+    id: nonEmpty(factoryInput.id, 'factoryProfile.factory.id'),
+    name: nonEmpty(factoryInput.name, 'factoryProfile.factory.name'),
+  };
+  const components = stringRecord(profile.components, 'factoryProfile.components');
+  const baseConfigurationRevision = nonEmpty(profile.configurationRevision, 'factoryProfile.configurationRevision');
+  const registrationsRoot = targetPath(root, 'config/product-revisions');
+  if (!existsSync(registrationsRoot)) return { factory, components, baseConfigurationRevision, configurationRevision: baseConfigurationRevision };
+  if (!lstatSync(registrationsRoot).isDirectory()) fail('productRegistrations', 'must be a real directory');
+  const byPrevious = new Map<string, ReturnType<typeof parseRegistration>>();
+  for (const name of readdirSync(registrationsRoot).sort()) {
+    if (!name.endsWith('.json')) fail('productRegistrations', `contains unsupported entry: ${name}`);
+    const path = targetPath(root, `config/product-revisions/${name}`);
+    const registration = parseRegistration(JSON.parse(readRegularFileNoFollow(path, `config/product-revisions/${name}`).toString('utf8')), `productRegistrations.${name}`);
+    if (name !== `${registration.previousConfigurationRevision}.json`) fail('productRegistrations', `filename does not match previous revision for ${registration.productId}`);
+    if (registration.payload.factory === undefined || !sameJson(registration.payload.factory, factory)) fail('productRegistrations', `factory mismatch in ${name}`);
+    if (byPrevious.has(registration.previousConfigurationRevision)) fail('productRegistrations', 'contains a configuration-revision fork');
+    byPrevious.set(registration.previousConfigurationRevision, registration);
+  }
+  let configurationRevision = baseConfigurationRevision;
+  const visited = new Set<string>();
+  while (byPrevious.has(configurationRevision)) {
+    const registration = byPrevious.get(configurationRevision) as ReturnType<typeof parseRegistration>;
+    if (visited.has(registration.revision)) fail('productRegistrations', 'contains a revision cycle');
+    visited.add(registration.revision);
+    configurationRevision = registration.configurationRevision;
+  }
+  if (visited.size !== byPrevious.size) fail('productRegistrations', 'contains a disconnected revision chain');
+  return { factory, components, baseConfigurationRevision, configurationRevision };
+}
+
+/** Returns the latest approval-bound configuration revision without mutating the factory. */
+export function readApprovedConfigurationRevision(rootValue: string): string {
+  const root = nonEmpty(rootValue, 'root');
+  if (!isAbsolute(root) || !existsSync(root)) fail('root', 'must be an existing absolute factory root');
+  const stat = lstatSync(root);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) fail('root', 'must be a real directory, not a symlink');
+  return approvedFactoryState(realpathSync(root)).configurationRevision;
+}
+
+function isExactGitRepository(path: string): boolean {
+  const result = spawnSync('git', ['-C', path, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  if (result.status !== 0) return false;
+  try { return realpathSync(result.stdout.trim()) === realpathSync(path); }
+  catch { return false; }
+}
+
+function hasGitHead(path: string): boolean {
+  return spawnSync('git', ['-C', path, 'rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' }).status === 0;
+}
+
+function configureProductCommitIdentity(path: string): string | undefined {
+  for (const [key, value] of [['user.name', 'Faktori Agent'], ['user.email', 'faktori@localhost']]) {
+    const existing = spawnSync('git', ['-C', path, 'config', '--local', '--get', key], { encoding: 'utf8' });
+    if (existing.status === 0) continue;
+    if (existing.status !== 1) return existing.stderr.trim() || `git config --get ${key} failed`;
+    const result = spawnSync('git', ['-C', path, 'config', '--local', key, value], { encoding: 'utf8' });
+    if (result.status !== 0) return result.stderr.trim() || `git config ${key} failed`;
+  }
+  return undefined;
+}
+
+function commitInitialProduct(path: string): string | undefined {
+  const add = spawnSync('git', ['-C', path, 'add', '--all'], { encoding: 'utf8' });
+  if (add.status !== 0) return add.stderr.trim() || 'git add failed';
+  const commit = spawnSync('git', [
+    '-C', path,
+    '-c', 'user.name=Faktori Bootstrap',
+    '-c', 'user.email=faktori@localhost',
+    '-c', 'commit.gpgSign=false',
+    '-c', 'core.hooksPath=/dev/null',
+    'commit', '--quiet', '--allow-empty', '-m', 'chore: initialize product',
+  ], { encoding: 'utf8' });
+  return commit.status === 0 ? undefined : commit.stderr.trim() || 'initial git commit failed';
+}
+
+function existingSourceFiles(root: string): Map<string, { digest: string; mode: number }> {
+  const snapshot = sourceSnapshot(root);
+  return new Map(snapshot.files.map((file) => [file.relativePath, { digest: file.digest, mode: file.mode }]));
+}
+
+function copyApprovedSource(effect: LocalGitRepositoryEffect, target: string, provisioningRoot: string): LocalOutcome | undefined {
+  if (effect.source === undefined) return undefined;
+  let current: SourceSnapshot;
+  try {
+    current = sourceSnapshot(effect.source.path);
+  } catch (error) {
+    return { status: 'failed', target: effect.target, reason: error instanceof Error ? error.message : String(error) };
+  }
+  if (current.digest !== effect.source.digest || current.fileCount !== effect.source.fileCount) {
+    return { status: 'blocked', target: effect.target, reason: 'Approved source snapshot changed after proposal; create and approve a new proposal.' };
+  }
+  const existing = existingSourceFiles(target);
+  const approved = new Map(current.files.map((file) => [file.relativePath, file]));
+  for (const [relativePath, file] of existing) {
+    const expected = approved.get(relativePath);
+    if (expected === undefined || expected.digest !== file.digest || expected.mode !== file.mode) {
+      return { status: 'blocked', target: effect.target, reason: `Existing product scaffold differs from the approved source at ${relativePath}; it was not overwritten.` };
+    }
+  }
+  for (const file of current.files) {
+    if (existing.has(file.relativePath)) continue;
+    const destination = resolve(target, file.relativePath);
+    ensureParentInsideRoot(provisioningRoot, destination);
+    const bytes = readRegularFileNoFollow(resolve(current.path, file.relativePath), file.relativePath);
+    if (createHash('sha256').update(bytes).digest('hex') !== file.digest) {
+      return { status: 'blocked', target: effect.target, reason: `Approved source changed while copying ${file.relativePath}; no unverified bytes were imported.` };
+    }
+    try {
+      writeFileSync(destination, bytes, { flag: 'wx', mode: file.mode });
+    } catch (error) {
+      const afterRace = existsSync(destination) ? readRegularFileNoFollow(destination, file.relativePath) : undefined;
+      if (afterRace === undefined || createHash('sha256').update(afterRace).digest('hex') !== file.digest) {
+        return { status: 'blocked', target: effect.target, reason: `Product scaffold changed concurrently at ${file.relativePath}; it was not overwritten.` };
+      }
+    }
+  }
+  const copied = sourceSnapshot(target);
+  if (copied.digest !== effect.source.digest || copied.fileCount !== effect.source.fileCount) {
+    return { status: 'blocked', target: effect.target, reason: 'Copied product scaffold does not match the approved source snapshot; Git initialization was refused.' };
+  }
+  return undefined;
 }
 
 function executeLocalEffect(
   root: string,
-  effect: LocalConfigEffect | LocalGitRepositoryEffect,
+  effect: LocalConfigEffect | LocalGitRepositoryEffect | LocalProductRegistrationEffect,
   proposal: ProvisioningProposal,
   priorOperation: ProvisioningOperation | undefined,
   onBeforeGitInit: ((event: BeforeGitInitEvent) => void) | undefined,
+  onBeforeProductRegistrationWrite: ((event: BeforeProductRegistrationWriteEvent) => void) | undefined,
 ): LocalOutcome {
   const path = targetPath(root, effect.target);
   if (effect.kind === 'local-config') {
@@ -782,16 +1166,61 @@ function executeLocalEffect(
       return { status: 'blocked', target: effect.target, reason: 'Existing owner-controlled profile differs; it was not overwritten.' };
     }
     ensureParentInsideRoot(root, path);
-    writeFileSync(path, contents, { encoding: 'utf8', flag: 'wx' });
-    return { status: 'completed', target: effect.target };
+    try {
+      writeFileSync(path, contents, { encoding: 'utf8', flag: 'wx' });
+      return { status: 'completed', target: effect.target };
+    } catch {
+      if (existsSync(path) && readFileSync(path, 'utf8') === contents) {
+        return { status: 'reconciled', target: effect.target };
+      }
+      return { status: 'blocked', target: effect.target, reason: 'Owner-controlled factory profile appeared concurrently and differs; it was not overwritten.' };
+    }
   }
-  if (existsSync(path) && isGitRepository(path)) return { status: 'reconciled', target: effect.target };
+  if (effect.kind === 'local-product-registration') {
+    const contents = registrationContents(effect, proposal);
+    if (existsSync(path)) {
+      if (readRegularFileNoFollow(path, effect.target).toString('utf8') === contents) return { status: 'reconciled', target: effect.target };
+      return { status: 'blocked', target: effect.target, reason: 'A different product addition claimed the approved configuration revision; the existing registration was not overwritten.' };
+    }
+    const currentRevision = approvedFactoryState(root).configurationRevision;
+    if (currentRevision !== effect.previousConfigurationRevision) {
+      return { status: 'blocked', target: effect.target, reason: 'Approved factory configuration changed; create and approve a new add-product proposal.' };
+    }
+    ensureParentInsideRoot(root, path);
+    onBeforeProductRegistrationWrite?.({ effect, target: path });
+    try {
+      writeFileSync(path, contents, { encoding: 'utf8', flag: 'wx' });
+      return { status: 'completed', target: effect.target };
+    } catch {
+      if (existsSync(path) && readRegularFileNoFollow(path, effect.target).toString('utf8') === contents) {
+        return { status: 'reconciled', target: effect.target };
+      }
+      return { status: 'blocked', target: effect.target, reason: 'A different product addition claimed the approved configuration revision; no competing registration was written.' };
+    }
+  }
+  if (existsSync(path) && isExactGitRepository(path)) {
+    if (priorOperation?.status !== 'intended' || priorOperation.targetState !== 'missing') {
+      return { status: 'blocked', target: effect.target, reason: 'Target was already a Git repository before this approved operation; it was not adopted implicitly.' };
+    }
+    if (effect.source !== undefined) {
+      const copied = sourceSnapshot(path);
+      if (copied.digest !== effect.source.digest || copied.fileCount !== effect.source.fileCount) {
+        return { status: 'blocked', target: effect.target, reason: 'Interrupted product repository does not match the approved source snapshot.' };
+      }
+    }
+    if (!hasGitHead(path)) {
+      const commitError = commitInitialProduct(path);
+      if (commitError !== undefined) return { status: 'failed', target: effect.target, reason: commitError };
+    }
+    const identityError = configureProductCommitIdentity(path);
+    if (identityError !== undefined) return { status: 'failed', target: effect.target, reason: identityError };
+    return { status: 'reconciled', target: effect.target };
+  }
   if (existsSync(path)) {
-    const resumableEmptyLeaf = priorOperation?.status === 'intended'
+    const resumableLeaf = (priorOperation?.status === 'intended' || priorOperation?.status === 'blocked' || priorOperation?.status === 'failed')
       && priorOperation.targetState === 'missing'
-      && lstatSync(path).isDirectory()
-      && readdirSync(path).length === 0;
-    if (!resumableEmptyLeaf) {
+      && lstatSync(path).isDirectory();
+    if (!resumableLeaf) {
       return { status: 'blocked', target: effect.target, reason: 'Target exists but is not a Git repository; it was not replaced.' };
     }
   } else {
@@ -799,16 +1228,28 @@ function executeLocalEffect(
     mkdirSync(path, { recursive: false });
     assertNoSymlinkComponents(root, path);
   }
+  const sourceOutcome = copyApprovedSource(effect, path, root);
+  if (sourceOutcome !== undefined) return sourceOutcome;
   onBeforeGitInit?.({ effect, target: path });
+  if (effect.source !== undefined) {
+    const beforeGit = sourceSnapshot(path);
+    if (beforeGit.digest !== effect.source.digest || beforeGit.fileCount !== effect.source.fileCount) {
+      return { status: 'blocked', target: effect.target, reason: 'Product scaffold changed after the approved copy; Git initialization was refused.' };
+    }
+  }
   assertNoSymlinkComponents(root, path);
-  const init = spawnSync('git', ['init', '--quiet', path], { encoding: 'utf8' });
+  const init = spawnSync('git', ['init', '--quiet', '--initial-branch=main', path], { encoding: 'utf8' });
   if (init.status !== 0) return { status: 'failed', target: effect.target, reason: init.stderr.trim() || 'git init failed' };
+  const commitError = commitInitialProduct(path);
+  if (commitError !== undefined) return { status: 'failed', target: effect.target, reason: commitError };
+  const identityError = configureProductCommitIdentity(path);
+  if (identityError !== undefined) return { status: 'failed', target: effect.target, reason: identityError };
   return { status: 'completed', target: effect.target };
 }
 
 function observeCompletedLocalEffect(
   root: string,
-  effect: LocalConfigEffect | LocalGitRepositoryEffect,
+  effect: LocalConfigEffect | LocalGitRepositoryEffect | LocalProductRegistrationEffect,
   proposal: ProvisioningProposal,
 ): LocalOutcome {
   const path = targetPath(root, effect.target);
@@ -819,7 +1260,14 @@ function observeCompletedLocalEffect(
     }
     return { status: 'reconciled', target: effect.target };
   }
-  if (!existsSync(path) || !isGitRepository(path)) {
+  if (effect.kind === 'local-product-registration') {
+    if (!existsSync(path)) return { status: 'blocked', target: effect.target, reason: 'Drift detected: approved product registration is missing.' };
+    if (readRegularFileNoFollow(path, effect.target).toString('utf8') !== registrationContents(effect, proposal)) {
+      return { status: 'blocked', target: effect.target, reason: 'Drift detected: approved product registration changed; it was not overwritten.' };
+    }
+    return { status: 'reconciled', target: effect.target };
+  }
+  if (!existsSync(path) || !isExactGitRepository(path)) {
     return { status: 'blocked', target: effect.target, reason: 'Drift detected: approved Git repository is missing or changed; it was not recreated.' };
   }
   return { status: 'reconciled', target: effect.target };
@@ -893,6 +1341,12 @@ function optionalBeforeGitInitCallback(value: unknown): ((event: BeforeGitInitEv
   return (event) => { value(event); };
 }
 
+function optionalBeforeProductRegistrationWriteCallback(value: unknown): ((event: BeforeProductRegistrationWriteEvent) => void) | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'function') fail('onBeforeProductRegistrationWrite', 'must be a function');
+  return (event) => { value(event); };
+}
+
 function optionalAfterEffectCallback(value: unknown): ((event: AfterEffectEvent) => void) | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'function') fail('onAfterEffect', 'must be a function');
@@ -907,15 +1361,52 @@ export function provisionApprovedProposal(input: ProvisionApprovedInput): { jour
 export function provisionApprovedProposal(input: unknown): { journal: string; operations: ProvisioningOperation[] };
 export function provisionApprovedProposal(input: unknown): { journal: string; operations: ProvisioningOperation[] } {
   const value = record(input, 'approved provisioning bundle');
-  const { proposal } = assertApproval(value.proposal, value.approval, value.resolvedConfig);
+  const { proposal, resolvedConfig } = assertApproval(value.proposal, value.approval, value.resolvedConfig);
   const root = nonEmpty(value.root, 'root');
   if (!isAbsolute(root)) fail('root', 'must be an absolute dedicated provisioning root');
+  if (proposal.change !== undefined && !existsSync(root)) fail('root', 'product new requires an existing approved factory root');
   const remoteTransport = value.remoteTransport ?? createFakeRemoteTransport();
   if (!isFakeRemoteTransport(remoteTransport)) fail('remoteTransport', 'only the explicit fake transport is supported in Phase 1');
   const onBeforeEffect = optionalBeforeEffectCallback(value.onBeforeEffect);
   const onBeforeGitInit = optionalBeforeGitInitCallback(value.onBeforeGitInit);
+  const onBeforeProductRegistrationWrite = optionalBeforeProductRegistrationWriteCallback(value.onBeforeProductRegistrationWrite);
   const onAfterEffect = optionalAfterEffectCallback(value.onAfterEffect);
   const realRoot = realProvisioningRoot(root);
+  if (proposal.change !== undefined) {
+    const addition = validateProductAddition({
+      kind: proposal.change.kind,
+      productId: proposal.change.productId,
+      previousResolvedConfig: value.previousResolvedConfig,
+    }, resolvedConfig);
+    if (addition === undefined || !sameJson(addition.change, proposal.change)) fail('proposal.change', 'does not match the supplied previous and next configurations');
+    const localEffects = proposal.effects.filter((effect) => effect.kind !== 'remote-provider');
+    const repository = localEffects.filter((effect): effect is LocalGitRepositoryEffect => effect.kind === 'local-git-repository');
+    const registrations = localEffects.filter((effect): effect is LocalProductRegistrationEffect => effect.kind === 'local-product-registration');
+    const expectedRegistrationTarget = `config/product-revisions/${proposal.change.previousConfigurationRevision}.json`;
+    if (localEffects.length !== 2
+      || localEffects[0]?.kind !== 'local-product-registration'
+      || localEffects[1]?.kind !== 'local-git-repository'
+      || repository.length !== 1 || registrations.length !== 1
+      || repository[0].id !== `local:product-repository:${proposal.change.productId}`
+      || repository[0].productId !== proposal.change.productId
+      || repository[0].target !== `products/${proposal.change.productId}`
+      || registrations[0].id !== `local:product-registration:${proposal.change.productId}`
+      || registrations[0].productId !== proposal.change.productId
+      || registrations[0].target !== expectedRegistrationTarget
+      || registrations[0].previousConfigurationRevision !== proposal.change.previousConfigurationRevision
+      || registrations[0].configurationRevision !== proposal.configurationRevision
+      || !sameJson(registrations[0].product, addition.product)) {
+      fail('proposal.effects', 'add-product must contain only the named repository and configuration registration local effects');
+    }
+    const approved = approvedFactoryState(realRoot);
+    if (!sameJson(approved.factory, proposal.factory) || !sameJson(approved.components, proposal.components)) {
+      fail('root', 'approved factory identity or component locks differ; existing factory state was not changed');
+    }
+    if (approved.configurationRevision !== proposal.change.previousConfigurationRevision
+      && approved.configurationRevision !== proposal.configurationRevision) {
+      fail('root', 'approved factory configuration changed; create and approve a new add-product proposal');
+    }
+  }
   const prior = priorOperations(realRoot);
   const operations: ProvisioningOperation[] = [];
   for (const effect of proposal.effects) {
@@ -952,13 +1443,27 @@ export function provisionApprovedProposal(input: unknown): { journal: string; op
     onBeforeEffect?.({ operationId, effect, ...(path === undefined ? {} : { target: path }) });
     const observed: EffectOutcome = effect.kind === 'remote-provider'
       ? remoteTransport.apply({ ...effect, operationId })
-      : executeLocalEffect(realRoot, effect, proposal, previous, onBeforeGitInit);
+      : executeLocalEffect(realRoot, effect, proposal, previous, onBeforeGitInit, onBeforeProductRegistrationWrite);
     onAfterEffect?.({ operationId, effect, observed });
     const outcome: ProvisioningOperation = { ...intended, ...observed, operationId };
     appendJournal(realRoot, outcome);
     operations.push(outcome);
+    if (proposal.change !== undefined
+      && effect.kind === 'local-product-registration'
+      && outcome.status !== 'completed'
+      && outcome.status !== 'reconciled') break;
   }
   return { journal: journalPath(realRoot), operations };
+}
+
+/** Applies only an explicitly approved add-product proposal to an existing factory. */
+export function provisionApprovedNewProduct(input: ProvisionApprovedNewProductInput): { journal: string; operations: ProvisioningOperation[] };
+export function provisionApprovedNewProduct(input: unknown): { journal: string; operations: ProvisioningOperation[] };
+export function provisionApprovedNewProduct(input: unknown): { journal: string; operations: ProvisioningOperation[] } {
+  const value = record(input, 'approved new-product bundle');
+  const proposal = validateProposal(value.proposal);
+  if (proposal.change?.kind !== 'add-product') fail('proposal.change', 'product new requires an add-product proposal');
+  return provisionApprovedProposal(value);
 }
 
 export interface ProductPreview {

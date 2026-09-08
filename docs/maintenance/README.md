@@ -16,6 +16,16 @@ npm run build
 npm run pack:verify
 ```
 
+The complete source check also verifies two local host prerequisites: a POSIX
+`ps` command for fail-closed Console coordinator identity, and the GitHub CLI
+(`gh`) for the configured GitHub integration probe. The probe only observes the
+installed binary; it does not authenticate or contact GitHub. If `ps` is not
+available, Console startup refuses coordinator ownership rather than guessing.
+Managed-release installation stays offline. Before update, provision an
+approved npm cache containing the candidate's exact public dependencies;
+installation scripts stay disabled and a missing cache entry stops before
+release activation.
+
 The packed check installs the tarball into a clean temporary consumer and runs
 the installed CLI and public exports. For a source checkout, the CLI examples
 are invoked with `npm run faktori -- ...`.

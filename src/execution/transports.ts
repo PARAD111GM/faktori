@@ -168,6 +168,7 @@ export class BoundedCommandRunner {
     validInvocation(input);
     const detached = input.detached !== false;
     let child: SpawnedProcess;
+    let earlySpawnError: string | undefined;
     try {
       child = this.spawnProcess(input.command, [...input.args], {
         cwd: input.cwd,
@@ -176,6 +177,10 @@ export class BoundedCommandRunner {
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+      // A failed OS spawn can report no PID and emit `error` asynchronously.
+      // Observe it before checking the PID so callers receive a bounded failed
+      // result instead of an unhandled ChildProcess event.
+      child.on('error', (error) => { earlySpawnError ??= errorMessage(error); });
     } catch (error) {
       return { pid: -1, completion: Promise.resolve({ exitCode: null, signal: null, stdout: '', stderr: '', timedOut: false, outputLimitExceeded: false, spawnError: errorMessage(error) }) };
     }
@@ -196,7 +201,7 @@ export class BoundedCommandRunner {
       let stderr: Buffer<ArrayBufferLike> = Buffer.alloc(0);
       let timedOut = false;
       let outputLimitExceeded = false;
-      let spawnError: string | undefined;
+      let spawnError: string | undefined = earlySpawnError;
       let closed = false;
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       let termination: Promise<void> | undefined;
@@ -241,6 +246,7 @@ export class BoundedCommandRunner {
       });
       child.on('error', (error) => { spawnError = errorMessage(error); finish(null, null); });
       child.on('close', finish);
+      if (earlySpawnError !== undefined) finish(null, null);
     });
     return { pid, completion };
   }
@@ -343,14 +349,19 @@ export class NativeIdentityProbe implements NativeIdentityProbeContract {
     return observed;
   }
 
-  async inspectProcessGroup(processGroupId: number): Promise<NativeProcessGroupObservation | undefined> {
-    if (!Number.isInteger(processGroupId) || processGroupId < 1) return { status: 'unknown' };
+  async inspectAll(): Promise<readonly NativeProcessObservation[] | { status: 'unknown' }> {
     const result = await this.commands.run(boundedInvocation('ps', ['-axo', 'pid=,lstart=,pgid=,stat='], this.cwd, this.env, 1_000));
     if (result.timedOut || result.outputLimitExceeded || result.spawnError !== undefined || result.exitCode !== 0) return { status: 'unknown' };
     const lines = result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
     const parsed = lines.map(parseNativeProcess);
-    if (parsed.some((entry) => entry === undefined)) return { status: 'unknown' };
-    const members = (parsed as NativeProcessObservation[]).filter((entry) => entry.processGroupId === processGroupId);
+    return parsed.some((entry) => entry === undefined) ? { status: 'unknown' } : parsed as NativeProcessObservation[];
+  }
+
+  async inspectProcessGroup(processGroupId: number): Promise<NativeProcessGroupObservation | undefined> {
+    if (!Number.isInteger(processGroupId) || processGroupId < 1) return { status: 'unknown' };
+    const observed = await this.inspectAll();
+    if ('status' in observed) return observed;
+    const members = observed.filter((entry) => entry.processGroupId === processGroupId);
     return members.length === 0 ? { status: 'absent' } : { processGroupId, members };
   }
 }
@@ -573,8 +584,9 @@ export class DockerCodexProcessRunner {
       : request;
     const plan = this.planFor(plannedRequest);
     if (plan.profile !== 'isolated' || plan.args[0] !== 'run' || plan.args.filter((arg) => arg === 'codex').length !== 1) throw new Error('Docker Codex runner requires one validated detached Codex plan');
+    if (!isValidatedDockerExecutionPlan(plan)) throw new Error('Docker Codex runner requires an unchanged plan from the hardened Docker builder');
     if (this.allowUnsandboxedCodexInsideValidatedContainer
-      && (!isValidatedDockerExecutionPlan(plan) || plan.args.filter((arg) => arg === CODEX_EXTERNAL_SANDBOX_FLAG).length !== 1)) {
+      && plan.args.filter((arg) => arg === CODEX_EXTERNAL_SANDBOX_FLAG).length !== 1) {
       throw new Error('Codex inner-sandbox bypass requires an unchanged plan from the hardened Docker builder');
     }
     const startedAt = Date.now();

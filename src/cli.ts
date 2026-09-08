@@ -11,7 +11,9 @@ import {
   applyRuntimeUpdate,
   previewRuntimeUpdate,
   previewNewProduct,
+  prepareLocalCodexConsole,
   provisionApprovedProposal,
+  provisionApprovedNewProduct,
   reconcileRestoredFactory,
   renderProvisioningProposal,
   resolveFactoryConfig,
@@ -27,6 +29,7 @@ const HELP = `Usage:
   faktori provision approve <request.json>
   faktori provision apply <bundle.json> <absolute-root>
   faktori product preview <request.json>
+  faktori product new <approved-bundle.json> <absolute-root>
   faktori runtime rebuild <journal.jsonl> <projection.sqlite>
   faktori backup create <request.json> <backup-directory>
   faktori backup restore <backup-directory> <restore-request.json>
@@ -35,6 +38,7 @@ const HELP = `Usage:
   faktori update preview <request.json>
   faktori update apply <approved-request.json>
   faktori console serve <local-console.json>
+  faktori console prepare <request.json>
 
 Commands read explicit files and write JSON to stdout. Provision apply changes
 approved local factory state. Runtime rebuild replaces only the specified
@@ -89,11 +93,16 @@ async function run(argv: string[]): Promise<void> {
   if (group === 'provision' && action === 'proposal') {
     const request = record(await json(source, 'proposal request'), 'proposal request');
     const resolvedConfig = request.resolvedConfig ?? resolveFactoryConfig(request.configuration);
+    const changeInput = isRecord(request.change) ? request.change : undefined;
+    const previousResolvedConfig = changeInput?.kind === 'add-product'
+      ? changeInput.previousResolvedConfig ?? resolveFactoryConfig(changeInput.previousConfiguration)
+      : undefined;
+    const change = changeInput === undefined ? undefined : { ...changeInput, previousResolvedConfig };
     const discovery = isRecord(request.discovery) && request.discovery.format === 'faktori.discovery/v1'
       ? request.discovery
       : createDiscoveryRecord(request.discovery);
-    const proposal = createProvisioningProposal({ ...request, discovery, resolvedConfig });
-    print({ resolvedConfig, discovery, proposal, renderedProposal: renderProvisioningProposal(proposal) });
+    const proposal = createProvisioningProposal({ ...request, discovery, resolvedConfig, ...(change === undefined ? {} : { change }) });
+    print({ resolvedConfig, ...(previousResolvedConfig === undefined ? {} : { previousResolvedConfig }), discovery, proposal, renderedProposal: renderProvisioningProposal(proposal) });
     return;
   }
 
@@ -113,6 +122,13 @@ async function run(argv: string[]): Promise<void> {
     const request = record(await json(source, 'product request'), 'product request');
     const resolvedConfig = request.resolvedConfig ?? resolveFactoryConfig(request.configuration);
     print(previewNewProduct({ ...request, resolvedConfig }));
+    return;
+  }
+
+  if (group === 'product' && action === 'new') {
+    if (!extra) throw new Error('an existing absolute factory root is required');
+    const bundle = record(await json(source, 'approved new-product bundle'), 'approved new-product bundle');
+    print(provisionApprovedNewProduct({ ...bundle, root: extra }));
     return;
   }
 
@@ -170,6 +186,11 @@ async function run(argv: string[]): Promise<void> {
     process.once('SIGINT', () => { void close(); });
     process.once('SIGTERM', () => { void close(); });
     await new Promise<void>(() => {});
+  }
+
+  if (group === 'console' && action === 'prepare') {
+    print(prepareLocalCodexConsole(await json(source, 'Console preparation request')));
+    return;
   }
 
   throw new Error(`unknown command: ${argv.join(' ')}\n\n${HELP}`);

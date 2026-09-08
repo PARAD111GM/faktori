@@ -70,12 +70,15 @@ For an installed check, wrap that request in
 absolute `installation.projectionPath`. The CLI opens the existing SQLite file
 with `readonly` and `fileMustExist`, verifies the Faktori `run_events` table
 shape, and never emits the path. The Console supplies those same facts from its
-already validated owner-controlled local configuration. A valid installed
-projection can therefore set `projectionReady: true`; a missing or invalid one
-returns a specific `faktori runtime rebuild` remediation. Neither caller JSON
-status nor freshness can make execution or live evidence verified. Preflight is
-an observation report, never an admission lease; the coordinator must revalidate
-current scope, capacity, budget, and authority at admission time.
+already validated owner-controlled local configuration. A valid projection with
+at least one matching durable admission can set `projectionReady: true`. A
+valid empty projection remains `not_tested` because it has no durable factory
+binding yet; that does not prevent the Console from running in its empty state.
+A missing projection or one containing a foreign/invalid admission fails with a
+specific rebuild remediation. Neither caller JSON status nor freshness can make
+execution or live evidence verified. Preflight is an observation report, never
+an admission lease; the coordinator must revalidate current scope, capacity,
+budget, and authority at admission time.
 
 The core evaluator is data-only. It does not import filesystem, process, transport,
 provider adapter, coordinator, approval, provisioning, script, or network

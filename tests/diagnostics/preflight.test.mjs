@@ -120,6 +120,21 @@ describe('evaluatePreflight', () => {
     }
   });
 
+  it('keeps a valid but empty installed projection unbound until durable factory evidence exists', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'faktori-preflight-empty-'));
+    const projectionPath = join(directory, 'projection.sqlite');
+    const projection = new SqliteProjection(projectionPath);
+    projection.close();
+    try {
+      const result = evaluateInstalledPreflight(request(), { factoryId: scope.factoryId, projectionPath });
+      expect(result).toMatchObject({ status: 'partial', projectionReady: false, executionReady: false, liveExecutionVerified: false });
+      expect(result.checks.find((item) => item.id === 'console.installed_projection')).toMatchObject({ status: 'not_tested', basis: 'observed', freshness: 'unknown' });
+      expect(result.checks.find((item) => item.id === 'console.installed_projection').remediation).toMatch(/no durable factory binding/i);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('rejects an installed projection containing a different factory scope', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'faktori-preflight-scope-'));
     const projectionPath = join(directory, 'projection.sqlite');

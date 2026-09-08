@@ -75,6 +75,7 @@ npm run typecheck
 npm test -- --maxWorkers=4
 npm run pack:verify
 npm run faktori -- config resolve examples/config/solo.json
+npm run faktori -- preflight examples/diagnostics/preflight-projection.json
 ```
 
 Keep the committed lockfile. Disable dependency lifecycle scripts during the
@@ -84,8 +85,10 @@ precede the tests because installed-runtime tests need emitted files.
 
 Expected results: emitted runtime and Console assets; valid skill catalog;
 passing typecheck and tests; a clean installed-package CLI check, including real
-SQLite operations; and resolved example configuration. The final command is a
-read-only example, not an approved owner configuration or a running factory.
+SQLite operations; resolved example configuration; and a fail-closed read-only
+preflight example. The final two commands are diagnostic examples, not an
+approved owner configuration, a running factory, or proof of execution/live
+readiness.
 
 These are **source checkout commands**. A packed distribution omits development
 scripts and source files: do not run this sequence inside an installed tarball.
@@ -111,10 +114,24 @@ npm run faktori -- provision apply <bundle.json> <absolute-approved-factory-root
 ```
 
 Record the owner's actual approval before creating its approval record. If the
-proposal changes, renew approval. Current `main` scaffolds local resources;
-unsupported remote provisioning remains pending. Do not invent repositories,
-deployment receipts, a universal `product new` command, or capabilities found
-only on another branch.
+proposal or an imported source snapshot changes, renew approval. Initial
+provisioning can bind each named local product through `localProductSources` in
+the proposal request; omitting it intentionally creates the documented empty
+scaffold. Current `main` provisions approved local resources, while unsupported
+remote provisioning remains pending. Do not invent remote repositories or
+deployment receipts.
+
+For an existing factory, use the same discover, propose, and exact-approval
+sequence, then apply the approved add-product bundle with the shipped command:
+
+```text
+faktori product new <approved-product-bundle.json> <absolute-existing-factory-root>
+```
+
+This preserves the approved factory defaults, existing products, repositories,
+and pods; it adds exactly one approved product and does not create a pod
+implicitly. See the [product-addition contract](docs/provisioning/README.md)
+before constructing the bundle.
 
 On interruption, inspect the approved root's
 `.faktori/provisioning/operations.jsonl` and reconcile intended/observed effects
@@ -131,10 +148,12 @@ before retrying. Do not delete records or blindly rerun under a new identity.
 - Separate authentication status from observed execution. After approval, run a
   small bounded exercise in a disposable workspace and record the actual result.
   Do not activate paid routes or broaden permissions to make a check pass.
-- Follow [the Console configuration guide](docs/console.md). Create its private
-  configuration outside the public kit, then run from the source root:
+- Follow [the Console configuration guide](docs/console.md). Prepare its private
+  configuration from the approved factory projection, then serve it from the
+  source root:
 
 ```text
+node dist/cli.js console prepare <approved-projection-request.json> > <absolute-path-to-local-console.json>
 npm run faktori -- console serve <absolute-path-to-local-console.json>
 ```
 
@@ -142,6 +161,13 @@ Open the configured loopback URL. A visible Console is not evidence that a
 provider, deployment, or product acceptance test passed. The current Console has
 native Codex/Claude/Cursor routes and an isolated Codex route; capability parity
 across execution profiles is not assumed.
+
+Before admitting work, run `faktori preflight <request.json>` using the selected
+factory/configuration scope. Public assertions cannot self-certify execution or
+live readiness; negative observations fail closed, and only the supported
+read-only installed SQLite inspector can establish projection readiness. Follow
+the [operational clarity guide](docs/operational-clarity.md) for the request
+shape, stable checks, and remediation semantics.
 
 ## 6. Demonstrate and hand off
 

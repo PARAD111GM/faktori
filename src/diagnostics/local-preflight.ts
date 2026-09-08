@@ -27,6 +27,8 @@ export function evaluateInstalledPreflight(value: unknown, installationValue: un
     replacement = { id: 'console.installed_projection', section: 'console', status: 'fail', basis: 'observed', freshness: 'not_applicable', scope: result.scope, remediation: 'Select a local Console configuration whose factory matches the requested target, then rerun preflight.' };
   } else if (inspection === 'ready') {
     replacement = { id: 'console.installed_projection', section: 'console', status: 'pass', basis: 'observed', freshness: 'current', scope: result.scope, remediation: 'No action required.' };
+  } else if (inspection === 'unbound') {
+    replacement = { id: 'console.installed_projection', section: 'console', status: 'not_tested', basis: 'observed', freshness: 'unknown', scope: result.scope, remediation: 'The valid projection has no durable factory binding yet. The Console may run in empty state; projection readiness remains not tested until authoritative journal events bind this factory.' };
   } else if (inspection === 'missing') {
     replacement = { id: 'console.installed_projection', section: 'console', status: 'fail', basis: 'observed', freshness: 'not_applicable', scope: result.scope, remediation: 'Create the local SQLite projection from the authoritative journal with faktori runtime rebuild, then rerun preflight.' };
   } else {

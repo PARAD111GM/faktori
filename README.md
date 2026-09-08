@@ -121,10 +121,19 @@ npm run faktori -- run manifest examples/runtime/interrupted-run.jsonl example-r
 npm run faktori -- preflight examples/diagnostics/preflight-projection.json
 ```
 
-To configure and launch the Console, follow the
-[local Console guide](docs/console.md). The current Console supports native
-Codex, Claude, and Cursor routes and an isolated Codex route; it does not promise
-identical sandboxing or interaction across all three.
+An approved factory can import a named local product during initial
+provisioning, and `faktori product new` adds one separately discovered and
+approved product later without creating an implicit pod. `faktori console
+prepare` creates the local Console configuration from an approved projection
+request; `faktori preflight` checks configuration, projection, execution,
+provider, integration, resource, and live-evidence readiness without launching
+work. Follow the [provisioning](docs/provisioning/README.md), [local Console](docs/console.md),
+and [operational clarity](docs/operational-clarity.md) guides for the request
+contracts and authority boundaries.
+
+The current Console supports native Codex, Claude, and Cursor routes and an
+isolated Codex route; it does not promise identical sandboxing or interaction
+across all three.
 
 ## The paperwork is load-bearing
 
@@ -150,17 +159,23 @@ repository; product artifacts normally live beside product code.
 
 The ribbon-cutting committee has been asked to wait for evidence.
 
-`main` includes accepted Phases 0–6 plus the complete SDLC skill kit. The skill
-update passed 301 tests, installed-package checks, and independent instruction
-review. These are engineering checks—not a claim that every live workflow has
-been proved.
+`main` includes accepted Phases 0–6, the complete 15-skill SDLC kit, the Phase 7
+runtime and validation work, and manager-accepted Phase 8 operational clarity.
+Phase 8 provides structured blockers, redacted run manifests, and fail-closed
+read-only preflight/remediation through the public CLI and Console.
 
-- [Phase 7](https://github.com/PARAD111GM/faktori/tree/build/phase-7)
-  contains ongoing installation, host, and delivery validation. The Twinzy
-  comparison is deferred; no comparative performance win is claimed.
-- [Phase 8](https://github.com/PARAD111GM/faktori/tree/build/phase-8)
-  contains separate operational-clarity work: structured blockers, redacted run
-  manifests, and preflight reports. It is not yet integrated into `main`.
+Phase 7 is deliberately not represented as fully accepted. F7-01 cold-start
+validation and F7-02 isolated Linux Node/Python delivery were accepted. F7-03,
+the Twinzy proof, is owner-deferred and did not pass. The paired comparison
+evidence is complete, but F7-04 release acceptance remains blocked by that unmet
+dependency; its three-case result is one bounded case study with
+non-commensurate usage schemas, not a generalized performance win or a V1
+release claim.
+
+- [Phase 7 evidence](docs/build/phase-7-report.md) records the exact accepted,
+  deferred, and blocked boundaries.
+- [Phase 8 operations](docs/operational-clarity.md) documents the integrated
+  diagnostic commands and their fail-closed evidence model.
 - Windows through WSL2 remains unverified. Consult the compatibility matrix
   for observed host and provider coverage.
 
@@ -178,6 +193,7 @@ collaboration. They are directions—not shipped features or prerequisites.
 | [Hierarchy and context](docs/context/README.md) | Give agents relevant scope without unrelated baggage. |
 | [Providers](docs/providers/README.md) | Understand adapter contracts and capability boundaries. |
 | [Runtime](docs/runtime/README.md) | Explore execution, cancellation, publication, and recovery. |
+| [Operational clarity](docs/operational-clarity.md) | Inspect blockers, run manifests, and fail-closed preflight results. |
 | [Maintenance](docs/maintenance/README.md) | Back up, restore, reconcile, and update. |
 | [Implementation plan](docs/implementation-plan.md) | Read the full V1 commitment and acceptance criteria. |
 | [Skill verification report](docs/build/sdlc-skills-report.md) | See what was checked and what remains unproved. |

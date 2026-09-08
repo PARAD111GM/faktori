@@ -19,7 +19,7 @@ type DatabaseConstructor = new(path: string, options?: { readonly?: boolean; fil
 const require = createRequire(import.meta.url);
 const BetterSqlite3 = require('better-sqlite3') as DatabaseConstructor;
 
-export type ProjectionInspection = 'ready' | 'missing' | 'invalid';
+export type ProjectionInspection = 'ready' | 'unbound' | 'missing' | 'invalid';
 
 /** Opens an existing projection strictly read-only and validates its Faktori table shape. */
 export function inspectProjectionReadOnly(path: string, expectedFactoryId?: string): ProjectionInspection {
@@ -30,7 +30,9 @@ export function inspectProjectionReadOnly(path: string, expectedFactoryId?: stri
     if (table?.name !== 'run_events') return 'invalid';
     database.prepare('SELECT event_id, run_id, occurred_at, kind, payload, digest FROM run_events LIMIT 0').all();
     if (expectedFactoryId !== undefined) {
-      for (const row of database.prepare("SELECT payload FROM run_events WHERE kind = 'run.admitted'").all()) {
+      const admissions = database.prepare("SELECT payload FROM run_events WHERE kind = 'run.admitted'").all();
+      if (admissions.length === 0) return 'unbound';
+      for (const row of admissions) {
         const event = JSON.parse(String(row.payload)) as { data?: { intent?: { target?: { factoryId?: unknown } } } };
         if (event.data?.intent?.target?.factoryId !== expectedFactoryId) return 'invalid';
       }

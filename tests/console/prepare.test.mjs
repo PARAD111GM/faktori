@@ -85,7 +85,8 @@ describe('local Console preparation', () => {
     const parsed = parseLocalConsoleConfiguration(generated);
 
     expect(parsed.runtime).toBeUndefined();
-    expect(parsed.preflight).toMatchObject({ status: 'partial', projectionReady: true, executionReady: false, liveExecutionVerified: false });
+    expect(parsed.preflight).toMatchObject({ status: 'partial', projectionReady: false, executionReady: false, liveExecutionVerified: false });
+    expect(parsed.preflight.checks.find((item) => item.id === 'console.installed_projection')).toMatchObject({ status: 'not_tested', basis: 'observed' });
     expect(parsed.limits).toEqual(expect.objectContaining({ strictSpending: true, strictSpendingSupported: false }));
     expect(() => prepareLocalCodexConsole({
       mode: 'projection',

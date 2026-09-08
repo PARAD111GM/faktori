@@ -112,11 +112,13 @@ An owner-controlled Console file may also include `preflightRequest`. Parsing
 binds that request to the selected resolved `factoryConfiguration`, factory ID,
 and actual `projectionPath`, then opens the existing SQLite projection strictly
 read-only with `fileMustExist`. The same installed check powers `faktori
-preflight`; a valid projection can be projection-ready while execution and live
-evidence remain unknown. Missing or invalid projections return a specific
-nonexecuting rebuild remediation and are not created during preflight. Only the
-sanitized result reaches the Factory view. The report cannot approve, repair,
-admit, or launch work.
+preflight`; a valid projection with matching durable factory admissions can be
+projection-ready while execution and live evidence remain unknown. A valid
+empty projection is reported as unbound/`not_tested`, but the Console can still
+start and render its empty state. Missing or foreign/invalid projections return
+a specific nonexecuting rebuild remediation and are not created during
+preflight. Only the sanitized result reaches the Factory view. The report cannot
+approve, repair, admit, or launch work.
 
 ## Configuration boundary
 

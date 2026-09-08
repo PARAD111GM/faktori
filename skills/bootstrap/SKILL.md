@@ -49,6 +49,12 @@ that the installed runtime does not have.
    `.faktori/provisioning/operations.jsonl` before retrying. Preserve existing
    Git repositories and user changes; stop for drift, an unresolved intended
    operation, a changed proposal, or a path outside the approved root.
+7. Prepare the loopback Console with `faktori console prepare` from the approved
+   installed projection. Run `faktori preflight` against the selected factory
+   and configuration before admitting work. Treat public readiness assertions
+   as untrusted: only the installed read-only projection check can establish
+   projection readiness, while execution and live evidence require their own
+   independent provenance.
 
 ## Scale, output, and handoff
 
@@ -58,7 +64,8 @@ that the installed runtime does not have.
   material.
 - Emit: discovery record; proposal; approval record; resolved profile and
   locked versions; local-operation identities and observed results; explicit
-  pending/unsupported effects; and a small delivery-loop demonstration plan.
+  pending/unsupported effects; prepared Console configuration; preflight result;
+  and a small delivery-loop demonstration plan.
 - Record evidence as `proposal@<revision>`, `config@<revision>`, approver,
   operation ID, exact root, source-snapshot digest when applicable, observed
   filesystem/Git result, and remaining gate.
@@ -66,7 +73,7 @@ that the installed runtime does not have.
   pending/unsupported; owner approval: approval@<revision>.`
 - Hand the accepted factory profile and its documented kit-root paths to the
   **product-creation skill**. A later product inherits factory defaults, reports
-  incremental cost and workload, and creates no pod automatically. Escalate
-  instead of widening authority for missing approval, changed source snapshots,
-  budget uncertainty, credential requests, unsupported effects, or unreconciled
-  recovery.
+  incremental cost and workload, and creates no pod automatically; apply its
+  approved bundle with `faktori product new`. Escalate instead of widening
+  authority for missing approval, changed source snapshots, budget uncertainty,
+  credential requests, unsupported effects, or unreconciled recovery.

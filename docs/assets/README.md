@@ -29,7 +29,8 @@ as verified GPT-image-2 outputs. No separately billed API route was used.
   red YOU; replace the glove with an articulated brass-and-steel mechanical
   hand, insignia with factory gears, and copy with “THE 4TH INDUSTRIAL
   REVOLUTION NEEDS YOU” and “FAKTORI — HUMAN MANAGEMENT STILL REQUIRED”.
-  This variant closes the README; the earlier recruitment artwork is retained.
+  This variant is retained as an alternative; the original matching recruitment
+  artwork closes the README.
 
 All are illustrative artwork, not screenshots or runtime evidence.
 Lettering, stage order, and feedback direction were visually inspected. README

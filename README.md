@@ -200,5 +200,5 @@ credited in [the notices](docs/third-party-notices.md).
 </div>
 
 <p align="center">
-  <img src="docs/assets/faktori-recruitment-parody.png" alt="The 4th Industrial Revolution Needs You — Faktori recruitment parody featuring a mustachioed officer pointing with an articulated mechanical hand. Human management still required." width="720">
+  <img src="docs/assets/faktori-recruitment.png" alt="The 4th Industrial Revolution Needs You — Faktori recruitment poster featuring an industrial foreman with a mechanical pointing hand. Seize the means of software production." width="720">
 </p>

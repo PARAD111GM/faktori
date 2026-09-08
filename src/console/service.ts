@@ -11,6 +11,7 @@ import type { DurableCoordinator } from '../runtime/coordinator.ts';
 import { coordinatorGMState } from '../gm/coordinator-store.ts';
 import { projectStructuredBlocker, structuredBlockersFromEvents, type StructuredBlocker } from '../diagnostics/blockers.ts';
 import type { PreflightResult } from '../diagnostics/preflight.ts';
+import type { ConsoleSettings } from './settings.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -50,6 +51,8 @@ export interface ConsoleServiceOptions {
   /** Optional diagnostic source. It is projected as read-only sanitized state. */
   blockers?: () => readonly StructuredBlocker[];
   preflight?: PreflightResult;
+  /** Validated, allowlisted settings safe for the read-only browser projection. */
+  settings?: ConsoleSettings;
   assetsDirectory?: string;
   now?: () => Date;
   /** Test seam for the local append-only journal watcher. */
@@ -296,6 +299,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
         .filter((blocker, index, values) => values.findIndex((candidate) => candidate.blockerId === blocker.blockerId) === index),
       ...(options.preflight === undefined ? {} : { preflight: options.preflight }),
+      ...(options.settings === undefined ? {} : { settings: options.settings }),
       hierarchy: hierarchyState(snapshots, options.hierarchy),
       overview: { activeRuns: snapshots.filter((snapshot) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(snapshot.state)).length, waitingDecisions: waiting.length, failedRuns: snapshots.filter((snapshot) => snapshot.state === 'failed').length },
       resources: { knownUsageTokens: knownTokens, reportedUsageCount: reported.length, unavailableUsageCount: usages.length - reported.length, reservedTokens, unavailableMeasurements: usages.filter((usage) => usage.availability === 'unavailable').length, queueAge: snapshots.filter((snapshot) => snapshot.state === 'queued' || snapshot.state === 'admitted').map((snapshot) => ({ runId: snapshot.intent.runId, createdAt: snapshot.intent.createdAt })) },

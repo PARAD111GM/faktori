@@ -1,4 +1,19 @@
 :root { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #171819; background: #252525; font-synthesis: none; --shell: #252525; --paper: #f3f3f0; --support: #dadbd8; --muted: #c5c8c6; --ink: #171819; --secondary: #545957; --line: #b9bebb; --accent: #e65326; --gap: 4px; }
+.settings-page { display: grid; gap: 4px; }
+.settings-intro { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.settings-intro p { margin-bottom: 0; }
+.settings-providers { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; }
+.settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; }
+.provider-card:nth-child(2) { background: var(--support); }.provider-card:nth-child(3) { background: var(--muted); }
+.provider-card .panel-heading { flex-wrap: wrap; }.provider-card h2 { font-size: 23px; }
+.settings-badge { font-size: 11px; padding: 6px 8px; background: #e4e5e1; color: #4a504c; border-radius: 3px; }.settings-badge.route-enabled { background: #d9e8d9; color: #265434; }
+.settings-fields { margin: 16px 0; font-size: 13px; }.settings-fields > div { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.settings-footnote { font-size: 12px; margin-top: 16px; }.settings-page summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 12px 0; }.settings-page details > p { margin-top: 8px; }
+.settings-product { border-top: 1px solid var(--line); padding: 8px 0; }.settings-product > summary { font-size: 17px; }.settings-product > summary span { float: right; font-size: 12px; color: var(--secondary); }
+.settings-assignment { display: flex; flex-wrap: wrap; gap: 20px; padding: 12px 0; font-size: 12px; color: var(--secondary); }.settings-assignment strong { display: block; margin-top: 5px; color: var(--ink); }.settings-pod { margin-left: 12px; border-top: 1px solid var(--line); }
+.settings-page .session-key { border: 0; padding-top: 0; max-width: 420px; }.settings-page .session-key summary, .settings-page .session-key small { color: var(--secondary); }
+@media (max-width: 1100px) { .settings-providers { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 760px) { .settings-grid { grid-template-columns: minmax(0,1fr); }.sidebar nav { grid-template-columns: repeat(5,minmax(0,1fr)) !important; }.sidebar nav button { flex-direction: column; gap: 5px; font-size: 11px; } }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 0; }
 button, input, textarea, select { font: inherit; }

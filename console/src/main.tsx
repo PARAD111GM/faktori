@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createRoot } from 'react-dom/client';
 
 import './styles.css';
+import { Settings } from './settings.tsx';
+import type { ConsoleSettings } from '../../src/console/settings.ts';
 
 type Usage = {
   availability?: 'available' | 'estimated' | 'unavailable';
@@ -38,6 +40,7 @@ type Hierarchy = {
 type ScopeFilter = { productId: string; podId: string };
 
 type ConsoleState = {
+  settings?: ConsoleSettings;
   format?: string;
   observedAt?: string;
   stale?: boolean;
@@ -175,10 +178,11 @@ function Empty({ title, detail }: { title: string; detail: string }) {
 
 function RunState({ state }: { state: string }) { return <span className={`state state-${state}`}>{stateLabel(state)}</span>; }
 
-type IconName = 'overview' | 'work' | 'run' | 'factory' | 'refresh';
+type IconName = 'overview' | 'work' | 'run' | 'factory' | 'settings' | 'refresh';
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
+    settings: <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="8" cy="18" r="2" /></>,
     overview: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></>,
     work: <><path d="M7 3h8l4 4v14H7z" /><path d="M15 3v5h5M10 12h6M10 16h6" /></>,
     run: <path d="m7 4 12 8L7 20z" />,
@@ -311,17 +315,17 @@ export function filterWorkRuns(runs: Run[], query: string): Run[] {
   return runs.filter((run) => [run.workItem.id, run.runId, run.provider ?? '', stateLabel(run.state)].join(' ').toLocaleLowerCase().includes(needle));
 }
 
-export function viewFromHash(hash: string): 'overview' | 'work' | 'run' | 'factory' {
+export function viewFromHash(hash: string): 'overview' | 'work' | 'run' | 'factory' | 'settings' {
   const view = hash.slice(1);
-  return view === 'work' || view === 'run' || view === 'factory' ? view : 'overview';
+  return view === 'work' || view === 'run' || view === 'factory' || view === 'settings' ? view : 'overview';
 }
 
 function App() {
   const { state, connection, error, refresh } = useConsoleState();
-  const [view, setView] = useState<'overview' | 'work' | 'run' | 'factory'>(() => viewFromHash(window.location.hash));
+  const [view, setView] = useState<ReturnType<typeof viewFromHash>>(() => viewFromHash(window.location.hash));
   useEffect(() => {
     const onHashChange = () => {
-      if (['#overview', '#work', '#run', '#factory'].includes(window.location.hash)) setView(viewFromHash(window.location.hash));
+      if (['#overview', '#work', '#run', '#factory', '#settings'].includes(window.location.hash)) setView(viewFromHash(window.location.hash));
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
@@ -372,14 +376,14 @@ function App() {
   };
 
   if (!state) return <main className="loading"><h1>Faktori</h1><p>{error ?? 'Loading the coordinator projection…'}</p><button onClick={() => void refresh()}>Retry connection</button></main>;
-  const views = ['overview', 'work', 'run', 'factory'] as const;
+  const views = ['overview', 'work', 'run', 'factory', 'settings'] as const;
   const title = view === 'run' ? 'Run detail' : view[0].toUpperCase() + view.slice(1);
   return <main className="app-shell">
     <a className="skip-link" href="#console-content">Skip to content</a>
-    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className="brand-name">FAKTORI<small>LOCAL CONSOLE</small></span></a><nav aria-label="Console views">{views.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item === 'run' ? 'Run detail' : item}</span></button>)}</nav><details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details></aside>
-    <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><span className="eyebrow">{state.hierarchy?.nodes?.find((node) => node.kind === 'factory')?.label ?? 'Local factory'}</span><h1>{title}</h1></div><div className="header-controls"><ScopeFilters hierarchy={state.hierarchy} filter={filter} setFilter={setFilter} /><button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
+    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className="brand-name">FAKTORI<small>LOCAL CONSOLE</small></span></a><nav aria-label="Console views">{views.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item === 'run' ? 'Run detail' : item}</span></button>)}</nav></aside>
+    <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><span className="eyebrow">{state.hierarchy?.nodes?.find((node) => node.kind === 'factory')?.label ?? 'Local factory'}</span><h1>{title}</h1></div><div className="header-controls">{view !== 'settings' && <ScopeFilters hierarchy={state.hierarchy} filter={filter} setFilter={setFilter} />}<button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
     {error && <div className="alert" role="alert">{error}</div>}{pending.length > 0 && <div className="pending" role="status"><strong>{pending.length} command{pending.length === 1 ? '' : 's'} pending</strong>{pending.map((entry) => <span key={entry.id}>{entry.command.type.replaceAll('_', ' ')} {entry.status === 'failed' ? `failed: ${entry.detail}` : 'awaiting confirmation'}<button type="button" onClick={() => retry(entry)}>{entry.status === 'failed' ? 'Replay safely' : 'Retry with same identity'}</button></span>)}</div>}
-    {view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
+    {view === 'settings' && <Settings settings={state.settings} connectionSettings={<details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
   </main>;
 }
 

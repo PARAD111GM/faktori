@@ -82,7 +82,7 @@ describe('Console presentation contract', () => {
     expect(filterHtml).toContain('<span>Pod</span>');
     expect(filterHtml).toContain('All products');
     expect(filterHtml).toContain('All pods');
-    expect(source).toContain("const views = ['overview', 'work', 'run', 'factory'] as const;");
+    expect(source).toContain("const views = ['overview', 'work', 'run', 'factory', 'settings'] as const;");
     expect(source).toContain('className="session-key"');
     expect(source).toContain('className="header-controls"');
   });
@@ -133,7 +133,28 @@ describe('Console presentation contract', () => {
     expect(presentation.viewFromHash('#work')).toBe('work');
     expect(presentation.viewFromHash('#factory')).toBe('factory');
     expect(presentation.viewFromHash('#run')).toBe('run');
+    expect(presentation.viewFromHash('#settings')).toBe('settings');
     expect(presentation.viewFromHash('#unknown')).toBe('overview');
+  });
+
+  it('shows provider configuration without claiming authentication or offering fake saves', async () => {
+    const { Settings } = await server.ssrLoadModule('/console/src/settings.tsx');
+    const settings = {
+      factory: { id: 'factory', name: 'Test factory' },
+      providers: [{ id: 'codex', configured: true, enabled: false, authentication: { status: 'unknown', detail: 'Login has not been checked.' }, capabilities: ['native'], routes: [] }],
+      products: [], environments: [{ id: 'local', kind: 'local' }],
+      resourceLimits: { maxConcurrentRuns: 2, maxTokens: 0, strictSpending: true },
+      recovery: { configured: false, routineActions: [] },
+    };
+    const html = renderToStaticMarkup(createElement(Settings, { settings }));
+    expect(html).toContain('Catalog only');
+    expect(html).toContain('Unverified');
+    expect(html).toContain('No runtime route');
+    expect(html).toContain('Read-only configuration');
+    expect(html).toContain('Concurrent runs');
+    expect(html).not.toContain('Save changes');
+    const missing = renderToStaticMarkup(createElement(Settings));
+    expect(missing).toContain('Settings unavailable');
   });
 
 });

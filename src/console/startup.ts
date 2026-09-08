@@ -22,6 +22,7 @@ import { consoleCommandToken, createConsoleService, type ConsoleOwnerActions } f
 import type { RunIntent, WorkerIdentity } from '../runtime/contracts.ts';
 import { evaluateInstalledPreflight } from '../diagnostics/local-preflight.ts';
 import type { PreflightResult } from '../diagnostics/preflight.ts';
+import { createConsoleSettings } from './settings.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -560,7 +561,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies);
     gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
     observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration) });
     const listeningApp = app;
     pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();

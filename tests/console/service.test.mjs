@@ -236,6 +236,29 @@ describe('loopback Console service', () => {
       ]));
       expect(state.hierarchy.parentEdges).toEqual(expect.arrayContaining([{ from: 'factory:solo-studio', to: 'product:website' }, { from: 'product:website', to: 'pod:website-pod' }]));
       expect(state.hierarchy.filters).toEqual({ products: [{ id: 'website', name: 'Studio website' }], pods: [{ id: 'website-pod', productId: 'website' }] });
+      expect(state.settings).toMatchObject({
+        format: 'faktori.console-settings/v1',
+        factory: {
+          id: 'solo-studio',
+          name: 'Solo Studio',
+          defaults: {
+            providerId: 'codex',
+            environmentId: 'local',
+            executionProfile: 'isolated',
+            budget: { maxConcurrentRuns: 1, maxTokens: 30_000, strictSpending: true },
+            authority: { mergeAuthority: 'human', productionReleaseAuthority: 'human', allowSeparateBilling: false },
+          },
+        },
+        providers: [
+          { id: 'codex', configured: true, enabled: false, authentication: { status: 'unknown' }, capabilities: ['isolated', 'native', 'subagents', 'token-limit'], routes: [] },
+          { id: 'claude', configured: false, enabled: false, authentication: { status: 'unknown' }, capabilities: [], routes: [] },
+          { id: 'cursor', configured: false, enabled: false, authentication: { status: 'unknown' }, capabilities: [], routes: [] },
+        ],
+        products: [{ id: 'website', name: 'Studio website', pods: [{ id: 'website-pod' }] }],
+        environments: [{ id: 'local', kind: 'local' }],
+        resourceLimits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 45, maxTokens: 30_000, strictSpending: true, strictSpendingSupported: true },
+        recovery: { configured: false, routineActions: [] },
+      });
       await started.close();
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -250,9 +273,9 @@ describe('loopback Console service', () => {
       const config = parseLocalConsoleConfiguration({
         factoryId: 'factory', journalPath: join(root, 'operations.jsonl'), projectionPath: join(root, 'projection.sqlite'), port: 0,
         commandToken: 'installed-token', allowedOrigins: ['http://127.0.0.1:4173'],
-        limits: { maxConcurrentRuns: 3, maxRetries: 1, maxRuntimeMinutes: 10, maxTokens: 500, strictSpending: false, strictSpendingSupported: false },
+        limits: { maxConcurrentRuns: 3, maxRetries: 1, maxRuntimeMinutes: 10, maxTokens: 500, strictSpending: false, strictSpendingSupported: false, injectedSecret: 'limit-secret' },
         runtime: {
-          provider: { id: 'codex', environment: { PATH: '/usr/bin' }, compatibleModels: ['fixture'], runNonce: 'installed-test' },
+          provider: { id: 'codex', environment: { PATH: '/usr/bin', FAKTORI_TEST_SECRET: 'environment-secret' }, compatibleModels: ['fixture'], runNonce: 'installed-test' },
           workItems: [{ workItemId: 'installed-work', intent: configuredIntent, context }],
           resumePlans: [],
         },
@@ -266,6 +289,16 @@ describe('loopback Console service', () => {
           async terminate() { return { processTerminated: false }; },
         },
       });
+      const state = (await started.app.inject({ method: 'GET', url: '/api/console/state' })).json();
+      expect(state.settings.providers).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'codex', configured: false, enabled: true, authentication: { status: 'unknown', detail: expect.any(String) }, routes: [{ profile: 'native', compatibleModels: ['fixture'] }] }),
+      ]));
+      const publicState = JSON.stringify(state);
+      expect(publicState).not.toContain('installed-token');
+      expect(publicState).not.toContain('/usr/bin');
+      expect(publicState).not.toContain('installed-test');
+      expect(publicState).not.toContain('environment-secret');
+      expect(publicState).not.toContain('limit-secret');
       const response = await started.app.inject({ method: 'POST', url: '/api/console/commands', headers: { origin: 'http://127.0.0.1:4173', 'x-faktori-console-token': 'installed-token' }, payload: { commandId: 'installed-start', command: { type: 'start_work', workItemId: 'installed-work' } } });
       expect(response.statusCode).toBe(200);
       expect(response.json().command.result.detail).toBe('provider_delivery_started');

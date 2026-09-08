@@ -198,3 +198,7 @@ credited in [the notices](docs/third-party-notices.md).
 **The means of production are now a Git repository. Please review before merging.**
 
 </div>
+
+<p align="center">
+  <img src="docs/assets/faktori-recruitment.png" alt="The 4th Industrial Revolution Needs You — Faktori recruitment poster featuring an industrial foreman with a mechanical pointing hand. Seize the means of software production." width="720">
+</p>

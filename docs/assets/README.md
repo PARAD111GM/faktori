@@ -16,6 +16,13 @@ as verified GPT-image-2 outputs. No separately billed API route was used.
   machinery, inspection magnifier, shipping crate, and maintenance tools
   illustrate the stages in the same three-color palette.
 
-Both were generated as new flat artwork, not screenshots or runtime evidence.
+- `faktori-recruitment.png`: portrait industrial recruitment broadside; exact
+  headline “THE 4TH INDUSTRIAL REVOLUTION NEEDS YOU”; a factory foreman points
+  toward the viewer with a mechanical hand, backed by factory roofs and gears;
+  FAKTORI branding and “SEIZE THE MEANS OF SOFTWARE PRODUCTION” footer. Same
+  ivory, coal-black, and vermilion woodcut palette. Generated with the built-in
+  image tool and visually checked for readable, accurate lettering.
+
+All were generated as new flat artwork, not screenshots or runtime evidence.
 Lettering, stage order, and feedback direction were visually inspected. README
 text preserves the diagram's meaning independently of the raster image.

@@ -19,7 +19,7 @@ do not put production credentials or private factory records in it.
 
 1. Create an empty Git repository with an initial commit in your chosen test
    directory.
-2. Copy `examples/manager-loop/config.json` outside that repository. Set its two
+2. Copy `templates/workflows/manager-loop/config.json` outside that repository. Set its two
    absolute paths and select your Codex model. Review the phases and verification
    commands, then set `nativeAccessApproved` to `true` only when you approve
    native execution in that workspace.
@@ -30,6 +30,9 @@ do not put production credentials or private factory records in it.
    ```
 
    With an installed package, use `faktori loop run` instead.
+
+For the complete copy-and-configure walkthrough, see the
+[Manager Loop template](../templates/workflows/manager-loop/README.md).
 
 The example builds a tiny task-list library, then adds task completion. It uses
 Node's built-in test runner and needs no product dependencies. Running the loop

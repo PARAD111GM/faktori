@@ -11,6 +11,9 @@ import {
   evaluateInstalledPreflightDocument,
   initializeRuntimeInstallation,
   runManagerLoop,
+  recordLoopDeliveryEvidence,
+  prepareLoopPublicationHandoff,
+  publishLoopPublication,
   applyRuntimeUpdate,
   previewRuntimeUpdate,
   previewNewProduct,
@@ -37,6 +40,9 @@ const HELP = `Usage:
   faktori runtime rebuild <journal.jsonl> <projection.sqlite>
   faktori run manifest <journal.jsonl> <run-id>
   faktori loop run <config.json>
+  faktori loop delivery record <request.json>
+  faktori loop publication prepare <request.json>
+  faktori loop publication publish <request.json>
   faktori preflight <request.json>
   faktori backup create <request.json> <backup-directory>
   faktori backup restore <backup-directory> <restore-request.json>
@@ -162,6 +168,19 @@ async function run(argv: string[]): Promise<void> {
       throw new Error(`operational journal could not be read from ${source}: ${errorMessage(error)}`);
     }
     print(createRunManifest(parseRunManifestJournal(contents), extra));
+    return;
+  }
+
+  if (group === 'loop' && action === 'publication' && (source === 'prepare' || source === 'publish')) {
+    if (argv.length !== 4 || !extra) throw new Error('loop publication requires one request JSON path');
+    const request = await json(extra, 'publication request');
+    print(await (source === 'prepare' ? prepareLoopPublicationHandoff(request) : publishLoopPublication(request)));
+    return;
+  }
+
+  if (group === 'loop' && action === 'delivery' && source === 'record') {
+    if (argv.length !== 4 || !extra) throw new Error('loop delivery record requires one request JSON path');
+    print(await recordLoopDeliveryEvidence(await json(extra, 'delivery evidence request')));
     return;
   }
 

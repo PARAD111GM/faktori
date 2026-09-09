@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ActivityFeed, JiraWorkBoard, filterActivity, filterJiraIssues, jiraBoardMatches } from '../../console/src/work-visibility.tsx';
 import { Overview } from '../../console/src/main.tsx';
+import { ManagerLoops } from '../../console/src/manager-loops.tsx';
 
 const board = {
   id: 'board-a', projectKey: 'TWZ', productId: 'product-a', podId: 'pod-a', status: 'stale', lastSyncedAt: '2026-09-09T12:00:00Z', truncated: true,
@@ -112,10 +113,63 @@ describe('Console work visibility', () => {
     expect(html).toContain('stale-loop');
     expect(html).not.toContain('other-loop');
     expect(html).toContain('Recorded running · stale');
-    expect(html).toContain('Process liveness is not confirmed');
+    expect(html).toContain('Worker liveness unconfirmed');
     expect(html).toContain('Manager loops</span><strong>1');
     expect(html).toContain('Recorded active loops</span><strong>1');
     expect(html).toContain('Accepted loop phases</span><strong>1');
     expect(html).toContain('Active coordinator runs</span><strong>0');
+  });
+
+  it('distinguishes local acceptance from unobserved publication and delivery gates', () => {
+    const loop = {
+      id: 'locally-accepted-loop', status: 'succeeded', stale: false, updatedAt: '2026-09-09T12:00:00Z', completedPhases: ['one', 'two'], stages: [],
+      delivery: {
+        gates: [
+          { id: 'local_acceptance', label: 'Local acceptance', status: 'passed' },
+          { id: 'publication', label: 'Published', status: 'unobserved' },
+          { id: 'review', label: 'Independent review', status: 'unobserved' },
+          { id: 'merge', label: 'Merged', status: 'unobserved' },
+          { id: 'deployment', label: 'Deployed', status: 'unobserved' },
+          { id: 'staging_verification', label: 'Staging verified', status: 'unobserved' },
+        ],
+        nextAction: { label: 'Publish the candidate', role: 'publisher' }, issue: 'TWZ-44',
+      },
+    };
+    const html = renderToStaticMarkup(createElement(ManagerLoops, { loops: [loop] }));
+    expect(html).toContain('Locally accepted');
+    expect(html).toContain('Local acceptance');
+    expect(html).toContain('passed');
+    expect(html.match(/<em>unobserved<\/em>/g)).toHaveLength(5);
+    expect(html).toContain('Publish the candidate');
+    expect(html).toContain('Owner: publisher');
+    expect(html).not.toContain('Published</b><em>passed');
+  });
+
+  it('shows failed publication evidence and the next responsible role without unsafe links', () => {
+    const loop = {
+      id: 'publication-failed-loop', status: 'blocked', stale: false, completedPhases: ['one'], stages: [],
+      delivery: {
+        gates: [{ id: 'publication', label: 'Published', status: 'failed', evidenceUrl: 'https://records.example/publication/4' }],
+        nextAction: { label: 'Repair publication', role: 'publication_agent', url: 'https://records.example/actions/4' },
+      },
+    };
+    const html = renderToStaticMarkup(createElement(ManagerLoops, { loops: [loop] }));
+    expect(html).toContain('Published');
+    expect(html).toContain('failed');
+    expect(html).toContain('href="https://records.example/publication/4"');
+    expect(html).toContain('Repair publication');
+    expect(html).toContain('Owner: publication agent');
+    expect(html).toContain('Open authoritative record');
+
+    const unsafe = renderToStaticMarkup(createElement(ManagerLoops, { loops: [{ ...loop, delivery: { ...loop.delivery, nextAction: { ...loop.delivery.nextAction, url: 'javascript:alert(1)' } } }] }));
+    expect(unsafe).not.toContain('javascript:');
+  });
+
+  it('reports last progress for a quiet running loop without claiming it stopped', () => {
+    const html = renderToStaticMarkup(createElement(ManagerLoops, { loops: [{ id: 'quiet-loop', status: 'running', stale: true, updatedAt: '2026-09-09T08:00:00Z', completedPhases: [], stages: [] }] }));
+    expect(html).toContain('Recorded running');
+    expect(html).toContain('Last progress recorded');
+    expect(html).toContain('worker liveness unconfirmed');
+    expect(html).not.toMatch(/worker (?:is )?stopped/i);
   });
 });

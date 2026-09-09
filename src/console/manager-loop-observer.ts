@@ -1,6 +1,7 @@
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
+import { projectLoopDelivery, readDeliveryRecord, type LoopDeliverySummary } from '../loop/delivery.ts';
 
 export interface ManagerLoopSource {
   id: string;
@@ -32,6 +33,7 @@ export interface ManagerLoopSummary {
   currentStage?: { phaseId: string; kind: ManagerLoopStageSummary['kind']; round: number };
   stages: ManagerLoopStageSummary[];
   reason?: string;
+  delivery?: LoopDeliverySummary;
 }
 
 export interface ManagerLoopObserverOptions {
@@ -174,7 +176,14 @@ async function readSource(source: ManagerLoopSource, nowMs: number, staleAfterMs
     const content = buffer.subarray(0, bytesRead).toString('utf8');
     let parsed: unknown;
     try { parsed = JSON.parse(content) as unknown; } catch { return unavailable(source, 'state_malformed', modifiedAt); }
-    return projection(source, parsed, details.mtimeMs, nowMs, staleAfterMs) ?? unavailable(source, 'state_malformed', modifiedAt);
+    const summary = projection(source, parsed, details.mtimeMs, nowMs, staleAfterMs);
+    if (!summary) return unavailable(source, 'state_malformed', modifiedAt);
+    try {
+      const publication = await readDeliveryRecord(join(source.artifactsDirectory, 'publication.json'));
+      const delivery = await readDeliveryRecord(join(source.artifactsDirectory, 'delivery.json'));
+      summary.delivery = projectLoopDelivery(parsed, publication, delivery);
+    } catch { summary.delivery = projectLoopDelivery(parsed, undefined, undefined, true); }
+    return summary;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     return unavailable(source, code === 'ENOENT' ? 'state_missing' : code === 'ELOOP' ? 'state_symlink_rejected' : 'state_unreadable');
@@ -206,7 +215,7 @@ export class ManagerLoopObserver {
   }
 
   summaries(): ManagerLoopSummary[] {
-    return this.#summaries.map((summary) => ({ ...summary, completedPhases: [...summary.completedPhases], stages: summary.stages.map((item) => ({ ...item })), ...(summary.currentStage === undefined ? {} : { currentStage: { ...summary.currentStage } }) }));
+    return structuredClone(this.#summaries);
   }
 
   onChange(listener: Listener): () => void {

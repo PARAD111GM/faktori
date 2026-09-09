@@ -17,6 +17,7 @@ Skills:
 - [test](../../skills/test/SKILL.md)
 - [deploy](../../skills/deploy/SKILL.md)
 - [maintain](../../skills/maintain/SKILL.md)
+- [update](../../skills/update/SKILL.md)
 - [handoff](../../skills/handoff/SKILL.md)
 - [factory-operation](../../skills/factory-operation/SKILL.md)
 - [factory-improvement](../../skills/factory-improvement/SKILL.md)
@@ -39,6 +40,7 @@ Use the same canonical skill on every provider. Load its referenced resources on
 | Reproduce a bug or verify behavior, regression, security, and recovery outcomes. | [test](../../skills/test/SKILL.md) |
 | Release an exact artifact to an authorized environment and observe health. | [deploy](../../skills/deploy/SKILL.md) |
 | Diagnose and maintain a released product, including incidents and recovery. | [maintain](../../skills/maintain/SKILL.md) |
+| Run /faktori-update to upgrade an existing factory and optionally connect its Manager Loop records. | [update](../../skills/update/SKILL.md) |
 | Transfer evidence and approved scope across agents, providers, or interrupted sessions. | [handoff](../../skills/handoff/SKILL.md) |
 | Operate, diagnose, or recover the factory itself within delegated authority. | [factory-operation](../../skills/factory-operation/SKILL.md) |
 | Propose and verify a measured improvement to factory behavior or skills. | [factory-improvement](../../skills/factory-improvement/SKILL.md) |

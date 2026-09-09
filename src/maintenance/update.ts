@@ -11,6 +11,9 @@ const UPDATE_APPROVAL_FORMAT = 'faktori.update-approval/v1' as const;
 const CURRENT_STATE_FORMAT_VERSION = 1;
 const BETTER_SQLITE3_VERSION = '13.0.3';
 const REQUIRED_KIT_PATHS = ['dist', 'console/dist', 'docs', 'docker', 'examples', 'provider-entrymaps/generated', 'skills', 'templates', 'LICENSE', 'README.md', 'package.json'] as const;
+// Older releases predate these entry points. Include declared additions in new
+// candidates without making existing installations unreadable.
+const ADDITIONAL_KIT_PATHS = ['.agents/skills/faktori-update', '.claude/commands/faktori-update.md', '.cursor/commands/faktori-update.md', 'AGENTS.md', 'INSTALL.md', 'provider-entrymaps/source.json'] as const;
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -191,7 +194,8 @@ async function candidateKit(path: string): Promise<CandidateKit> {
   for (const required of REQUIRED_KIT_PATHS.filter((entry) => entry !== 'package.json')) {
     if (!declared.some((entry) => entry === required || (typeof entry === 'string' && required.startsWith(`${entry}/`)))) fail(`candidate package does not declare required public-kit path ${required}`);
   }
-  const files = (await Promise.all(REQUIRED_KIT_PATHS.map((entry) => walkFiles(candidateRoot, entry)))).flat().sort((left, right) => left.path.localeCompare(right.path));
+  const additional = ADDITIONAL_KIT_PATHS.filter((path) => declared.some((entry) => entry === path || (typeof entry === 'string' && path.startsWith(`${entry}/`))));
+  const files = (await Promise.all([...REQUIRED_KIT_PATHS, ...additional].map((entry) => walkFiles(candidateRoot, entry)))).flat().sort((left, right) => left.path.localeCompare(right.path));
   // npm may normalize file modes while installing a package. Release identity
   // is bound to path, content and byte length; modes are reapplied from the
   // candidate only for direct copies and are not part of content identity.
@@ -212,6 +216,11 @@ async function installedFiles(installationRoot: string, release: string): Promis
   const releaseRoot = join(installationRoot, '.faktori', 'releases', release, 'runtime', 'node_modules', 'faktori');
   await noSymlinks(installationRoot, releaseRoot, 'active release package');
   const files = (await Promise.all(REQUIRED_KIT_PATHS.map((entry) => walkFiles(releaseRoot, entry)))).flat();
+  for (const entry of ADDITIONAL_KIT_PATHS) {
+    try { await lstat(join(releaseRoot, entry)); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
+    files.push(...await walkFiles(releaseRoot, entry));
+  }
   return new Map(files.map((file) => [file.path, file.sha256]));
 }
 

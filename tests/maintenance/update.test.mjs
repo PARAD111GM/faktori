@@ -7,10 +7,11 @@ import { applyRuntimeUpdate, initializeRuntimeInstallation, MaintenanceValidatio
 
 const repository = new URL('../..', import.meta.url).pathname;
 const kitPaths = ['dist', 'console/dist', 'docs', 'docker', 'examples', 'provider-entrymaps/generated', 'skills', 'templates', 'LICENSE', 'README.md'];
+const entryPaths = ['.agents/skills/faktori-update', '.claude/commands/faktori-update.md', '.cursor/commands/faktori-update.md', 'AGENTS.md', 'INSTALL.md', 'provider-entrymaps/source.json'];
 
 async function candidate(root, name, version, stateFormatVersion = 1) {
   const destination = join(root, name);
-  for (const path of kitPaths) await cp(join(repository, path), join(destination, path), { recursive: true });
+  for (const path of [...kitPaths, ...entryPaths]) await cp(join(repository, path), join(destination, path), { recursive: true });
   const packageJson = JSON.parse(await readFile(join(repository, 'package.json'), 'utf8'));
   await writeFile(join(destination, 'package.json'), `${JSON.stringify({ ...packageJson, version, faktoriStateFormatVersion: stateFormatVersion }, null, 2)}\n`);
   return destination;
@@ -31,6 +32,11 @@ describe('managed runtime update assembly', () => {
       const installation = join(root, 'installation');
       const first = await candidate(root, 'candidate-1', '1.0.0');
       const second = await candidate(root, 'candidate-2', '1.0.1');
+      // Simulate a legacy kit without the newer agent entry points.
+      const legacyPackage = JSON.parse(await readFile(join(first, 'package.json'), 'utf8'));
+      legacyPackage.files = legacyPackage.files.filter((path) => !entryPaths.includes(path));
+      await writeFile(join(first, 'package.json'), JSON.stringify(legacyPackage));
+      for (const path of entryPaths) await rm(join(first, path), { recursive: true });
       await (await import('node:fs/promises')).mkdir(installation);
       await writeFile(join(installation, 'owner-customization.json'), '{"must":"survive"}\n');
       const initialized = await initializeRuntimeInstallation(request(installation, first));
@@ -41,6 +47,12 @@ describe('managed runtime update assembly', () => {
       expect(await readFile(join(installation, 'owner-customization.json'), 'utf8')).toBe('{"must":"survive"}\n');
       const manifest = JSON.parse(await readFile(join(installation, '.faktori', 'runtime-installation.json'), 'utf8'));
       expect(manifest.activeRelease).not.toBe(initialized.activeRelease);
+      // An update must retain the agent instructions needed to operate and
+      // update the installed factory, not just its executable runtime.
+      const installedKit = join(installation, '.faktori', 'releases', manifest.activeRelease, 'runtime', 'node_modules', 'faktori');
+      for (const path of [...entryPaths.filter((path) => path !== '.agents/skills/faktori-update'), '.agents/skills/faktori-update/SKILL.md', 'skills/update/SKILL.md']) {
+        expect(await readFile(join(installedKit, path), 'utf8')).toBe(await readFile(join(second, path), 'utf8'));
+      }
       const { spawnSync } = await import('node:child_process');
       const selected = spawnSync(join(installation, '.faktori', 'releases', manifest.activeEntrypoint), ['--help'], { encoding: 'utf8' });
       expect(selected.status).toBe(0);

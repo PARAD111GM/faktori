@@ -141,7 +141,7 @@ before retrying. Do not delete records or blindly rerun under a new identity.
 
 - Load the selected [provider entry map](provider-entrymaps/generated/codex.md)
   or corresponding Claude/Cursor map. All point to the same
-  [15 bundled skills](docs/skills.md). Explicit file loading works without
+  [16 bundled skills](docs/skills.md). Explicit file loading works without
   registering global skills; never overwrite personal agent instructions.
 - Use each selected provider's own supported login flow. Let the owner complete
   interactive authentication. Never request, print, copy, or commit tokens.

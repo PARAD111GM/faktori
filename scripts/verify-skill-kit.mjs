@@ -43,6 +43,12 @@ export async function verifySkillKit(root) {
     }
   }
   for (const route of source.routes ?? []) if (!source.skills.includes(route.skill) || !route.when) throw new Error('Invalid skill route');
+  if (source.skills.includes('update')) {
+    for (const entry of ['.claude/commands/faktori-update.md', '.cursor/commands/faktori-update.md', '.agents/skills/faktori-update/SKILL.md']) {
+      const body = await readFile(join(root, entry), 'utf8');
+      if (!body.includes('skills/update/SKILL.md')) throw new Error(`Update entry does not load canonical skill: ${entry}`);
+    }
+  }
   const providers = Object.keys(source.providers).sort();
   for (const provider of providers) {
     const path = join(root, 'provider-entrymaps/generated', `${provider}.md`);

@@ -5,6 +5,7 @@ import './styles.css';
 import faktoriLogo from './assets/faktori-logo.svg';
 import { Settings } from './settings.tsx';
 import { ManagerLoops, type ManagerLoopView } from './manager-loops.tsx';
+import { ManagerConnected, type ManagerConnectedAction, type ManagerConnectedSnapshot } from './manager-connected.tsx';
 import { ActivityFeed, JiraWorkBoard, type ActivityItem, type JiraBoard } from './work-visibility.tsx';
 import type { ConsoleSettings } from '../../src/console/settings.ts';
 
@@ -43,6 +44,7 @@ type Hierarchy = {
 type ScopeFilter = { productId: string; podId: string };
 
 type ConsoleState = {
+  managerConnected?: ManagerConnectedSnapshot;
   managerLoops?: ManagerLoopView[];
   settings?: ConsoleSettings;
   format?: string;
@@ -169,7 +171,8 @@ function useConsoleState() {
     connect();
     return () => { closed = true; if (retry !== undefined) window.clearTimeout(retry); };
   }, []);
-  return { state, connection, error, refresh };
+  const applyState = useCallback((next: ConsoleState) => { setState(next); setError(undefined); }, []);
+  return { state, connection, error, refresh, applyState };
 }
 
 function Status({ connection, state }: { connection: 'connecting' | 'live' | 'disconnected'; state?: ConsoleState }) {
@@ -259,13 +262,13 @@ function WorkHierarchy({ hierarchy, filter }: { hierarchy?: Hierarchy; filter: S
   return <div className="split-section hierarchy-section"><section className="panel panel-primary"><h2>Hierarchy</h2>{nodes.length === 0 ? <Empty title="No hierarchy nodes match this scope" detail="Choose another product or pod filter to inspect the published work hierarchy." /> : <div className="hierarchy-tree">{roots.map((node) => <HierarchyBranch key={node.id} node={node} children={children} />)}</div>}</section><section className="panel panel-support"><h2>Dependencies</h2>{dependencies.length === 0 ? <Empty title="No dependency edges match this scope" detail="Dependencies are shown only when the coordinator projection publishes an explicit edge." /> : <ul className="dependency-list">{dependencies.map((edge) => <li key={`${edge.from}-${edge.to}`}><span>{allNodeLabels.get(edge.from) ?? edge.from}</span><b>depends on</b><span>{allNodeLabels.get(edge.to) ?? edge.to}</span></li>)}</ul>}</section></div>;
 }
 
-export function Work({ state, runs, filter, selectRun, submit }: { state: ConsoleState; runs: Run[]; filter: ScopeFilter; selectRun: (id: string) => void; submit: (command: Command) => void }) {
+export function Work({ state, runs, filter, selectRun, submit, submitManagerConnected }: { state: ConsoleState; runs: Run[]; filter: ScopeFilter; selectRun: (id: string) => void; submit: (command: Command) => void; submitManagerConnected: (action: ManagerConnectedAction) => Promise<void> }) {
   const [workItemId, setWorkItemId] = useState('');
   const [query, setQuery] = useState('');
   const matchingRuns = filterWorkRuns(runs, query);
   const columns = ['queued', 'admitted', 'launching', 'running', 'blocked', 'reconciling', 'succeeded', 'failed', 'cancelled'];
   const hasJiraSource = (state.jiraBoards?.length ?? 0) > 0;
-  return <section className="workspace">{hasJiraSource && <JiraWorkBoard boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} />}<div className="panel panel-primary section-header work-header"><div><span className="eyebrow">Coordinator execution</span><h2>{hasJiraSource ? 'Execution runs' : 'Work'}</h2><p>{hasJiraSource ? 'Runtime progress is separate from Jira issue status.' : 'Track work from the queue through completion. Scroll the board to see every stage.'}</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
+  return <section className="workspace">{hasJiraSource && <JiraWorkBoard boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} />}<ManagerConnected snapshot={state.managerConnected} submit={submitManagerConnected} /><div className="panel panel-primary section-header work-header"><div><span className="eyebrow">Coordinator execution</span><h2>{hasJiraSource ? 'Execution runs' : 'Work'}</h2><p>{hasJiraSource ? 'Runtime progress is separate from Jira issue status.' : 'Track work from the queue through completion. Scroll the board to see every stage.'}</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
   <div className="board-toolbar"><label>Find work<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search work ID, provider, or status" /></label><span role="status">{matchingRuns.length} of {runs.length} runs{query && <button type="button" onClick={() => setQuery('')}>Clear search</button>}</span></div>
   <div className="panel panel-muted board" tabIndex={0} aria-label="Work board">{columns.map((column) => { const items = matchingRuns.filter((run) => run.state === column); return <div className="board-column" key={column}><h3>{stateLabel(column)} <span>{items.length}</span></h3>{items.length === 0 ? <p className="quiet">None</p> : items.map((run) => <button className="work-item" key={run.runId} onClick={() => selectRun(run.runId)}><strong>{run.workItem.id}</strong><span>{run.target.productId ?? 'Product unreported'}</span><small>{run.provider ?? 'Provider unreported'} · {duration(run.createdAt)}</small></button>)}</div>; })}</div>
   {!hasJiraSource && <JiraWorkBoard boards={[]} runs={runs} filter={filter} selectRun={selectRun} />}<ActivityFeed items={state.activity ?? []} filter={filter} selectRun={selectRun} /><ManagerLoops loops={state.managerLoops} filter={filter} /><WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
@@ -340,7 +343,7 @@ export function viewFromHash(hash: string): 'overview' | 'work' | 'run' | 'facto
 }
 
 function App() {
-  const { state, connection, error, refresh } = useConsoleState();
+  const { state, connection, error, refresh, applyState } = useConsoleState();
   const [view, setView] = useState<ReturnType<typeof viewFromHash>>(() => viewFromHash(window.location.hash));
   useEffect(() => {
     const onHashChange = () => {
@@ -393,6 +396,14 @@ function App() {
     setPending((current) => current.map((item) => item.id === entry.id ? replay : item));
     send(replay, commandKey);
   };
+  const submitManagerConnected = useCallback(async (action: ManagerConnectedAction): Promise<void> => {
+    if (!token) throw new Error('Enter the local Console command token before sending a Manager request.');
+    const response = await fetch('/api/console/manager-connected', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Faktori-Console-Token': token }, body: JSON.stringify(action) });
+    const body = await response.json() as { state?: ConsoleState; error?: string };
+    if (!response.ok) throw new Error(body.error ?? `Manager request failed (${response.status})`);
+    if (body.state) applyState(body.state);
+    else await refresh();
+  }, [applyState, refresh, token]);
 
   if (!state) return <main className="loading"><h1>Faktori</h1><p>{error ?? 'Loading the coordinator projection…'}</p><button onClick={() => void refresh()}>Retry connection</button></main>;
   const views = ['overview', 'work', 'run', 'factory', 'settings'] as const;
@@ -402,7 +413,7 @@ function App() {
     <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><img className="brand-logo" src={faktoriLogo} alt="" /><span className="brand-name">FAKTORI</span></a><nav aria-label="Console views">{views.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item === 'run' ? 'Run detail' : item}</span></button>)}</nav></aside>
     <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><span className="eyebrow">{state.hierarchy?.nodes?.find((node) => node.kind === 'factory')?.label ?? 'Local factory'}</span><h1>{title}</h1></div><div className="header-controls">{view !== 'settings' && <ScopeFilters hierarchy={state.hierarchy} filter={filter} setFilter={setFilter} />}<button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
     {error && <div className="alert" role="alert">{error}</div>}{pending.length > 0 && <div className="pending" role="status"><strong>{pending.length} command{pending.length === 1 ? '' : 's'} pending</strong>{pending.map((entry) => <span key={entry.id}>{entry.command.type.replaceAll('_', ' ')} {entry.status === 'failed' ? `failed: ${entry.detail}` : 'awaiting confirmation'}<button type="button" onClick={() => retry(entry)}>{entry.status === 'failed' ? 'Replay safely' : 'Retry with same identity'}</button></span>)}</div>}
-    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} filter={filter} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
+    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} filter={filter} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} submitManagerConnected={submitManagerConnected} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
   </main>;
 }
 

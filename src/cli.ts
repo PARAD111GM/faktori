@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
+import { callManagerRelay } from './console/manager-relay.ts';
 import {
   AppendOnlyJournal,
   approveProvisioningProposal,
@@ -52,6 +53,11 @@ const HELP = `Usage:
   faktori update apply <approved-request.json>
   faktori console serve <local-console.json>
   faktori console prepare <request.json>
+  faktori manager state <relay-connection.json>
+  faktori manager heartbeat <relay-connection.json>
+  faktori manager claim <relay-connection.json> <request-id>
+  faktori manager submitted <relay-connection.json> <request-id>
+  faktori manager complete <relay-connection.json> <response.json>
 
 Commands read explicit files and write JSON to stdout. Provision apply changes
 approved local factory state. Runtime rebuild replaces only the specified
@@ -87,6 +93,16 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'manager') {
+    if (!source) throw new Error('private relay connection file is required');
+    if (action === 'state' || action === 'heartbeat') { print(await callManagerRelay(source, { type: action })); return; }
+    if ((action === 'claim' || action === 'submitted') && extra) { print(await callManagerRelay(source, { type: action, id: extra })); return; }
+    if (action === 'complete') {
+      const response = record(await json(extra, 'Manager-observed response'), 'Manager-observed response');
+      print(await callManagerRelay(source, { ...response, type: 'complete' })); return;
+    }
+    throw new Error('unsupported manager command; use state, heartbeat, claim, submitted, or complete');
+  }
   if (group === '--help' || group === '-h' || group === 'help' || !group) {
     process.stdout.write(`${HELP}\n`);
     return;

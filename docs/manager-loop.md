@@ -4,6 +4,10 @@ This experimental workflow runs a phased local project through an AI Manager,
 Implementer, and independent Reviewer. It is not a plugin system or an automatic
 release pipeline. The product Manager is separate from the Factory GM.
 
+Want visible Codex app tasks instead of CLI-managed sessions? See the optional
+[experimental Manager-connected mode](manager-connected.md). It uses an active
+Manager relay; it does not replace or automatically run this CLI workflow.
+
 ## What you need
 
 - Faktori built with the supported Node/npm versions in `INSTALL.md`.

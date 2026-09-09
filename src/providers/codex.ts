@@ -318,7 +318,7 @@ function timeoutMs(intent: RunIntent): number {
   return intent.budget.maxRuntimeMinutes * 60_000;
 }
 
-function baseArgs(model: string, contextIsolation: 'host' | 'bounded'): string[] {
+function baseArgs(model: string, reasoning: RunIntent['execution']['reasoning'], contextIsolation: 'host' | 'bounded'): string[] {
   // Bounded mode suppresses ambient context and escalation and requests the
   // unmodified CLI's workspace-write policy. It is not a claim of native
   // filesystem read isolation. No mode widens approval or adds directories.
@@ -336,6 +336,7 @@ function baseArgs(model: string, contextIsolation: 'host' | 'bounded'): string[]
       '-c', 'sandbox_mode="workspace-write"',
     ] : []),
     '--json', '--model', model,
+    ...(reasoning === undefined ? [] : ['-c', `model_reasoning_effort="${reasoning}"`]),
   ];
 }
 
@@ -444,7 +445,7 @@ export class CodexAdapter {
       ?? (prompt ? undefined : 'current context packet and prompt are required')
       ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('start', invalid);
-    return this.#execute('start', intent, ['exec', ...baseArgs(intent.execution.model, this.#contextIsolation), prompt as string], lifecycle);
+    return this.#execute('start', intent, ['exec', ...baseArgs(intent.execution.model, intent.execution.reasoning, this.#contextIsolation), prompt as string], lifecycle);
   }
 
   async resume(intent: RunIntent, sessionBinding: CodexSessionBinding, currentContext: CodexCurrentContext, lifecycle?: CodexProcessLifecycle): Promise<CodexRunResult> {
@@ -456,7 +457,7 @@ export class CodexAdapter {
       ?? (prompt ? undefined : 'current context packet and prompt are required')
       ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('resume', invalid);
-    return this.#execute('resume', intent, ['exec', 'resume', ...baseArgs(intent.execution.model, this.#contextIsolation), sessionBinding.sessionId, prompt as string], lifecycle);
+    return this.#execute('resume', intent, ['exec', 'resume', ...baseArgs(intent.execution.model, intent.execution.reasoning, this.#contextIsolation), sessionBinding.sessionId, prompt as string], lifecycle);
   }
 
   async cancel(intent: RunIntent, lifecycle?: CodexProcessLifecycle): Promise<ProviderFinalResult> {

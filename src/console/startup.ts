@@ -22,6 +22,8 @@ import { consoleCommandToken, createConsoleService, type ConsoleOwnerActions } f
 import type { RunIntent, WorkerIdentity } from '../runtime/contracts.ts';
 import { evaluateInstalledPreflight } from '../diagnostics/local-preflight.ts';
 import type { PreflightResult } from '../diagnostics/preflight.ts';
+import { createConsoleSettings } from './settings.ts';
+import { FileConsoleSettingsEditor, type ConsoleSettingsEditor } from './settings-edit.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -155,7 +157,7 @@ function runtime(value: unknown, factoryId: string): LocalConsoleRuntimeConfigur
   if (!Array.isArray(input?.workItems)) throw new Error('runtime must include explicit eligible workItems');
   const workItems = input.workItems.map((item) => {
     const candidate = object(item); const intent = candidate?.intent as RunIntent | undefined; const context = candidate?.context as ProviderCurrentContext | undefined;
-    if (typeof candidate?.workItemId !== 'string' || candidate.workItemId.trim().length === 0 || intent?.format !== 'faktori.run-intent/v1' || intent.target?.factoryId !== factoryId || !providerRoutes.has(`${intent.execution?.providerId}:${intent.execution?.profile}`) || !context || typeof context.prompt !== 'string' || providerContextPayloadDigest(context) === '' || !intent.execution.approvedInputDigests?.includes(providerContextPayloadDigest(context))) throw new Error('runtime work item must contain a factory-bound intent, configured provider/profile route, and exact approved context');
+    if (typeof candidate?.workItemId !== 'string' || candidate.workItemId.trim().length === 0 || intent?.format !== 'faktori.run-intent/v1' || intent.target?.factoryId !== factoryId || !providerRoutes.has(`${intent.execution?.providerId}:${intent.execution?.profile}`) || (intent.workItem.role !== undefined && (typeof intent.workItem.role !== 'string' || intent.workItem.role.length > 64 || !/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/.test(intent.workItem.role))) || (intent.execution.reasoning !== undefined && !['low', 'medium', 'high'].includes(intent.execution.reasoning)) || !context || typeof context.prompt !== 'string' || providerContextPayloadDigest(context) === '' || !intent.execution.approvedInputDigests?.includes(providerContextPayloadDigest(context))) throw new Error('runtime work item must contain a factory-bound intent, configured provider/profile route, optional valid role/reasoning, and exact approved context');
     if (candidate.dependsOnWorkItemIds !== undefined && (!Array.isArray(candidate.dependsOnWorkItemIds) || !candidate.dependsOnWorkItemIds.every((dependency) => typeof dependency === 'string' && dependency.trim().length > 0))) throw new Error('runtime work-item dependencies must be explicit work-item IDs');
     return { workItemId: candidate.workItemId, intent, context, dependsOnWorkItemIds: [...new Set((candidate.dependsOnWorkItemIds ?? []) as string[])] };
   });
@@ -197,6 +199,8 @@ export interface LocalConsoleDependencies {
   /** Test/host seam for the Console coordinator process itself. */
   coordinatorIdentityProbe?: NativeIdentityProbeContract;
   healthPollIntervalMs?: number;
+  /** Server-owned edit boundary; only file startup configures this in production. */
+  settingsEditor?: ConsoleSettingsEditor;
 }
 
 function observedNativeProcess(value: Awaited<ReturnType<NativeIdentityProbeContract['inspect']>>): value is Exclude<typeof value, { status: 'absent' | 'unknown' } | undefined> {
@@ -300,6 +304,55 @@ function providerRouteKey(providerId: string, profile: string): string {
   return `${providerId}:${profile}`;
 }
 
+function runtimeProviderId(kind: ResolvedFactoryConfiguration['providers'][number]['kind']): SupportedProviderId {
+  return kind === 'claude-code' ? 'claude' : kind;
+}
+
+function roleRoutedEntry(
+  entry: LocalConsoleRuntimeConfiguration['workItems'][number],
+  catalog: ResolvedFactoryConfiguration | undefined,
+  routes: readonly LocalProviderRoute[],
+  useBuilderDefault: boolean,
+): LocalConsoleRuntimeConfiguration['workItems'][number] {
+  const explicitRole = entry.intent.workItem.role;
+  const role = explicitRole ?? (useBuilderDefault ? 'builder' : undefined);
+  if (role === undefined) return entry;
+  const target = entry.intent.target;
+  const scope = target.podId === undefined
+    ? catalog?.products.find((product) => product.id === target.productId)
+    : catalog?.pods.find((pod) => pod.id === target.podId && pod.productId === target.productId);
+  const assignment = scope?.roleAssignments?.find((candidate) => candidate.role === role);
+  if (assignment === undefined) {
+    if (explicitRole !== undefined) throw new Error(`role_assignment_not_configured:${role}`);
+    return entry;
+  }
+  const provider = catalog?.providers.find((candidate) => candidate.id === assignment.providerId);
+  if (provider === undefined) throw new Error(`role_assignment_provider_not_configured:${role}`);
+  const requiredCapabilities = new Set([entry.intent.execution.profile, ...(scope?.requiredCapabilities ?? []), ...((scope?.budget.strictSpending ?? false) ? ['token-limit' as const] : [])]);
+  if ([...requiredCapabilities].some((capability) => !provider.capabilities.includes(capability))) throw new Error(`role_assignment_provider_capability_unavailable:${role}`);
+  const providerId = runtimeProviderId(provider.kind);
+  const route = routes.find((candidate) => candidate.id === providerId && candidate.profile === entry.intent.execution.profile);
+  if (route === undefined) throw new Error(`role_assignment_route_unavailable:${role}`);
+  if (providerId === 'cursor' && assignment.model !== undefined) throw new Error(`role_assignment_model_unsupported:${role}`);
+  const model = assignment.model ?? entry.intent.execution.model;
+  if ('compatibleModels' in route && !route.compatibleModels.includes(model)) throw new Error(`role_assignment_model_unavailable:${role}`);
+  const reasoning = assignment.reasoning ?? entry.intent.execution.reasoning;
+  if (providerId === 'cursor' && reasoning !== undefined) throw new Error(`role_assignment_reasoning_unsupported:${role}`);
+  return {
+    ...entry,
+    intent: {
+      ...structuredClone(entry.intent),
+      workItem: { ...entry.intent.workItem, role },
+      execution: {
+        ...entry.intent.execution,
+        providerId,
+        model,
+        ...(reasoning === undefined ? {} : { reasoning }),
+      },
+    },
+  };
+}
+
 function gmDiagnosisPrompt(request: Parameters<GMProviderDiagnosisPort['diagnose']>[0]): string {
   return JSON.stringify({
     task: 'faktori_factory_health_diagnosis',
@@ -332,7 +385,7 @@ function consoleHierarchy(configuration: LocalConsoleConfiguration): NonNullable
   };
 }
 
-function configuredRuntime(coordinator: DurableCoordinator, configuration: LocalConsoleRuntimeConfiguration, dependencies: LocalConsoleDependencies): ConfiguredRuntime {
+function configuredRuntime(coordinator: DurableCoordinator, configuration: LocalConsoleRuntimeConfiguration, dependencies: LocalConsoleDependencies, catalog?: ResolvedFactoryConfiguration): ConfiguredRuntime {
   const nativeProbes = new Map<string, NativeIdentityProbeContract>();
   const containerProbes = new Map<string, ContainerIdentityProbe>();
   const adapters = new Map<string, ProviderTurnAdapter>();
@@ -393,7 +446,7 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
     adapters.set(key, new CursorAcpAdapter({ transport, limits: { ...coordinator.limits, requestTimeoutMs: route.requestTimeoutMs }, ...(requestBroker === undefined ? {} : { replyPolicy: requestBroker.replyPolicy() }) }));
   }
   const entries = new Map(configuration.workItems.map((entry) => [entry.workItemId, entry]));
-  const byRunId = new Map(configuration.workItems.map((entry) => [entry.intent.runId, entry]));
+  const routedByRunId = new Map<string, LocalConsoleRuntimeConfiguration['workItems'][number]>();
   const resumePlans = new Map(configuration.resumePlans.map((plan) => [plan.sourceRunId, plan.targetWorkItemId]));
   const reservedWorkItems = new Set([...resumePlans.values()]);
   const prepared = new Map<string,
@@ -462,9 +515,19 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
   }
 
   const ownerActions = createConsoleOwnerActions(coordinator, {
-    intentForWorkItem: async (workItemId) => reservedWorkItems.has(workItemId) ? undefined : entries.get(workItemId)?.intent,
+    intentForWorkItem: async (workItemId) => {
+      if (reservedWorkItems.has(workItemId)) return undefined;
+      const entry = entries.get(workItemId);
+      if (entry === undefined) return undefined;
+      const existing = coordinator.snapshot(entry.intent.runId);
+      const routed = existing === undefined
+        ? roleRoutedEntry(entry, catalog, configuration.providers, true)
+        : { ...entry, intent: existing.intent };
+      routedByRunId.set(routed.intent.runId, routed);
+      return routed.intent;
+    },
     startAdmittedRun: async (runId) => {
-      const entry = byRunId.get(runId);
+      const entry = routedByRunId.get(runId);
       if (entry === undefined) throw new Error('admitted work item context is unavailable');
       launch(entry);
       return { detail: 'provider_delivery_started' };
@@ -478,10 +541,12 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
     },
     resumeRun: async (sourceRunId) => {
       const targetId = resumePlans.get(sourceRunId);
-      const entry = targetId === undefined ? undefined : entries.get(targetId);
+      const configuredEntry = targetId === undefined ? undefined : entries.get(targetId);
       const source = coordinator.snapshot(sourceRunId);
       const sessionId = source?.providerResult?.sessionId;
-      if (entry === undefined || source === undefined || sessionId === undefined) throw new Error('trusted_explicit_resume_plan_unavailable');
+      if (configuredEntry === undefined || source === undefined || sessionId === undefined) throw new Error('trusted_explicit_resume_plan_unavailable');
+      const priorTarget = coordinator.snapshot(configuredEntry.intent.runId);
+      const entry = priorTarget === undefined ? configuredEntry : { ...configuredEntry, intent: priorTarget.intent };
       const admitted = await coordinator.admit(entry.intent);
       if (!admitted.accepted) throw new Error(admitted.reason ?? 'resume_target_admission_rejected');
       const binding: ProviderSessionBinding = {
@@ -522,8 +587,8 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
         budget: { ...template.budget, reservationId: `gm-diagnosis-${suffix}`, status: 'held' },
         attempt: 1,
       };
-      const entry: LocalConsoleRuntimeConfiguration['workItems'][number] = { workItemId: intent.workItem.id, intent, context, dependsOnWorkItemIds: [] };
-      const admitted = await coordinator.admit(intent);
+      const entry = roleRoutedEntry({ workItemId: intent.workItem.id, intent, context, dependsOnWorkItemIds: [] }, catalog, configuration.providers, false);
+      const admitted = await coordinator.admit(entry.intent);
       if (!admitted.accepted) throw new Error(admitted.reason ?? 'GM diagnosis admission rejected');
       const result = await deliver(entry);
       if (!['completed', 'unchanged_verified'].includes(result.final.outcome) || typeof result.final.summary !== 'string' || result.final.summary.length > request.maxOutputCharacters) throw new Error('GM diagnosis provider result was not a bounded successful JSON summary');
@@ -557,10 +622,10 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     // can admit or launch a new worker. Unknown identity is a blocker, never
     // evidence that a worker disappeared.
     await coordinator.recover();
-    configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies);
+    configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies, configuration.factoryConfiguration);
     gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
     observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor });
     const listeningApp = app;
     pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();
@@ -586,7 +651,10 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   }
 }
 
-export async function startLocalConsoleFromFile(path: string): Promise<StartedConsole> {
-  const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown;
-  return startLocalConsole(parseLocalConsoleConfiguration(parsed));
+export async function startLocalConsoleFromFile(path: string, dependencies: LocalConsoleDependencies = {}): Promise<StartedConsole> {
+  const content = await readFile(path, 'utf8');
+  const parsed = JSON.parse(content) as unknown;
+  const configuration = parseLocalConsoleConfiguration(parsed);
+  const settingsEditor = new FileConsoleSettingsEditor({ path, loadedContent: content, validate: parseLocalConsoleConfiguration });
+  return startLocalConsole(configuration, undefined, { ...dependencies, settingsEditor });
 }

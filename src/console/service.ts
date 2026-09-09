@@ -11,6 +11,8 @@ import type { DurableCoordinator } from '../runtime/coordinator.ts';
 import { coordinatorGMState } from '../gm/coordinator-store.ts';
 import { projectStructuredBlocker, structuredBlockersFromEvents, type StructuredBlocker } from '../diagnostics/blockers.ts';
 import type { PreflightResult } from '../diagnostics/preflight.ts';
+import type { ConsoleSettings } from './settings.ts';
+import type { ConsoleSettingsEditor } from './settings-edit.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -50,6 +52,9 @@ export interface ConsoleServiceOptions {
   /** Optional diagnostic source. It is projected as read-only sanitized state. */
   blockers?: () => readonly StructuredBlocker[];
   preflight?: PreflightResult;
+  /** Validated, allowlisted settings safe for the read-only browser projection. */
+  settings?: ConsoleSettings;
+  settingsEditor?: ConsoleSettingsEditor;
   assetsDirectory?: string;
   now?: () => Date;
   /** Test seam for the local append-only journal watcher. */
@@ -268,6 +273,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   const events = new EventEmitter();
   const now = options.now ?? (() => new Date());
   let commandTail: Promise<unknown> = Promise.resolve();
+  let settingsTail: Promise<unknown> = Promise.resolve();
   let observedEventCount = options.coordinator.journal.events().length;
   const journalPoll = setInterval(() => {
     const count = options.coordinator.journal.events().length;
@@ -296,6 +302,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
         .filter((blocker, index, values) => values.findIndex((candidate) => candidate.blockerId === blocker.blockerId) === index),
       ...(options.preflight === undefined ? {} : { preflight: options.preflight }),
+      ...(options.settings === undefined ? {} : { settings: { ...options.settings, ...(options.settingsEditor === undefined ? {} : { persistence: options.settingsEditor.status() }) } }),
       hierarchy: hierarchyState(snapshots, options.hierarchy),
       overview: { activeRuns: snapshots.filter((snapshot) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(snapshot.state)).length, waitingDecisions: waiting.length, failedRuns: snapshots.filter((snapshot) => snapshot.state === 'failed').length },
       resources: { knownUsageTokens: knownTokens, reportedUsageCount: reported.length, unavailableUsageCount: usages.length - reported.length, reservedTokens, unavailableMeasurements: usages.filter((usage) => usage.availability === 'unavailable').length, queueAge: snapshots.filter((snapshot) => snapshot.state === 'queued' || snapshot.state === 'admitted').map((snapshot) => ({ runId: snapshot.intent.runId, createdAt: snapshot.intent.createdAt })) },
@@ -391,6 +398,41 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     commandTail = next.catch(() => undefined);
     const completed = await next;
     return reply.code(completed.status === 'failed' ? 409 : 200).send({ command: completed, state: state() });
+  });
+  const settingsFailure = (reply: FastifyReply, error: unknown): FastifyReply => {
+    const message = error instanceof Error ? error.message : 'invalid_settings_request';
+    if (message === 'settings_revision_conflict') return reply.code(409).send({ error: message });
+    if (message === 'settings_save_confirmation_required' || message.startsWith('settings_risk_acknowledgement_required:')) return reply.code(400).send({ error: message });
+    if (message === 'settings_editing_requires_factory_configuration') return reply.code(409).send({ error: message });
+    if (message.startsWith('draft.') || message.startsWith('draft ') || message.startsWith('settings request ') || message.startsWith('revision ') || message.startsWith('acknowledgedRiskIds ') || message === 'product and pod identities are read-only' || message === 'runtime routes are read-only') {
+      return reply.code(400).send({ error: message });
+    }
+    if (error instanceof SyntaxError || (error instanceof Error && error.name === 'ConfigValidationError')) return reply.code(400).send({ error: 'settings_validation_failed' });
+    return reply.code(500).send({ error: 'settings_operation_failed' });
+  };
+  const queueSettings = <T>(operation: () => Promise<T>): Promise<T> => {
+    const next = settingsTail.then(operation, operation);
+    settingsTail = next.catch(() => undefined);
+    return next;
+  };
+  app.post('/api/console/settings/edit', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (options.settingsEditor === undefined) return reply.code(409).send({ error: 'settings_editing_unavailable' });
+    try { return await queueSettings(() => options.settingsEditor?.edit() as Promise<Awaited<ReturnType<NonNullable<typeof options.settingsEditor>['edit']>>>); } catch (error) { return settingsFailure(reply, error); }
+  });
+  app.post('/api/console/settings/preview', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (options.settingsEditor === undefined) return reply.code(409).send({ error: 'settings_editing_unavailable' });
+    try { return await queueSettings(() => options.settingsEditor?.preview(request.body) as Promise<Awaited<ReturnType<NonNullable<typeof options.settingsEditor>['preview']>>>); } catch (error) { return settingsFailure(reply, error); }
+  });
+  app.post('/api/console/settings/save', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (options.settingsEditor === undefined) return reply.code(409).send({ error: 'settings_editing_unavailable' });
+    try {
+      const saved = await queueSettings(() => options.settingsEditor?.save(request.body) as Promise<Awaited<ReturnType<NonNullable<typeof options.settingsEditor>['save']>>>);
+      events.emit('state');
+      return saved;
+    } catch (error) { return settingsFailure(reply, error); }
   });
   app.get('/*', async (request, reply) => {
     const params = request.params as Record<string, unknown>;

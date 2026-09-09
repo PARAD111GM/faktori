@@ -150,6 +150,7 @@ function usageUnavailable(reason = 'Cursor ACP did not emit usage telemetry'): U
 
 function validIntent(intent: RunIntent, limits: CursorAcpLimits): string | undefined {
   if (intent.execution.providerId !== 'cursor') return 'run intent is not assigned to the cursor provider';
+  if (intent.execution.reasoning !== undefined) return 'Cursor ACP route does not support an explicit reasoning effort';
   if (!nonEmpty(intent.execution.workspacePath)) return 'run intent has no recorded workspace path';
   if (!Number.isInteger(intent.attempt) || intent.attempt < 1 || intent.attempt > limits.maxRetries + 1) return 'run attempt exceeds the configured retry bound';
   if (!Number.isInteger(intent.budget.maxRuntimeMinutes) || intent.budget.maxRuntimeMinutes < 1 || intent.budget.maxRuntimeMinutes > limits.maxRuntimeMinutes) return 'run runtime exceeds the configured runtime bound';

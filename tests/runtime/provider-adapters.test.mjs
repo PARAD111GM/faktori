@@ -31,14 +31,14 @@ function worker(providerId) {
   return { kind: 'native', pid, processStartedAt: `${providerId}-worker-start`, processGroupId: pid, runNonce: `${providerId}-nonce` };
 }
 
-function adapter(providerId) {
+function adapter(providerId, requests = []) {
   if (providerId === 'codex') return new CodexAdapter({
     limits: { maxRuntimeMinutes: 2, maxTokens: 500, maxRetries: 0 }, compatibleModels: ['codex-model'], environment: { PATH: '/controlled/bin' },
-    runner: { async run(request) { await request.lifecycle.onStarted(worker('codex')); return { exitCode: 0, stdout: `${JSON.stringify({ type: 'thread.started', thread_id: 'codex-session' })}\n${JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 2, output_tokens: 1 } })}\n` }; } },
+    runner: { async run(request) { requests.push(request); await request.lifecycle.onStarted(worker('codex')); return { exitCode: 0, stdout: `${JSON.stringify({ type: 'thread.started', thread_id: 'codex-session' })}\n${JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 2, output_tokens: 1 } })}\n` }; } },
   });
   if (providerId === 'claude') return new ClaudeAdapter({
     limits: { maxRuntimeMinutes: 2, maxTokens: 500, maxRetries: 0 }, compatibleModels: ['claude-model'], environment: { PATH: '/controlled/bin' }, allowedTools: [], createSessionId: () => '11111111-1111-4111-8111-111111111111',
-    runner: { async run(request) { await request.lifecycle.onStarted(worker('claude')); return { exitCode: 0, stdout: `${JSON.stringify({ type: 'system', session_id: '11111111-1111-4111-8111-111111111111' })}\n${JSON.stringify({ type: 'result', session_id: '11111111-1111-4111-8111-111111111111', result: 'done', usage: { input_tokens: 2, output_tokens: 1 } })}\n` }; } },
+    runner: { async run(request) { requests.push(request); await request.lifecycle.onStarted(worker('claude')); return { exitCode: 0, stdout: `${JSON.stringify({ type: 'system', session_id: '11111111-1111-4111-8111-111111111111' })}\n${JSON.stringify({ type: 'result', session_id: '11111111-1111-4111-8111-111111111111', result: 'done', usage: { input_tokens: 2, output_tokens: 1 } })}\n` }; } },
   });
   const connection = {
     worker: worker('cursor'), setRequestHandler() {}, async notify() {}, async close() {},
@@ -79,5 +79,18 @@ describe('actual provider adapters through coordinator delivery', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it.each([
+    ['codex', ['-c', 'model_reasoning_effort="high"']],
+    ['claude', ['--effort', 'high']],
+  ])('transmits configured reasoning through the actual %s process request', async (providerId, expectedArgs) => {
+    const requests = [];
+    const run = intent(providerId);
+    run.execution.reasoning = 'high';
+    const result = await adapter(providerId, requests).start(run, { ...run.context, prompt: 'Use only this current scoped packet.' }, { onStarted: async () => {} });
+    expect(result.final.outcome).toBe('completed');
+    const offset = requests[0].args.findIndex((value) => value === expectedArgs[0]);
+    expect(requests[0].args.slice(offset, offset + 2)).toEqual(expectedArgs);
   });
 });

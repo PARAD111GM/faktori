@@ -160,11 +160,11 @@ export function createRunManifest(events: readonly RunEvent[], runId: string): R
         if (observed.factoryId === undefined || observed.productId === undefined || observed.repository === undefined || observed.branch === undefined || observed.baseRevision === undefined || observed.expectedRevision === undefined || (target.podId !== undefined && observed.podId === undefined)) mark('target', 'unsafe_or_invalid');
         else observations.target = present(observed);
       }
-      const workItem = record(intent.workItem, ['id', 'revision']);
+      const workItem = record(intent.workItem, ['id', 'revision', 'role']);
       if (workItem === undefined) mark('workItem', 'unsafe_or_invalid');
       else {
-        const observed = { id: safeIdentifier(workItem.id), revision: safeRevision(workItem.revision) };
-        if (observed.id === undefined || observed.revision === undefined) mark('workItem', 'unsafe_or_invalid'); else observations.workItem = present(observed);
+        const observed = { id: safeIdentifier(workItem.id), revision: safeRevision(workItem.revision), role: workItem.role === undefined ? undefined : safeIdentifier(workItem.role) };
+        if (observed.id === undefined || observed.revision === undefined || (workItem.role !== undefined && observed.role === undefined)) mark('workItem', 'unsafe_or_invalid'); else observations.workItem = present(observed);
       }
       const context = record(intent.context, ['packetRevision', 'digest']);
       if (context === undefined) mark('context', 'unsafe_or_invalid');
@@ -172,12 +172,12 @@ export function createRunManifest(events: readonly RunEvent[], runId: string): R
         const observed = { packetRevision: safeRevision(context.packetRevision), digest: safeDigest(context.digest) };
         if (observed.packetRevision === undefined || observed.digest === undefined) mark('context', 'unsafe_or_invalid'); else observations.context = present(observed);
       }
-      const execution = record(intent.execution, ['profile', 'workspaceId', 'workspacePath', 'providerId', 'model', 'approvedInputDigests']);
-      if (execution === undefined || (execution.profile !== 'isolated' && execution.profile !== 'native') || !Array.isArray(execution.approvedInputDigests)) mark('execution', 'unsafe_or_invalid');
+      const execution = record(intent.execution, ['profile', 'workspaceId', 'workspacePath', 'providerId', 'model', 'reasoning', 'approvedInputDigests']);
+      if (execution === undefined || (execution.profile !== 'isolated' && execution.profile !== 'native') || (execution.reasoning !== undefined && !['low', 'medium', 'high'].includes(String(execution.reasoning))) || !Array.isArray(execution.approvedInputDigests)) mark('execution', 'unsafe_or_invalid');
       else {
         const digests = execution.approvedInputDigests.map(safeDigest);
         const profile = execution.profile as 'isolated' | 'native';
-        const observed = { profile, workspaceId: safeIdentifier(execution.workspaceId), providerId: safeIdentifier(execution.providerId), model: safeModel(execution.model), approvedInputDigests: digests.every((item) => item !== undefined) ? [...new Set(digests as string[])].sort() : undefined };
+        const observed = { profile, workspaceId: safeIdentifier(execution.workspaceId), providerId: safeIdentifier(execution.providerId), model: safeModel(execution.model), reasoning: execution.reasoning as 'low' | 'medium' | 'high' | undefined, approvedInputDigests: digests.every((item) => item !== undefined) ? [...new Set(digests as string[])].sort() : undefined };
         if (observed.workspaceId === undefined || observed.providerId === undefined || observed.model === undefined || observed.approvedInputDigests === undefined) mark('execution', 'unsafe_or_invalid'); else observations.execution = present(observed);
       }
       const budget = record(intent.budget, ['reservationId', 'maxRuntimeMinutes', 'estimatedTokens', 'status']);

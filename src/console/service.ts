@@ -13,6 +13,7 @@ import { projectStructuredBlocker, structuredBlockersFromEvents, type Structured
 import type { PreflightResult } from '../diagnostics/preflight.ts';
 import type { ConsoleSettings } from './settings.ts';
 import type { ConsoleSettingsEditor } from './settings-edit.ts';
+import type { ManagerLoopObserver } from './manager-loop-observer.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -55,6 +56,8 @@ export interface ConsoleServiceOptions {
   /** Validated, allowlisted settings safe for the read-only browser projection. */
   settings?: ConsoleSettings;
   settingsEditor?: ConsoleSettingsEditor;
+  /** Server-owned observer for explicitly configured Manager Loop artifact directories. */
+  managerLoopObserver?: ManagerLoopObserver;
   assetsDirectory?: string;
   now?: () => Date;
   /** Test seam for the local append-only journal watcher. */
@@ -282,6 +285,8 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     events.emit('state');
   }, options.eventPollIntervalMs ?? 200);
   journalPoll.unref();
+  const unsubscribeManagerLoops = options.managerLoopObserver?.onChange(() => events.emit('state'));
+  options.managerLoopObserver?.start();
 
   function records(): RecordedCommand[] {
     return options.coordinator.journal.events().map(commandRecord).filter((value): value is RecordedCommand => value !== undefined);
@@ -299,6 +304,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       format: 'faktori.console-state/v1', observedAt: now().toISOString(), stale: false,
       admissionPaused: currentPause(records()),
       runs: snapshots.map((snapshot) => publicRun(options.coordinator, snapshot)),
+      managerLoops: options.managerLoopObserver?.summaries() ?? [],
       blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
         .filter((blocker, index, values) => values.findIndex((candidate) => candidate.blockerId === blocker.blockerId) === index),
       ...(options.preflight === undefined ? {} : { preflight: options.preflight }),
@@ -380,7 +386,11 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   }
 
   app.addHook('onSend', async (_request, reply) => { secureHeaders(reply); });
-  app.addHook('onClose', async () => { clearInterval(journalPoll); });
+  app.addHook('onClose', async () => {
+    clearInterval(journalPoll);
+    unsubscribeManagerLoops?.();
+    options.managerLoopObserver?.close();
+  });
   app.get('/api/console/state', async () => state());
   app.get('/api/console/events', async (request, reply) => {
     secureHeaders(reply);

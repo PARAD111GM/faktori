@@ -5,3 +5,4 @@ export * from './startup.ts';
 export * from './prepare.ts';
 export * from './settings.ts';
 export * from './settings-edit.ts';
+export * from './manager-loop-observer.ts';

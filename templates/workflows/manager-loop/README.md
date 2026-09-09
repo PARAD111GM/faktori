@@ -84,4 +84,31 @@ For a different experiment, use a new loop ID and records directory. An uncertai
 interrupted stage or existing lock requires inspection of records and surviving
 workers before any new run—never delete records to bypass recovery checks.
 
+### Optional read-only Console registration
+
+To see this run in an already configured local Console, add a `managerLoops`
+entry to its owner-controlled `local-console.json` and restart the Console:
+
+```json
+{
+  "managerLoops": [
+    {
+      "id": "task-list-proof",
+      "artifactsDirectory": "/absolute/path/to/loop-records",
+      "productId": "optional-product-filter",
+      "podId": "optional-pod-filter"
+    }
+  ]
+}
+```
+
+Use the same `loopId` and `artifactsDirectory` as the Manager Loop configuration.
+The product mapping is optional; a pod mapping is optional but requires its
+product mapping. This registration is server-owned
+and read-only: it shows sanitized recorded progress and cannot start, repair,
+resume, cancel, or otherwise control the loop. A recorded `running` state is
+marked stale after five minutes without an update; it is not a process-liveness
+claim. See [the Manager Loop guide](../../../docs/manager-loop.md#observe-a-loop-in-the-console)
+for the projected fields and safety boundary.
+
 See [workflow behavior and limitations](../../../docs/manager-loop.md) for details.

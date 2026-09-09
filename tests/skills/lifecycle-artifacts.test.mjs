@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = join(process.cwd());
 const skills = readdirSync(join(root, 'skills'));
-const required = ['bootstrap', 'product-creation', 'interview', 'research', 'shaping', 'plan', 'design', 'build', 'review', 'test', 'deploy', 'maintain', 'handoff', 'factory-operation', 'factory-improvement'];
+const required = ['bootstrap', 'product-creation', 'interview', 'research', 'shaping', 'plan', 'design', 'build', 'review', 'test', 'deploy', 'maintain', 'update', 'handoff', 'factory-operation', 'factory-improvement'];
 
 describe('first-party lifecycle kit', () => {
   it('contains every required skill with valid concise frontmatter', () => {

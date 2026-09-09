@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createRoot } from 'react-dom/client';
 
 import './styles.css';
+import faktoriLogo from './assets/faktori-logo.svg';
 import { Settings } from './settings.tsx';
+import { ManagerLoops, type ManagerLoopView } from './manager-loops.tsx';
 import type { ConsoleSettings } from '../../src/console/settings.ts';
 
 type Usage = {
@@ -40,6 +42,7 @@ type Hierarchy = {
 type ScopeFilter = { productId: string; podId: string };
 
 type ConsoleState = {
+  managerLoops?: ManagerLoopView[];
   settings?: ConsoleSettings;
   format?: string;
   observedAt?: string;
@@ -192,7 +195,7 @@ function Icon({ name }: { name: IconName }) {
   return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
-export function Overview({ state, runs, selectRun, openWork }: { state: ConsoleState; runs: Run[]; selectRun: (id: string) => void; openWork?: () => void }) {
+export function Overview({ state, runs, selectRun, openWork, filter }: { state: ConsoleState; runs: Run[]; selectRun: (id: string) => void; openWork?: () => void; filter?: ScopeFilter }) {
   const activeRuns = runs.filter((run) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(run.state)).length;
   const attentionRuns = runs.filter((run) => run.state === 'blocked' || run.state === 'reconciling' || run.providerRequests?.some((request) => request.status === 'pending'));
   const waitingDecisions = attentionRuns.length;
@@ -208,7 +211,7 @@ export function Overview({ state, runs, selectRun, openWork }: { state: ConsoleS
     <section className="panel panel-primary active-panel"><div className="panel-heading"><div><h2>Current work</h2><p>Runs for the selected product and pod.</p></div><strong>{runs.length} total</strong></div>{renderRuns(runs, 'No work started yet', 'Open Work to start an approved work item. Its progress will appear here.')}{runs.length === 0 && openWork && <button onClick={openWork}>Open Work</button>}</section>
     <section className="panel panel-support blocker-panel"><div className="panel-heading"><div><h2>Factory blockers</h2><p>Issues preventing work from starting across the factory.</p></div><strong>{state.blockers?.length ?? 0}</strong></div>{state.blockers?.length ? <Blockers blockers={state.blockers} /> : <Empty title="No blockers reported" detail="No issues preventing admission have been reported." />}</section>
     <section className="panel panel-muted signal-panel"><div className="panel-heading"><div><h2>At a glance</h2><p>Activity for the selected product and pod.</p></div></div><div className="metric-row"><Metric label="Active work" value={count(activeRuns)} /><Metric label="Waiting decisions" value={count(waitingDecisions)} /><Metric label="Failed runs" value={count(failedRuns)} /><Metric label="Reserved tokens" value={count(reservedTokens)} /></div></section>
-  </div></section>;
+  </div><ManagerLoops loops={state.managerLoops} filter={filter} /></section>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
@@ -249,7 +252,7 @@ export function Work({ state, runs, filter, selectRun, submit }: { state: Consol
   return <section className="workspace"><div className="panel panel-primary section-header work-header"><div><h2>Work</h2><p>Track work from the queue through completion. Scroll the board to see every stage.</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
   <div className="board-toolbar"><label>Find work<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search work ID, provider, or status" /></label><span role="status">{matchingRuns.length} of {runs.length} runs{query && <button type="button" onClick={() => setQuery('')}>Clear search</button>}</span></div>
   <div className="panel panel-muted board" tabIndex={0} aria-label="Work board">{columns.map((column) => { const items = matchingRuns.filter((run) => run.state === column); return <div className="board-column" key={column}><h3>{stateLabel(column)} <span>{items.length}</span></h3>{items.length === 0 ? <p className="quiet">None</p> : items.map((run) => <button className="work-item" key={run.runId} onClick={() => selectRun(run.runId)}><strong>{run.workItem.id}</strong><span>{run.target.productId ?? 'Product unreported'}</span><small>{run.provider ?? 'Provider unreported'} · {duration(run.createdAt)}</small></button>)}</div>; })}</div>
-  <WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
+  <ManagerLoops loops={state.managerLoops} filter={filter} /><WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
 }
 
 function ProviderRequests({ run, submit }: { run: Run; submit: (command: Command) => void }) {
@@ -380,10 +383,10 @@ function App() {
   const title = view === 'run' ? 'Run detail' : view[0].toUpperCase() + view.slice(1);
   return <main className="app-shell">
     <a className="skip-link" href="#console-content">Skip to content</a>
-    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className="brand-name">FAKTORI</span></a><nav aria-label="Console views">{views.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item === 'run' ? 'Run detail' : item}</span></button>)}</nav></aside>
+    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><img className="brand-logo" src={faktoriLogo} alt="" /><span className="brand-name">FAKTORI</span></a><nav aria-label="Console views">{views.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item === 'run' ? 'Run detail' : item}</span></button>)}</nav></aside>
     <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><span className="eyebrow">{state.hierarchy?.nodes?.find((node) => node.kind === 'factory')?.label ?? 'Local factory'}</span><h1>{title}</h1></div><div className="header-controls">{view !== 'settings' && <ScopeFilters hierarchy={state.hierarchy} filter={filter} setFilter={setFilter} />}<button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
     {error && <div className="alert" role="alert">{error}</div>}{pending.length > 0 && <div className="pending" role="status"><strong>{pending.length} command{pending.length === 1 ? '' : 's'} pending</strong>{pending.map((entry) => <span key={entry.id}>{entry.command.type.replaceAll('_', ' ')} {entry.status === 'failed' ? `failed: ${entry.detail}` : 'awaiting confirmation'}<button type="button" onClick={() => retry(entry)}>{entry.status === 'failed' ? 'Replay safely' : 'Retry with same identity'}</button></span>)}</div>}
-    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
+    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} filter={filter} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
   </main>;
 }
 

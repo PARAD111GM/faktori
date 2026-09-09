@@ -26,6 +26,29 @@ afterAll(async () => {
 });
 
 describe('Console presentation contract', () => {
+  it('shows loop acceptance, repair history and stale records without offering unsafe controls', async () => {
+    const { ManagerLoops } = await server.ssrLoadModule('/console/src/manager-loops.tsx');
+    const loops = [{ id: 'quality-loop', productId: 'product-a', status: 'blocked', stale: true,
+      completedPhases: ['foundation'], currentStage: { phaseId: 'feature', kind: 'repair', round: 1 },
+      stages: [{ phaseId: 'feature', kind: 'review', round: 0, outcome: 'completed', decision: 'repair', verification: 'passed', completedAt: '2026-09-09T12:00:00Z' },
+        { phaseId: 'feature', kind: 'repair', round: 1, outcome: 'failed', completedAt: '2026-09-09T12:01:00Z' }],
+      reason: '<script>blocked</script>' }];
+    const html = renderToStaticMarkup(createElement(ManagerLoops, { loops }));
+    expect(html).toContain('foundation');
+    expect(html).toContain('feature / repair');
+    expect(html).toContain('feature / review');
+    expect(html).toContain('Decision: repair');
+    expect(html).toContain('Verification: passed');
+    expect(html).toContain('1</strong> repair attempts');
+    expect(html).toContain('Worker activity is not confirmed');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<button');
+    const scoped = renderToStaticMarkup(createElement(ManagerLoops, { loops, filter: { productId: 'other', podId: '' } }));
+    expect(scoped).not.toContain('quality-loop');
+    expect(scoped).toContain('No connected loops in this scope');
+    const overview = renderToStaticMarkup(createElement(presentation.Overview, { state: { managerLoops: loops }, runs: [], selectRun() {} }));
+    expect(overview).toContain('quality-loop');
+  });
   it('offers flexible role assignments without implying merge authority', async () => {
     const { RoleAssignments } = await server.ssrLoadModule('/console/src/role-assignments.tsx');
     const settings = {providers:[{id:'codex',configuredIds:['my-codex']}]};

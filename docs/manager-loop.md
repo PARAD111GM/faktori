@@ -61,6 +61,45 @@ The selected artifacts directory holds durable stage state, an event journal,
 stage reports, and the final report. Keep it outside the product repository and
 out of public Git: prompts and reports can contain product information.
 
+## Observe a loop in the Console
+
+The local Console can observe an existing Manager Loop without gaining control
+of it. Add the loop's ID and absolute artifacts directory to the
+owner-controlled `local-console.json`, then restart the Console:
+
+```json
+{
+  "managerLoops": [
+    {
+      "id": "task-list-proof",
+      "artifactsDirectory": "/absolute/path/to/loop-records",
+      "productId": "task-board",
+      "podId": "task-board-pod"
+    }
+  ]
+}
+```
+
+`id` must exactly match the loop configuration's `loopId`. `productId` is an
+optional filter mapping; `podId` is also optional but requires `productId` so
+the entry cannot disappear under the product filter. When the Console has a
+canonical factory configuration, configured mappings must reference that hierarchy. Each
+artifacts directory is an explicit server-side allowlist entry. The browser
+cannot provide a path or request a file read.
+
+The observer reads only `state.json` and projects status, completed phase IDs,
+the current stage, sanitized stage outcomes, configured-verification results,
+and review or manager decisions. It never returns raw paths, prompts, provider
+responses, session IDs, evidence, or verification output. Missing or malformed
+records remain visible as `unavailable` with a safe reason rather than
+disappearing.
+
+A persisted `running` status means the loop most recently recorded running
+activity; it is not proof that a provider process is alive. After five minutes
+without a state-file update it is marked stale. Terminal states retain their
+recorded distinction. The Console does not invent a total phase count when the
+state record contains only completed phases.
+
 If interrupted between a recorded launch and its receipt, the loop reports an
 uncertain stage and does not blindly relaunch it. Inspect the records and any
 surviving process before attempting another run. Do not delete state to bypass

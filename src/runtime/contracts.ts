@@ -37,6 +37,8 @@ export interface RunTarget {
 export interface RunWorkItem {
   id: string;
   revision: string;
+  /** Optional configured factory role. Unlabelled Console work may resolve through the builder role. */
+  role?: string;
 }
 
 export interface RunContextReference {
@@ -80,6 +82,7 @@ export interface RunExecutionRequest {
   workspacePath: string;
   providerId: string;
   model: string;
+  reasoning?: 'low' | 'medium' | 'high';
   approvedInputDigests: string[];
 }
 

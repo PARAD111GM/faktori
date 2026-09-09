@@ -394,7 +394,7 @@ export class ClaudeAdapter {
       ?? (prompt ? undefined : 'current context packet and prompt are required')
       ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('start', invalid);
-    return this.#execute('start', intent, sessionId as string, this.#baseArgs(intent.execution.model, ['--session-id', sessionId as string], prompt as string), lifecycle);
+    return this.#execute('start', intent, sessionId as string, this.#baseArgs(intent.execution.model, intent.execution.reasoning, ['--session-id', sessionId as string], prompt as string), lifecycle);
   }
 
   async resume(intent: RunIntent, sessionBinding: ClaudeSessionBinding, currentContext: ClaudeCurrentContext, lifecycle?: ClaudeProcessLifecycle): Promise<ClaudeRunResult> {
@@ -407,7 +407,7 @@ export class ClaudeAdapter {
       ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('resume', invalid);
     const sessionId = sessionBinding.sessionId as string;
-    return this.#execute('resume', intent, sessionId, this.#baseArgs(intent.execution.model, ['--resume', sessionId], prompt as string), lifecycle);
+    return this.#execute('resume', intent, sessionId, this.#baseArgs(intent.execution.model, intent.execution.reasoning, ['--resume', sessionId], prompt as string), lifecycle);
   }
 
   async cancel(intent: RunIntent, lifecycle?: ClaudeProcessLifecycle): Promise<ProviderFinalResult> {
@@ -435,12 +435,13 @@ export class ClaudeAdapter {
     }
   }
 
-  #baseArgs(model: string, sessionArgs: string[], prompt: string): string[] {
+  #baseArgs(model: string, reasoning: RunIntent['execution']['reasoning'], sessionArgs: string[], prompt: string): string[] {
     // No --continue, --add-dir, bypass permission flag, fallback model, MCP configuration,
     // background execution, or configuration override is supplied by this adapter.
     return [
       '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--permission-mode', 'manual', '--tools', this.#allowedTools.join(','), '--model', model,
+      ...(reasoning === undefined ? [] : ['--effort', reasoning]),
       ...sessionArgs, prompt,
     ];
   }

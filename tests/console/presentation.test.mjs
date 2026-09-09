@@ -39,6 +39,9 @@ describe('Console presentation contract', () => {
     const empty = renderToStaticMarkup(createElement(RoleAssignments, {settings}));
     expect(empty).toContain('No roles assigned');
     expect(empty).not.toContain('<input');
+    expect(empty).toContain('Unlabelled work uses builder');
+    const unsupported = renderToStaticMarkup(createElement(RoleAssignments, {settings: {providers:[{id:'cursor',configuredIds:['cursor-team']}]}, assignments:[{role:'builder',providerId:'cursor-team',reasoning:'high'}]}));
+    expect(unsupported).toContain('cannot apply explicit role model or reasoning overrides');
   });
   it('renders scoped run counts without promoting absent usage telemetry to zero', () => {
     const runs = [

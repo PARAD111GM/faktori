@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 import { createConsoleService } from '../../src/console/service.ts';
 import { createConsoleOwnerActions } from '../../src/console/owner-actions.ts';
-import { parseLocalConsoleConfiguration, startLocalConsole } from '../../src/console/startup.ts';
+import { parseLocalConsoleConfiguration, startLocalConsole, startLocalConsoleFromFile } from '../../src/console/startup.ts';
+import { FileConsoleSettingsEditor } from '../../src/console/settings-edit.ts';
 import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
 import { evaluatePreflight } from '../../src/diagnostics/preflight.ts';
@@ -479,6 +480,75 @@ describe('loopback Console service', () => {
       await started.close();
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+
+  it('routes unlabelled builder and named roles through inherited catalog assignments before durable admission', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-console-role-routing-'));
+    const control = join(root, 'control');
+    await mkdir(control);
+    try {
+      const configured = (runId, workItemId, role, profile = 'native') => {
+        const configuredIntent = intent(runId);
+        configuredIntent.workItem = { id: workItemId, revision: 'work@1', ...(role === undefined ? {} : { role }) };
+        configuredIntent.execution.profile = profile;
+        configuredIntent.execution.providerId = 'codex';
+        configuredIntent.execution.model = profile === 'isolated' ? 'isolated-model' : 'original-model';
+        const context = { packetRevision: 'packet@1', digest: 'packet', prompt: `Run ${workItemId}.` };
+        configuredIntent.execution.approvedInputDigests = [providerContextPayloadDigest(context)];
+        return { workItemId, intent: configuredIntent, context };
+      };
+      const calls = [];
+      const rawConfig = {
+        factoryId: 'factory', journalPath: join(root, 'operations.jsonl'), projectionPath: join(root, 'projection.sqlite'), port: 0,
+        commandToken: 'role-token', allowedOrigins: ['http://127.0.0.1:4173'], limits: { maxConcurrentRuns: 3, maxRetries: 1, maxRuntimeMinutes: 10, maxTokens: 500, strictSpending: false, strictSpendingSupported: false },
+        factoryConfiguration: {
+          factory: { id: 'factory', name: 'Role Factory', defaults: { providerId: 'codex-custom', environmentId: 'local', executionProfile: 'native', budget: { strictSpending: false } } },
+          providers: [{ id: 'codex-custom', kind: 'codex', capabilities: ['native', 'isolated', 'token-limit'] }, { id: 'claude-custom', kind: 'claude-code', capabilities: ['native'] }],
+          environments: [{ id: 'local', kind: 'local' }], products: [{ id: 'product', name: 'Product' }], pods: [],
+        },
+        runtime: {
+          providers: [
+            { id: 'codex', environment: { PATH: '/usr/bin' }, compatibleModels: ['original-model', 'codex-review'], runNonce: 'codex' },
+            { id: 'codex', profile: 'isolated', environment: { PATH: '/usr/bin' }, compatibleModels: ['isolated-model'], runNonce: 'codex-isolated', docker: { image: `sha256:${'a'.repeat(64)}`, scratchRoot: root, controlStoragePaths: [control], approvedInputs: [], networkMode: 'none', resources: { memoryBytes: 268_435_456, cpuCount: 1, pids: 64 }, allowUnsandboxedCodexInsideValidatedContainer: false } },
+            { id: 'claude', environment: { PATH: '/usr/bin' }, compatibleModels: ['claude-role'], allowedTools: [], runNonce: 'claude' },
+          ],
+          workItems: [configured('builder-run', 'builder-work'), configured('review-run', 'review-work', 'reviewer'), configured('invalid-run', 'invalid-work', 'designer', 'isolated')], resumePlans: [],
+        },
+      };
+      const configPath = join(root, 'console.json');
+      const originalContent = `${JSON.stringify(rawConfig, null, 2)}\n`;
+      await writeFile(configPath, originalContent);
+      const editor = new FileConsoleSettingsEditor({ path: configPath, loadedContent: originalContent, validate: parseLocalConsoleConfiguration });
+      const edit = await editor.edit();
+      edit.draft.defaults.roleAssignments = [
+        { role: 'builder', providerId: 'claude-custom', model: 'claude-role', reasoning: 'high' },
+        { role: 'reviewer', providerId: 'codex-custom', model: 'codex-review', reasoning: 'low' },
+        { role: 'designer', providerId: 'claude-custom', model: 'claude-role' },
+      ];
+      await editor.save({ revision: edit.revision, draft: edit.draft, confirm: true, acknowledgedRiskIds: [] });
+      const nativeWorker = (providerId) => ({ kind: 'native', pid: 1200 + calls.length, processStartedAt: `${providerId}-role-worker`, processGroupId: 1200 + calls.length, runNonce: providerId });
+      const started = await startLocalConsoleFromFile(configPath, {
+        codexRunner: { async run(request) { calls.push({ providerId: 'codex', request }); await request.lifecycle?.onStarted(nativeWorker('codex')); return { exitCode: 0, stdout: `${JSON.stringify({ type: 'thread.started', thread_id: 'codex-role-session' })}\n${JSON.stringify({ type: 'turn.completed' })}\n` }; } },
+        claudeRunner: { async run(request) { calls.push({ providerId: 'claude', request }); await request.lifecycle?.onStarted(nativeWorker('claude')); const sessionId = request.args[request.args.indexOf('--session-id') + 1]; return { exitCode: 0, stdout: `${JSON.stringify({ type: 'system', session_id: sessionId })}\n${JSON.stringify({ type: 'result', session_id: sessionId, result: 'done' })}\n` }; } },
+        nativeIdentityProbe: { inspect: async () => ({ status: 'unknown' }), inspectProcessGroup: async () => ({ status: 'unknown' }) },
+      });
+      const headers = { origin: 'http://127.0.0.1:4173', 'x-faktori-console-token': 'role-token' };
+      for (const workItemId of ['builder-work', 'review-work']) expect((await started.app.inject({ method: 'POST', url: '/api/console/commands', headers, payload: { commandId: `${workItemId}-start`, command: { type: 'start_work', workItemId } } })).statusCode).toBe(200);
+      const snapshots = await waitFor(() => started.coordinator.snapshots(), (observed) => observed.length === 2 && observed.every((snapshot) => ['succeeded', 'failed', 'blocked', 'cancelled', 'interrupted_uncertain'].includes(snapshot.state)), 5_000);
+      expect(snapshots.map((snapshot) => snapshot.state)).toEqual(['succeeded', 'succeeded']);
+      expect(snapshots.map((snapshot) => ({ providerId: snapshot.intent.execution.providerId, role: snapshot.intent.workItem.role, model: snapshot.intent.execution.model, reasoning: snapshot.intent.execution.reasoning }))).toEqual(expect.arrayContaining([
+        { providerId: 'claude', role: 'builder', model: 'claude-role', reasoning: 'high' },
+        { providerId: 'codex', role: 'reviewer', model: 'codex-review', reasoning: 'low' },
+      ]));
+      expect(calls.find((call) => call.providerId === 'claude').request.args).toEqual(expect.arrayContaining(['--model', 'claude-role', '--effort', 'high']));
+      expect(calls.find((call) => call.providerId === 'codex').request.args).toEqual(expect.arrayContaining(['--model', 'codex-review', '-c', 'model_reasoning_effort="low"']));
+      for (const snapshot of snapshots) expect(snapshot.intent.authority.policy).toEqual(intent().authority.policy);
+      const invalid = await started.app.inject({ method: 'POST', url: '/api/console/commands', headers, payload: { commandId: 'invalid-start', command: { type: 'start_work', workItemId: 'invalid-work' } } });
+      expect(invalid.statusCode).toBe(409);
+      expect(invalid.json().command.result.detail).toBe('role_assignment_provider_capability_unavailable:designer');
+      expect(started.coordinator.snapshot('invalid-run')).toBeUndefined();
+      await started.close();
+    } finally { await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }); }
+  }, 15_000);
 
   it('constructs the shipped isolated Codex route from an explicit hardened Docker profile', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-console-isolated-'));

@@ -189,6 +189,8 @@ collaboration. They are directions—not shipped features or prerequisites.
 | [Skill kit and routing](docs/skills.md) | Choose the right playbook without loading everything. |
 | [Product intent](docs/intent.md) | Understand scope and design principles. |
 | [Configuration](docs/configuration/README.md) | Products, pods, providers, budgets, and overrides. |
+| [Templates](templates/README.md) | Copy and run a ready-made workflow, starting with the Manager Loop. |
+| [Manager Loop proof of concept](docs/manager-loop.md) | Run phased Codex implementation, independent review, and bounded repairs in a disposable project. |
 | [Lifecycle and artifacts](docs/lifecycle/contract.md) | Trace intent through evidence and release. |
 | [Hierarchy and context](docs/context/README.md) | Give agents relevant scope without unrelated baggage. |
 | [Providers](docs/providers/README.md) | Understand adapter contracts and capability boundaries. |

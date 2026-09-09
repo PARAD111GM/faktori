@@ -13,3 +13,4 @@ export * from './console/index.ts';
 export * from './gm/index.ts';
 export * from './maintenance/index.ts';
 export * from './diagnostics/index.ts';
+export * from './loop/index.ts';

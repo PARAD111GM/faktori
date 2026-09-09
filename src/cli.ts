@@ -10,6 +10,7 @@ import {
   createRunManifest,
   evaluateInstalledPreflightDocument,
   initializeRuntimeInstallation,
+  runManagerLoop,
   applyRuntimeUpdate,
   previewRuntimeUpdate,
   previewNewProduct,
@@ -35,6 +36,7 @@ const HELP = `Usage:
   faktori product new <approved-bundle.json> <absolute-root>
   faktori runtime rebuild <journal.jsonl> <projection.sqlite>
   faktori run manifest <journal.jsonl> <run-id>
+  faktori loop run <config.json>
   faktori preflight <request.json>
   faktori backup create <request.json> <backup-directory>
   faktori backup restore <backup-directory> <restore-request.json>
@@ -160,6 +162,12 @@ async function run(argv: string[]): Promise<void> {
       throw new Error(`operational journal could not be read from ${source}: ${errorMessage(error)}`);
     }
     print(createRunManifest(parseRunManifestJournal(contents), extra));
+    return;
+  }
+
+  if (group === 'loop' && action === 'run') {
+    if (argv.length !== 3 || !source) throw new Error('loop run requires exactly one manager loop configuration path');
+    print(await runManagerLoop(await json(source, 'manager loop configuration')));
     return;
   }
 

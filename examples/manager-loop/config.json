@@ -1,0 +1,42 @@
+{
+  "format": "faktori.manager-loop/v1",
+  "loopId": "task-list-proof",
+  "workspace": {
+    "path": "/absolute/path/to/disposable-project",
+    "nativeAccessApproved": false
+  },
+  "artifactsDirectory": "/absolute/path/to/loop-records",
+  "provider": {
+    "kind": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning": "medium",
+    "contextIsolation": "bounded"
+  },
+  "limits": {
+    "maxRuntimeMinutes": 10,
+    "maxTokens": 0,
+    "maxRepairRounds": 2
+  },
+  "phases": [
+    {
+      "id": "create",
+      "objective": "Build a tiny dependency-free Node task-list library in tasks.mjs, with Node built-in tests. Do not commit, publish, or install dependencies.",
+      "acceptanceCriteria": [
+        "Export addTask(tasks, title), returning a new list with an incomplete task and a unique stable ID.",
+        "Reject blank titles and do not mutate the input list.",
+        "Include meaningful tests runnable with node --test."
+      ],
+      "verification": [{ "command": "node", "args": ["--test"] }]
+    },
+    {
+      "id": "complete",
+      "objective": "Extend the existing task-list library with task completion. Preserve the first phase's behavior.",
+      "acceptanceCriteria": [
+        "Export completeTask(tasks, id), marking only the selected task complete without mutating the input.",
+        "Unknown IDs raise a clear error.",
+        "Tests cover completion, unknown IDs, immutability, and the original addTask behavior."
+      ],
+      "verification": [{ "command": "node", "args": ["--test"] }]
+    }
+  ]
+}

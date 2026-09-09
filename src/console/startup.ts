@@ -26,6 +26,8 @@ import { createConsoleSettings } from './settings.ts';
 import { FileConsoleSettingsEditor, type ConsoleSettingsEditor } from './settings-edit.ts';
 import { ManagerLoopObserver, type ManagerLoopSource } from './manager-loop-observer.ts';
 import { JiraObserver, parseJiraSources, type JiraSource } from './jira-observer.ts';
+import { ManagerConnectedStore, parseManagerConnectedConfig, type ManagerConnectedConfig } from '../manager-connected/index.ts';
+import { newManagerRelayToken, writeManagerRelayConnection } from './manager-relay.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -43,6 +45,7 @@ export interface LocalConsoleConfiguration {
   managerLoops: ManagerLoopSource[];
   /** Read-only tracker sources; credentials remain in server environment. */
   jiraSources?: JiraSource[];
+  managerConnected?: ManagerConnectedConfig;
 }
 
 export type LocalProviderRoute =
@@ -311,7 +314,12 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   const configuredRuntime = runtime(input.runtime, factoryId);
   const managerLoops = managerLoopSources(input.managerLoops, factoryConfiguration);
   const jiraSources = parseJiraSources(input.jiraSources, factoryConfiguration);
-  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), managerLoops, jiraSources, ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  const managerConnected = input.managerConnected === undefined ? undefined : parseManagerConnectedConfig(input.managerConnected);
+  if (managerConnected && factoryConfiguration) for (const session of managerConnected.sessions) {
+    if (!factoryConfiguration.products.some((product) => product.id === session.productId)) throw new Error('managerConnected session must reference a configured product');
+    if (session.podId && !factoryConfiguration.pods.some((pod) => pod.id === session.podId && pod.productId === session.productId)) throw new Error('managerConnected session pod must belong to its product');
+  }
+  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), managerLoops, jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -653,6 +661,8 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   let observer: CoordinatorGMHealthObserver | undefined;
   let app: ReturnType<typeof createConsoleService> | undefined;
   let pollInterval: ReturnType<typeof setInterval> | undefined;
+  let managerStore: ManagerConnectedStore | undefined;
+  let removeRelayConnection: (() => Promise<void>) | undefined;
   try {
     // Reconstruct and quarantine unresolved work before any configured runtime
     // can admit or launch a new worker. Unknown identity is a blocker, never
@@ -664,11 +674,14 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     const managerLoopObserver = new ManagerLoopObserver({ sources: configuration.managerLoops });
     await managerLoopObserver.poll();
     const jiraObserver = new JiraObserver(configuration.jiraSources ?? []);
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, jiraObserver });
+    managerStore = configuration.managerConnected ? await ManagerConnectedStore.open(configuration.managerConnected) : undefined;
+    const relayToken = newManagerRelayToken();
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, jiraObserver, ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}) });
     const listeningApp = app;
     pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();
     const address = await listeningApp.listen({ host: '127.0.0.1', port: configuration.port });
+    if (configuration.managerConnected) removeRelayConnection = await writeManagerRelayConnection(configuration.managerConnected.directory, address, relayToken);
     await observer?.poll();
     return {
       coordinator, app: listeningApp, url: address, ...(gm === undefined ? {} : { gm }),
@@ -677,6 +690,8 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
         await listeningApp.close();
         await configured?.shutdown();
         await observer?.settle();
+        await removeRelayConnection?.();
+        await managerStore?.close();
         await coordinator.release();
         coordinator.close();
       },
@@ -685,6 +700,8 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     if (pollInterval !== undefined) clearInterval(pollInterval);
     await app?.close();
     await configured?.shutdown();
+    await removeRelayConnection?.();
+    await managerStore?.close();
     await coordinator.release(); coordinator.close();
     throw error;
   }

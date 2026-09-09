@@ -16,6 +16,8 @@ import type { ConsoleSettingsEditor } from './settings-edit.ts';
 import type { ManagerLoopObserver } from './manager-loop-observer.ts';
 import type { JiraObserver } from './jira-observer.ts';
 import { consoleActivity } from './activity.ts';
+import type { ManagerConnectedStore } from '../manager-connected/index.ts';
+import { registerManagerRelay } from './manager-relay.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -61,6 +63,7 @@ export interface ConsoleServiceOptions {
   /** Server-owned observer for explicitly configured Manager Loop artifact directories. */
   managerLoopObserver?: ManagerLoopObserver;
   jiraObserver?: JiraObserver;
+  managerConnected?: { store: ManagerConnectedStore; relayToken: string };
   assetsDirectory?: string;
   now?: () => Date;
   /** Test seam for the local append-only journal watcher. */
@@ -289,6 +292,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   }, options.eventPollIntervalMs ?? 200);
   journalPoll.unref();
   const unsubscribeManagerLoops = options.managerLoopObserver?.onChange(() => events.emit('state'));
+  const unsubscribeManagerConnected = options.managerConnected?.store.onChange(() => events.emit('state'));
   options.managerLoopObserver?.start();
   let closed = false;
   let jiraRefreshing = false;
@@ -325,6 +329,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       admissionPaused: currentPause(records()),
       runs: snapshots.map((snapshot) => publicRun(options.coordinator, snapshot)),
       managerLoops,
+      ...(options.managerConnected ? { managerConnected: options.managerConnected.store.snapshot() } : {}),
       jiraBoards,
       activity: consoleActivity(options.coordinator.journal.events(), snapshots, managerLoops, jiraBoards.flatMap((board) => board.changes.map((change) => ({ ...change, source: 'jira' as const, ...(board.productId === undefined ? {} : { productId: board.productId }), ...(board.podId === undefined ? {} : { podId: board.podId }), ...(change.issueKey === undefined ? {} : { url: board.issues.find((issue) => issue.key === change.issueKey)?.url }) })))),
       blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
@@ -414,9 +419,21 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     options.jiraObserver?.close();
     clearInterval(journalPoll);
     unsubscribeManagerLoops?.();
+    unsubscribeManagerConnected?.();
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());
+  if (options.managerConnected) {
+    const { store, relayToken } = options.managerConnected;
+    registerManagerRelay(app, store, relayToken);
+    app.post('/api/console/manager-connected', async (request, reply) => {
+      if (!commandAuthorized(request, reply)) return reply;
+      const action = object(request.body);
+      if (!action || !['enqueue', 'cancel'].includes(String(action.type))) return reply.code(400).send({ error: 'unsupported_owner_action' });
+      try { await store.operate(action); return { state: state() }; }
+      catch (error) { return reply.code(409).send({ error: safeText(error instanceof Error ? error.message : '') ?? 'manager_request_failed' }); }
+    });
+  }
   app.get('/api/console/events', async (request, reply) => {
     secureHeaders(reply);
     reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive', 'Cache-Control': 'no-store' });

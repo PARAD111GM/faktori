@@ -7,6 +7,7 @@ import { createConsoleService } from '../../src/console/service.ts';
 import { createConsoleOwnerActions } from '../../src/console/owner-actions.ts';
 import { parseLocalConsoleConfiguration, startLocalConsole, startLocalConsoleFromFile } from '../../src/console/startup.ts';
 import { FileConsoleSettingsEditor } from '../../src/console/settings-edit.ts';
+import { JiraObserver } from '../../src/console/jira-observer.ts';
 import { providerContextPayloadDigest } from '../../src/providers/contracts.ts';
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
 import { evaluatePreflight } from '../../src/diagnostics/preflight.ts';
@@ -47,6 +48,23 @@ async function fixture() {
 }
 
 describe('loopback Console service', () => {
+  it('exposes Jira issue state and summarized run progression without browser credentials or raw event text', async () => {
+    const { root, coordinator } = await fixture();
+    const jiraObserver = new JiraObserver([{ id: 'tracker', baseUrl: 'https://jira.example', projectKey: 'DEMO', authorizationEnv: 'JIRA_TEST_AUTH', productId: 'product' }], {
+      environment: { JIRA_TEST_AUTH: 'Bearer private-jira-token' },
+      fetcher: async () => new Response(JSON.stringify({ isLast: true, issues: [{ key: 'DEMO-7', fields: { summary: 'Fix keyboard navigation', status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, updated: '2026-09-09T10:00:00Z', assignee: null } }] }), { status: 200 }),
+    });
+    await jiraObserver.refresh();
+    await coordinator.record('message.queued', 'run-1', { message: { messageId: 'owner-message', body: 'private owner instruction', createdAt: '2026-09-09T10:01:00Z', delivery: 'queued' } });
+    const app = createConsoleService({ coordinator, commandToken: 'local-secret', allowedOrigins: ['http://127.0.0.1:4173'], jiraObserver });
+    try {
+      const state = (await app.inject({ method: 'GET', url: '/api/console/state' })).json();
+      expect(state.jiraBoards[0]).toEqual(expect.objectContaining({ status: 'connected', projectKey: 'DEMO', issues: [expect.objectContaining({ key: 'DEMO-7', status: 'In Progress' })] }));
+      expect(state.activity).toEqual(expect.arrayContaining([expect.objectContaining({ source: 'run', runId: 'run-1', summary: expect.stringContaining('Owner instruction queued') })]));
+      expect(JSON.stringify(state)).not.toMatch(/private-jira-token|private owner instruction|JIRA_TEST_AUTH/);
+    } finally { await app.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
   it('renders a durable coordinator projection and gives a repeated owner message one confirmed result', async () => {
     const { root, coordinator } = await fixture();
     const app = createConsoleService({ coordinator, commandToken: 'local-secret', allowedOrigins: ['http://127.0.0.1:4173'] });

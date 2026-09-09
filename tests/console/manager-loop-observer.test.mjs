@@ -52,6 +52,33 @@ async function waitFor(read, predicate, timeoutMs = 2_000) {
 }
 
 describe('Manager Loop Console observer', () => {
+  it('refreshes publication evidence even when the accepted loop state does not change', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-delivery-observer-'));
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const commit = 'b'.repeat(40);
+    await writeFile(join(root, 'state.json'), JSON.stringify(loopState({
+      status: 'succeeded', currentStage: undefined,
+      stages: [{ stageId: 'accepted', phaseId: 'arithmetic', kind: 'manager_accept', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:00:00Z', evidence: { contentDigest: digest } }],
+    })));
+    const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: root }] });
+    try {
+      await observer.poll();
+      expect(observer.summaries()[0].delivery.nextAction.label).toBe('Awaiting publication');
+      await writeFile(join(root, 'publication.json'), JSON.stringify({
+        format: 'faktori.loop-publication-receipt/v1', status: 'published',
+        loop: { loopId: 'two-phase-math-proof', acceptedEvidenceDigest: digest },
+        binding: { repository: 'example/product', branch: 'feature', baseRefName: 'main', expectedRevision: commit },
+        pr: { number: 1, url: 'https://github.com/example/product/pull/1', headRefName: 'feature', baseRefName: 'main', headRefOid: commit },
+      }));
+      await observer.poll();
+      expect(observer.summaries()[0].delivery.nextAction).toEqual({ label: 'Awaiting external review', role: 'reviewer', url: 'https://github.com/example/product/pull/1' });
+      await writeFile(join(root, 'delivery.json'), '{malformed');
+      await observer.poll();
+      expect(observer.summaries()[0].delivery.nextAction.label).toBe('Reconcile delivery evidence');
+      expect(observer.summaries()[0].delivery.gates.slice(2).every((gate) => gate.status === 'unobserved')).toBe(true);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('projects sanitized recorded state and streams real file updates without exposing controller records', async () => {
     const { root, artifacts, coordinator } = await fixture();
     await writeFile(join(artifacts, 'state.json'), `${JSON.stringify(loopState())}\n`);
@@ -67,6 +94,12 @@ describe('Manager Loop Console observer', () => {
         id: 'two-phase-math-proof', productId: 'math', podId: 'proof-pod', status: 'running', stale: false,
         updatedAt: '2026-09-09T12:01:00.000Z', completedPhases: ['arithmetic'],
         currentStage: { phaseId: 'geometry', kind: 'implement', round: 0 },
+        delivery: {
+          gates: ['local_acceptance', 'publication', 'review', 'merge', 'deployment', 'staging_verification'].map((id, index) => ({
+            id, label: ['Local acceptance', 'Publication', 'External review', 'Merge', 'Deployment', 'Staging verification'][index], status: index === 0 ? 'pending' : 'unobserved',
+          })),
+          nextAction: { label: 'Awaiting local acceptance', role: 'manager' },
+        },
         stages: [{ phaseId: 'arithmetic', kind: 'review', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:00:00.000Z', decision: 'pass', verification: 'passed' }],
       }]);
       expect(JSON.stringify(initialState.managerLoops)).not.toMatch(/artifacts|session|prompt|stageId|contentDigest|node|--test/);

@@ -25,6 +25,7 @@ import type { PreflightResult } from '../diagnostics/preflight.ts';
 import { createConsoleSettings } from './settings.ts';
 import { FileConsoleSettingsEditor, type ConsoleSettingsEditor } from './settings-edit.ts';
 import { ManagerLoopObserver, type ManagerLoopSource } from './manager-loop-observer.ts';
+import { JiraObserver, parseJiraSources, type JiraSource } from './jira-observer.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -40,6 +41,8 @@ export interface LocalConsoleConfiguration {
   runtime?: LocalConsoleRuntimeConfiguration;
   /** Owner-allowlisted, server-only Manager Loop artifact directories. */
   managerLoops: ManagerLoopSource[];
+  /** Read-only tracker sources; credentials remain in server environment. */
+  jiraSources?: JiraSource[];
 }
 
 export type LocalProviderRoute =
@@ -307,7 +310,8 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   if (preflight !== undefined && preflight.scope.factoryId !== 'unresolved' && preflight.scope.factoryId !== factoryId) throw new Error('preflightRequest must target the Console factoryId');
   const configuredRuntime = runtime(input.runtime, factoryId);
   const managerLoops = managerLoopSources(input.managerLoops, factoryConfiguration);
-  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), managerLoops, ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  const jiraSources = parseJiraSources(input.jiraSources, factoryConfiguration);
+  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), managerLoops, jiraSources, ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -659,7 +663,8 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
     const managerLoopObserver = new ManagerLoopObserver({ sources: configuration.managerLoops });
     await managerLoopObserver.poll();
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver });
+    const jiraObserver = new JiraObserver(configuration.jiraSources ?? []);
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, jiraObserver });
     const listeningApp = app;
     pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();

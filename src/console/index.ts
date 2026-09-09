@@ -6,3 +6,5 @@ export * from './prepare.ts';
 export * from './settings.ts';
 export * from './settings-edit.ts';
 export * from './manager-loop-observer.ts';
+export * from './jira-observer.ts';
+export * from './activity.ts';

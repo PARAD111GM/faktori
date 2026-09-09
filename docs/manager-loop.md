@@ -87,7 +87,8 @@ canonical factory configuration, configured mappings must reference that hierarc
 artifacts directory is an explicit server-side allowlist entry. The browser
 cannot provide a path or request a file read.
 
-The observer reads only `state.json` and projects status, completed phase IDs,
+The observer reads `state.json` plus optional bounded publication and delivery
+receipts (see [delivery evidence](loop-delivery.md)) and projects status, completed phase IDs,
 the current stage, sanitized stage outcomes, configured-verification results,
 and review or manager decisions. It never returns raw paths, prompts, provider
 responses, session IDs, evidence, or verification output. Missing or malformed

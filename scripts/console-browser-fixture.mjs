@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { createConsoleService } from '../src/console/service.ts';
 import { DurableCoordinator } from '../src/runtime/coordinator.ts';
+import { JiraObserver } from '../src/console/jira-observer.ts';
 
 const root = await mkdtemp(join(tmpdir(), 'faktori-console-browser-'));
 const coordinator = await DurableCoordinator.open({
@@ -34,8 +35,18 @@ await coordinator.record('provider.requested', 'browser-run', {
 });
 const token = 'browser-fixture-local-token';
 const port = 43719;
+// Explicit browser-test data; this observer never contacts a real tracker.
+const jiraObserver = new JiraObserver([{ id: 'browser-jira', baseUrl: 'https://jira.example', projectKey: 'DEMO', authorizationEnv: 'FAKTORI_BROWSER_TEST_AUTH', productId: 'console', podId: 'console-ui' }], {
+  environment: { FAKTORI_BROWSER_TEST_AUTH: 'Bearer browser-test-only' },
+  fetcher: async () => new Response(JSON.stringify({ isLast: true, issues: [
+    { key: 'DEMO-1', fields: { summary: 'Verify keyboard navigation', status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, assignee: { displayName: 'Test owner' }, updated: '2026-09-09T10:00:00Z' } },
+    { key: 'DEMO-2', fields: { summary: 'Review release evidence', status: { name: 'In Review', statusCategory: { key: 'indeterminate' } }, assignee: null, updated: '2026-09-09T09:00:00Z' } },
+  ] }), { status: 200 }),
+});
+await jiraObserver.refresh();
 const app = createConsoleService({
   coordinator,
+  jiraObserver,
   commandToken: token,
   allowedOrigins: [`http://127.0.0.1:${port}`],
   assetsDirectory: join(process.cwd(), 'console', 'dist'),

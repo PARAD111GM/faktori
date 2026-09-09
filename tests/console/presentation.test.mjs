@@ -40,7 +40,7 @@ describe('Console presentation contract', () => {
     expect(html).toContain('Decision: repair');
     expect(html).toContain('Verification: passed');
     expect(html).toContain('1</strong> repair attempts');
-    expect(html).toContain('Worker activity is not confirmed');
+    expect(html).toContain('This projection may be stale');
     expect(html).toContain('&lt;script&gt;');
     expect(html).not.toContain('<button');
     const scoped = renderToStaticMarkup(createElement(ManagerLoops, { loops, filter: { productId: 'other', podId: '' } }));

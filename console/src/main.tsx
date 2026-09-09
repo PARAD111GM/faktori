@@ -5,6 +5,7 @@ import './styles.css';
 import faktoriLogo from './assets/faktori-logo.svg';
 import { Settings } from './settings.tsx';
 import { ManagerLoops, type ManagerLoopView } from './manager-loops.tsx';
+import { ActivityFeed, JiraWorkBoard, type ActivityItem, type JiraBoard } from './work-visibility.tsx';
 import type { ConsoleSettings } from '../../src/console/settings.ts';
 
 type Usage = {
@@ -52,6 +53,8 @@ type ConsoleState = {
   blockers?: Blocker[];
   preflight?: Preflight;
   hierarchy?: Hierarchy;
+  jiraBoards?: JiraBoard[];
+  activity?: ActivityItem[];
   overview?: { activeRuns?: number; waitingDecisions?: number; failedRuns?: number };
   resources?: {
     knownUsageTokens?: number;
@@ -196,22 +199,34 @@ function Icon({ name }: { name: IconName }) {
 }
 
 export function Overview({ state, runs, selectRun, openWork, filter }: { state: ConsoleState; runs: Run[]; selectRun: (id: string) => void; openWork?: () => void; filter?: ScopeFilter }) {
+  const scope = filter ?? { productId: '', podId: '' };
+  const loops = (state.managerLoops ?? [])
+    .filter((loop) => (!scope.productId || loop.productId === scope.productId) && (!scope.podId || loop.podId === scope.podId))
+    .sort((left, right) => new Date(right.updatedAt ?? 0).valueOf() - new Date(left.updatedAt ?? 0).valueOf());
   const activeRuns = runs.filter((run) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(run.state)).length;
   const attentionRuns = runs.filter((run) => run.state === 'blocked' || run.state === 'reconciling' || run.providerRequests?.some((request) => request.status === 'pending'));
+  const attentionLoops = loops.filter((loop) => loop.status === 'blocked' || loop.delivery?.issue || loop.delivery?.gates.some((gate) => gate.status === 'failed'));
   const waitingDecisions = attentionRuns.length;
   const failedRuns = runs.filter((run) => run.state === 'failed').length;
   const reservedTokens = runs.filter((run) => run.reservation?.status === 'held' || run.reservation?.status === 'uncertain').reduce((total, run) => total + (run.reservation?.estimatedTokens ?? 0), 0);
+  const acceptedPhases = loops.reduce((total, loop) => total + loop.completedPhases.length, 0);
+  const recordedActiveLoops = loops.filter((loop) => loop.status === 'running').length;
   const resources = state.resources;
   const renderRuns = (items: Run[], emptyTitle: string, emptyDetail: string) => items.length === 0
     ? <Empty title={emptyTitle} detail={emptyDetail} />
     : <div className="run-list">{items.map((run) => <button className="run-row" key={run.runId} onClick={() => selectRun(run.runId)}><span className="run-work">{run.workItem.id}<small>{run.target.repository ?? 'Repository not observed'}</small></span><RunState state={run.state} /><span>{duration(run.createdAt)}</span></button>)}</div>;
+  const renderLoops = () => loops.length === 0 ? null : <div className="overview-loop-list"><h3>Manager loops</h3>{loops.map((loop) => {
+    const lastStage = loop.stages.at(-1);
+    const recordedStatus = loop.status === 'succeeded' ? 'Locally accepted' : loop.status === 'running' ? 'Recorded running' : stateLabel(loop.status);
+    return <article className="overview-loop-row" key={loop.id}><div><strong>{loop.id}</strong><small>{loop.currentStage ? `${loop.currentStage.phaseId} / ${stateLabel(loop.currentStage.kind)} · round ${loop.currentStage.round}` : lastStage ? `Last step: ${lastStage.phaseId} / ${stateLabel(lastStage.kind)}` : 'No stage recorded'}</small>{loop.delivery && <small className="overview-next-action">Next: {loop.delivery.nextAction.label} · {stateLabel(loop.delivery.nextAction.role)}</small>}</div><span className={`state state-${loop.status}`}>{recordedStatus}{loop.stale ? ' · stale' : ''}</span><div className="overview-loop-facts"><span><b>{loop.completedPhases.length}</b> accepted phases</span><time>Last progress: {formatDate(loop.updatedAt)}</time>{loop.stale && loop.status === 'running' && <small>Worker liveness unconfirmed.</small>}</div></article>;
+  })}<a className="loop-detail-link" href="#manager-loop-details">View phase and review details</a></div>;
   return <section className="workspace overview-workspace"><div className="overview-bento">
-    <section className="panel panel-primary attention-panel"><div className="panel-heading"><div><h2>Needs your attention</h2><p>Review requests and work that needs a decision.</p></div><strong className="panel-count">{String(waitingDecisions).padStart(2, '0')}</strong></div>{renderRuns(attentionRuns, 'You’re all caught up', 'No runs in this view are waiting for a decision or recovery.')}</section>
+    <section className="panel panel-primary attention-panel"><div className="panel-heading"><div><h2>Needs your attention</h2><p>Observed requests, failures, and blocked work.</p></div><strong className="attention-count">{attentionRuns.length} runs · {attentionLoops.length} loops</strong></div>{attentionRuns.length > 0 && renderRuns(attentionRuns, '', '')}{attentionLoops.length > 0 && <div className="attention-loop-list">{attentionLoops.map((loop) => <a href="#manager-loop-details" key={loop.id}><strong>{loop.id}</strong><span>{loop.status === 'blocked' ? 'Blocked' : `${loop.delivery?.gates.find((gate) => gate.status === 'failed')?.label ?? 'Delivery gate'} failed`}</span>{loop.delivery && <small>Next: {loop.delivery.nextAction.label} · {stateLabel(loop.delivery.nextAction.role)}</small>}</a>)}</div>}{attentionRuns.length === 0 && attentionLoops.length === 0 && <Empty title="You’re all caught up" detail="No observed runs or Manager Loops in this scope need a decision or recovery." />}</section>
     <section className="panel capacity-panel"><div className="panel-heading"><div><h2>Factory capacity</h2><p>Factory-wide resources with scoped run counts.</p></div><strong>{activeRuns} scoped runs</strong></div><dl className="capacity-list"><dt>Factory admission</dt><dd>{state.admissionPaused ? 'Paused' : 'Open'}</dd><dt>Scoped reservations</dt><dd>{count(reservedTokens)}</dd><dt>Factory reported usage</dt><dd>{resources?.reportedUsageCount ? measurement(resources.knownUsageTokens) : 'Unavailable'}</dd><dt>Factory unavailable measurements</dt><dd>{measurement(resources?.unavailableMeasurements ?? resources?.unavailableUsageCount)}</dd></dl><p className="capacity-note">Usage appears when a provider reports it. Unknown usage is never counted as zero.</p></section>
-    <section className="panel panel-primary active-panel"><div className="panel-heading"><div><h2>Current work</h2><p>Runs for the selected product and pod.</p></div><strong>{runs.length} total</strong></div>{renderRuns(runs, 'No work started yet', 'Open Work to start an approved work item. Its progress will appear here.')}{runs.length === 0 && openWork && <button onClick={openWork}>Open Work</button>}</section>
+    <section className="panel panel-primary active-panel"><div className="panel-heading"><div><h2>Current and recent work</h2><p>Coordinator runs and recorded Manager Loops in this scope.</p></div><strong>{runs.length} runs · {loops.length} loops</strong></div>{runs.length > 0 ? renderRuns(runs, '', '') : <p className="quiet current-work-empty">No coordinator runs recorded in this scope.</p>}{renderLoops()}{runs.length === 0 && loops.length === 0 && <Empty title="No work recorded yet" detail="Open Work to start an approved work item. Coordinator runs and Manager Loops will appear separately here." />}{runs.length === 0 && openWork && <button onClick={openWork}>Open Work</button>}</section>
     <section className="panel panel-support blocker-panel"><div className="panel-heading"><div><h2>Factory blockers</h2><p>Issues preventing work from starting across the factory.</p></div><strong>{state.blockers?.length ?? 0}</strong></div>{state.blockers?.length ? <Blockers blockers={state.blockers} /> : <Empty title="No blockers reported" detail="No issues preventing admission have been reported." />}</section>
-    <section className="panel panel-muted signal-panel"><div className="panel-heading"><div><h2>At a glance</h2><p>Activity for the selected product and pod.</p></div></div><div className="metric-row"><Metric label="Active work" value={count(activeRuns)} /><Metric label="Waiting decisions" value={count(waitingDecisions)} /><Metric label="Failed runs" value={count(failedRuns)} /><Metric label="Reserved tokens" value={count(reservedTokens)} /></div></section>
-  </div><ManagerLoops loops={state.managerLoops} filter={filter} /></section>;
+    <section className="panel panel-muted signal-panel"><div className="panel-heading"><div><h2>At a glance</h2><p>Work and accepted progress in this scope.</p></div></div><div className="metric-row"><Metric label="Coordinator runs" value={count(runs.length)} /><Metric label="Manager loops" value={count(loops.length)} /><Metric label="Recorded active loops" value={count(recordedActiveLoops)} /><Metric label="Accepted loop phases" value={count(acceptedPhases)} /><Metric label="Active coordinator runs" value={count(activeRuns)} /><Metric label="Waiting run decisions" value={count(waitingDecisions)} /><Metric label="Failed coordinator runs" value={count(failedRuns)} /><Metric label="Reserved run tokens" value={count(reservedTokens)} /></div></section>
+  </div><ActivityFeed items={state.activity ?? []} filter={scope} selectRun={selectRun} compact /><div id="manager-loop-details"><ManagerLoops loops={state.managerLoops} filter={scope} /></div></section>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
@@ -249,10 +264,11 @@ export function Work({ state, runs, filter, selectRun, submit }: { state: Consol
   const [query, setQuery] = useState('');
   const matchingRuns = filterWorkRuns(runs, query);
   const columns = ['queued', 'admitted', 'launching', 'running', 'blocked', 'reconciling', 'succeeded', 'failed', 'cancelled'];
-  return <section className="workspace"><div className="panel panel-primary section-header work-header"><div><h2>Work</h2><p>Track work from the queue through completion. Scroll the board to see every stage.</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
+  const hasJiraSource = (state.jiraBoards?.length ?? 0) > 0;
+  return <section className="workspace">{hasJiraSource && <JiraWorkBoard boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} />}<div className="panel panel-primary section-header work-header"><div><span className="eyebrow">Coordinator execution</span><h2>{hasJiraSource ? 'Execution runs' : 'Work'}</h2><p>{hasJiraSource ? 'Runtime progress is separate from Jira issue status.' : 'Track work from the queue through completion. Scroll the board to see every stage.'}</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
   <div className="board-toolbar"><label>Find work<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search work ID, provider, or status" /></label><span role="status">{matchingRuns.length} of {runs.length} runs{query && <button type="button" onClick={() => setQuery('')}>Clear search</button>}</span></div>
   <div className="panel panel-muted board" tabIndex={0} aria-label="Work board">{columns.map((column) => { const items = matchingRuns.filter((run) => run.state === column); return <div className="board-column" key={column}><h3>{stateLabel(column)} <span>{items.length}</span></h3>{items.length === 0 ? <p className="quiet">None</p> : items.map((run) => <button className="work-item" key={run.runId} onClick={() => selectRun(run.runId)}><strong>{run.workItem.id}</strong><span>{run.target.productId ?? 'Product unreported'}</span><small>{run.provider ?? 'Provider unreported'} · {duration(run.createdAt)}</small></button>)}</div>; })}</div>
-  <ManagerLoops loops={state.managerLoops} filter={filter} /><WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
+  {!hasJiraSource && <JiraWorkBoard boards={[]} runs={runs} filter={filter} selectRun={selectRun} />}<ActivityFeed items={state.activity ?? []} filter={filter} selectRun={selectRun} /><ManagerLoops loops={state.managerLoops} filter={filter} /><WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
 }
 
 function ProviderRequests({ run, submit }: { run: Run; submit: (command: Command) => void }) {

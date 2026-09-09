@@ -14,6 +14,8 @@ import type { PreflightResult } from '../diagnostics/preflight.ts';
 import type { ConsoleSettings } from './settings.ts';
 import type { ConsoleSettingsEditor } from './settings-edit.ts';
 import type { ManagerLoopObserver } from './manager-loop-observer.ts';
+import type { JiraObserver } from './jira-observer.ts';
+import { consoleActivity } from './activity.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -58,6 +60,7 @@ export interface ConsoleServiceOptions {
   settingsEditor?: ConsoleSettingsEditor;
   /** Server-owned observer for explicitly configured Manager Loop artifact directories. */
   managerLoopObserver?: ManagerLoopObserver;
+  jiraObserver?: JiraObserver;
   assetsDirectory?: string;
   now?: () => Date;
   /** Test seam for the local append-only journal watcher. */
@@ -287,6 +290,21 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   journalPoll.unref();
   const unsubscribeManagerLoops = options.managerLoopObserver?.onChange(() => events.emit('state'));
   options.managerLoopObserver?.start();
+  let closed = false;
+  let jiraRefreshing = false;
+  let jiraVersion = '';
+  const refreshJira = async (): Promise<void> => {
+    if (closed || jiraRefreshing || !options.jiraObserver) return;
+    jiraRefreshing = true;
+    try {
+      await options.jiraObserver.refresh();
+      const next = JSON.stringify(options.jiraObserver.snapshot());
+      if (!closed && next !== jiraVersion) { jiraVersion = next; events.emit('state'); }
+    } finally { jiraRefreshing = false; }
+  };
+  const jiraPoll = options.jiraObserver ? setInterval(() => { void refreshJira(); }, 1_000) : undefined;
+  jiraPoll?.unref();
+  void refreshJira();
 
   function records(): RecordedCommand[] {
     return options.coordinator.journal.events().map(commandRecord).filter((value): value is RecordedCommand => value !== undefined);
@@ -300,11 +318,15 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     const reservedTokens = snapshots.filter((snapshot) => snapshot.reservation.status === 'held' || snapshot.reservation.status === 'uncertain')
       .reduce((sum, snapshot) => sum + snapshot.reservation.estimatedTokens, 0);
     const waiting = snapshots.filter((snapshot) => snapshot.state === 'blocked' || snapshot.state === 'reconciling');
+    const managerLoops = options.managerLoopObserver?.summaries() ?? [];
+    const jiraBoards = options.jiraObserver?.snapshot() ?? [];
     return {
       format: 'faktori.console-state/v1', observedAt: now().toISOString(), stale: false,
       admissionPaused: currentPause(records()),
       runs: snapshots.map((snapshot) => publicRun(options.coordinator, snapshot)),
-      managerLoops: options.managerLoopObserver?.summaries() ?? [],
+      managerLoops,
+      jiraBoards,
+      activity: consoleActivity(options.coordinator.journal.events(), snapshots, managerLoops, jiraBoards.flatMap((board) => board.changes.map((change) => ({ ...change, source: 'jira' as const, ...(board.productId === undefined ? {} : { productId: board.productId }), ...(board.podId === undefined ? {} : { podId: board.podId }), ...(change.issueKey === undefined ? {} : { url: board.issues.find((issue) => issue.key === change.issueKey)?.url }) })))),
       blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
         .filter((blocker, index, values) => values.findIndex((candidate) => candidate.blockerId === blocker.blockerId) === index),
       ...(options.preflight === undefined ? {} : { preflight: options.preflight }),
@@ -387,6 +409,9 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
 
   app.addHook('onSend', async (_request, reply) => { secureHeaders(reply); });
   app.addHook('onClose', async () => {
+    closed = true;
+    if (jiraPoll) clearInterval(jiraPoll);
+    options.jiraObserver?.close();
     clearInterval(journalPoll);
     unsubscribeManagerLoops?.();
     options.managerLoopObserver?.close();

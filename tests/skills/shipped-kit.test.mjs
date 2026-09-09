@@ -7,7 +7,7 @@ import { verifySkillKit } from '../../scripts/verify-skill-kit.mjs';
 describe('shipped skill kit', () => {
   it('ships every routed skill with usable, self-contained resources', async () => {
     const result = await verifySkillKit(process.cwd());
-    expect(result.skills).toHaveLength(15);
+    expect(result.skills).toHaveLength(16);
     expect(result.providers).toEqual(['claude', 'codex', 'cursor']);
   });
 

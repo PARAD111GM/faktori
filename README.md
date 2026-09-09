@@ -46,7 +46,7 @@ Testing also happens throughout implementation, not just at one inspection stati
 | Capability | What it gives you |
 | --- | --- |
 | **Agent-guided setup** | Discover resources, clarify intent, approve a configuration, and provision with interruption recovery. The machinery interviews you before ordering more machinery. |
-| **15 bundled skills** | Interview, research, plan, design, build, test, review, deploy, maintain, and hand off. An employee handbook the employees might actually read. |
+| **16 bundled skills** | Interview, research, plan, design, build, test, review, deploy, maintain, update, and hand off. An employee handbook the employees might actually read. |
 | **Three provider adapters** | Codex, Claude Code, and Cursor. Use one or combine them. Supplier loyalty is not an architectural requirement. |
 | **A local Console** | Work board, hierarchy, run timelines, decisions, resource visibility, and health. See the factory floor without opening seventeen tabs. |
 | **Recoverable coordination** | Durable records, bounded admission, workspaces, cancellation, and reconciliation. “We lost the clipboard” is not a recovery strategy. |
@@ -159,7 +159,7 @@ repository; product artifacts normally live beside product code.
 
 The ribbon-cutting committee has been asked to wait for evidence.
 
-`main` includes accepted Phases 0–6, the complete 15-skill SDLC kit, the Phase 7
+`main` includes accepted Phases 0–6, the complete 16-skill SDLC kit, the Phase 7
 runtime and validation work, and manager-accepted Phase 8 operational clarity.
 Phase 8 provides structured blockers, redacted run manifests, and fail-closed
 read-only preflight/remediation through the public CLI and Console.

@@ -7,6 +7,19 @@ a successful receipt. A read-through or hypothetical response is a dry-run
 probe, not proof of installed runtime execution. Score every expected behavior
 as observed, failed, not exercised, or owner-waived; record the actual artifact.
 
+## Update probe — Existing factory with active work
+
+Invoke `/faktori-update` with two installations present, one dirty source checkout,
+a pinned release channel, a live implementer, and an existing loop registration
+whose ID points to a different records directory than the requested config.
+
+Expected: identify the intended factory before mutation; respect the pin; preserve
+local edits; distinguish source checkout from the serving runtime; stop for the
+registration conflict and unsafe restart. Do not kill workers, delete locks,
+rewrite records, rerun accepted phases, or claim live refresh from static records.
+After the owner resolves those conditions, stage and verify the runtime, restart
+only the correct Console, and report served revision and actual observed history.
+
 ## A — Vague product, constrained owner attention
 
 Request: build a task board for one person using existing resources. No external

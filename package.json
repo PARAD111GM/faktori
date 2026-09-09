@@ -12,6 +12,9 @@
     "faktori": "./dist/cli.js"
   },
   "files": [
+    ".agents/skills/faktori-update",
+    ".claude/commands/faktori-update.md",
+    ".cursor/commands/faktori-update.md",
     "dist",
     "console/dist",
     "docs",

@@ -7,7 +7,10 @@ import { Settings } from './settings.tsx';
 import { ManagerLoops, type ManagerLoopView } from './manager-loops.tsx';
 import { ManagerConnected, type ManagerConnectedAction, type ManagerConnectedSnapshot } from './manager-connected.tsx';
 import { ActivityFeed, JiraWorkBoard, type ActivityItem, type JiraBoard } from './work-visibility.tsx';
+import { Projects } from './projects.tsx';
+import { Sessions } from './sessions.tsx';
 import type { ConsoleSettings } from '../../src/console/settings.ts';
+import type { WorkManagementState } from '../../src/console/work-management.ts';
 
 type Usage = {
   availability?: 'available' | 'estimated' | 'unavailable';
@@ -43,8 +46,12 @@ type Hierarchy = {
 };
 type ScopeFilter = { productId: string; podId: string };
 
+/** Catalog links must not inherit a different project's narrower Work filter. */
+export function projectScope(productId: string): ScopeFilter { return { productId, podId: '' }; }
+
 type ConsoleState = {
   managerConnected?: ManagerConnectedSnapshot;
+  workManagement?: WorkManagementState;
   managerLoops?: ManagerLoopView[];
   settings?: ConsoleSettings;
   format?: string;
@@ -191,13 +198,15 @@ function Empty({ title, detail }: { title: string; detail: string }) {
 
 function RunState({ state }: { state: string }) { return <span className={`state state-${state}`}>{stateLabel(state)}</span>; }
 
-type IconName = 'overview' | 'work' | 'run' | 'factory' | 'settings' | 'refresh';
+type IconName = 'overview' | 'projects' | 'work' | 'sessions' | 'run' | 'factory' | 'settings' | 'refresh';
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
     settings: <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="8" cy="18" r="2" /></>,
     overview: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></>,
+    projects: <><path d="M4 20V7l8-4 8 4v13" /><path d="M8 20v-5h8v5M8 9h.01M12 9h.01M16 9h.01" /></>,
     work: <><path d="M7 3h8l4 4v14H7z" /><path d="M15 3v5h5M10 12h6M10 16h6" /></>,
+    sessions: <><circle cx="9" cy="8" r="3" /><path d="M3 21c.7-4 3-6 6-6s5.3 2 6 6M17 11a3 3 0 1 0-1-5.8M18 15c1.7.7 2.8 2.5 3 4.5" /></>,
     run: <path d="m7 4 12 8L7 20z" />,
     factory: <><path d="M3 21V9l6 3V7l6 4V3h6v18z" /><path d="M7 17h2M13 17h2M17 8h2" /></>,
     refresh: <><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 0-2 5" /></>,
@@ -262,16 +271,16 @@ function WorkHierarchy({ hierarchy, filter }: { hierarchy?: Hierarchy; filter: S
   return <div className="split-section hierarchy-section"><section className="panel panel-primary"><h2>Hierarchy</h2>{nodes.length === 0 ? <Empty title="No hierarchy nodes match this scope" detail="Choose another product or pod filter to inspect the published work hierarchy." /> : <div className="hierarchy-tree">{roots.map((node) => <HierarchyBranch key={node.id} node={node} children={children} />)}</div>}</section><section className="panel panel-support"><h2>Dependencies</h2>{dependencies.length === 0 ? <Empty title="No dependency edges match this scope" detail="Dependencies are shown only when the coordinator projection publishes an explicit edge." /> : <ul className="dependency-list">{dependencies.map((edge) => <li key={`${edge.from}-${edge.to}`}><span>{allNodeLabels.get(edge.from) ?? edge.from}</span><b>depends on</b><span>{allNodeLabels.get(edge.to) ?? edge.to}</span></li>)}</ul>}</section></div>;
 }
 
-export function Work({ state, runs, filter, selectRun, submit, submitManagerConnected }: { state: ConsoleState; runs: Run[]; filter: ScopeFilter; selectRun: (id: string) => void; submit: (command: Command) => void; submitManagerConnected: (action: ManagerConnectedAction) => Promise<void> }) {
+export function Work({ state, runs, filter, selectRun, openLoop, openRequest, focusedRequestId, submit, submitManagerConnected }: { state: ConsoleState; runs: Run[]; filter: ScopeFilter; selectRun: (id: string) => void; openLoop: (id: string) => void; openRequest: (id: string) => void; focusedRequestId?: string; submit: (command: Command) => void; submitManagerConnected: (action: ManagerConnectedAction) => Promise<void> }) {
   const [workItemId, setWorkItemId] = useState('');
   const [query, setQuery] = useState('');
   const matchingRuns = filterWorkRuns(runs, query);
   const columns = ['queued', 'admitted', 'launching', 'running', 'blocked', 'reconciling', 'succeeded', 'failed', 'cancelled'];
   const hasJiraSource = (state.jiraBoards?.length ?? 0) > 0;
-  return <section className="workspace">{hasJiraSource && <JiraWorkBoard boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} />}<ManagerConnected snapshot={state.managerConnected} submit={submitManagerConnected} /><div className="panel panel-primary section-header work-header"><div><span className="eyebrow">Coordinator execution</span><h2>{hasJiraSource ? 'Execution runs' : 'Work'}</h2><p>{hasJiraSource ? 'Runtime progress is separate from Jira issue status.' : 'Track work from the queue through completion. Scroll the board to see every stage.'}</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
+  return <section className="workspace">{hasJiraSource && <JiraWorkBoard boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} />}<ManagerConnected snapshot={state.managerConnected} workManagement={state.workManagement} focusedRequestId={focusedRequestId} submit={submitManagerConnected} /><div className="panel panel-primary section-header work-header"><div><span className="eyebrow">Coordinator execution</span><h2>{hasJiraSource ? 'Execution runs' : 'Work'}</h2><p>{hasJiraSource ? 'Runtime progress is separate from Jira issue status.' : 'Track work from the queue through completion. Scroll the board to see every stage.'}</p></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
   <div className="board-toolbar"><label>Find work<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search work ID, provider, or status" /></label><span role="status">{matchingRuns.length} of {runs.length} runs{query && <button type="button" onClick={() => setQuery('')}>Clear search</button>}</span></div>
   <div className="panel panel-muted board" tabIndex={0} aria-label="Work board">{columns.map((column) => { const items = matchingRuns.filter((run) => run.state === column); return <div className="board-column" key={column}><h3>{stateLabel(column)} <span>{items.length}</span></h3>{items.length === 0 ? <p className="quiet">None</p> : items.map((run) => <button className="work-item" key={run.runId} onClick={() => selectRun(run.runId)}><strong>{run.workItem.id}</strong><span>{run.target.productId ?? 'Product unreported'}</span><small>{run.provider ?? 'Provider unreported'} · {duration(run.createdAt)}</small></button>)}</div>; })}</div>
-  {!hasJiraSource && <JiraWorkBoard boards={[]} runs={runs} filter={filter} selectRun={selectRun} />}<ActivityFeed items={state.activity ?? []} filter={filter} selectRun={selectRun} /><ManagerLoops loops={state.managerLoops} filter={filter} /><WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
+  {!hasJiraSource && <JiraWorkBoard boards={[]} runs={runs} filter={filter} selectRun={selectRun} />}<ActivityFeed items={state.activity ?? []} filter={filter} selectRun={selectRun} selectLoop={openLoop} selectRequest={openRequest} /><ManagerLoops loops={state.managerLoops} filter={filter} /><WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
 }
 
 function ProviderRequests({ run, submit }: { run: Run; submit: (command: Command) => void }) {
@@ -343,9 +352,9 @@ export function filterWorkRuns(runs: Run[], query: string): Run[] {
   return runs.filter((run) => [run.workItem.id, run.runId, run.provider ?? '', stateLabel(run.state)].join(' ').toLocaleLowerCase().includes(needle));
 }
 
-export function viewFromHash(hash: string): 'overview' | 'work' | 'run' | 'factory' | 'settings' {
+export function viewFromHash(hash: string): 'overview' | 'projects' | 'work' | 'sessions' | 'run' | 'factory' | 'settings' {
   const view = hash.slice(1);
-  return view === 'work' || view === 'run' || view === 'factory' || view === 'settings' ? view : 'overview';
+  return view === 'projects' || view === 'work' || view === 'sessions' || view === 'run' || view === 'factory' || view === 'settings' ? view : 'overview';
 }
 
 function App() {
@@ -353,13 +362,14 @@ function App() {
   const [view, setView] = useState<ReturnType<typeof viewFromHash>>(() => viewFromHash(window.location.hash));
   useEffect(() => {
     const onHashChange = () => {
-      if (['#overview', '#work', '#run', '#factory', '#settings'].includes(window.location.hash)) setView(viewFromHash(window.location.hash));
+      if (['#overview', '#projects', '#work', '#sessions', '#run', '#factory', '#settings'].includes(window.location.hash)) setView(viewFromHash(window.location.hash));
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
   useEffect(() => { window.history.replaceState(null, '', '#' + view); }, [view]);
   const [selectedRunId, setSelectedRunId] = useState<string>();
+  const [focusedRequestId, setFocusedRequestId] = useState<string>();
   const [filter, setFilter] = useState<ScopeFilter>({ productId: '', podId: '' });
   const [token, setToken] = useState(() => document.querySelector<HTMLMetaElement>('meta[name="faktori-console-token"]')?.content ?? '');
   const [pending, setPending] = useState<Pending[]>(readPending);
@@ -368,7 +378,9 @@ function App() {
   useEffect(() => { window.localStorage.setItem(pendingStorageKey, JSON.stringify(pending)); }, [pending]);
   const visibleRuns = useMemo(() => (state?.runs ?? []).filter((run) => runMatches(run, filter)), [filter, state?.runs]);
   const selectedRun = useMemo(() => visibleRuns.find((run) => run.runId === selectedRunId), [selectedRunId, visibleRuns]);
-  const selectRun = (id: string): void => { setSelectedRunId(id); setView('run'); };
+  const selectRun = (id: string, productId?: string): void => { if (productId) setFilter(projectScope(productId)); setSelectedRunId(id); setView('run'); };
+  const openLoop = (id: string, productId?: string): void => { if (productId) setFilter(projectScope(productId)); setFocusedRequestId(undefined); setView('work'); window.setTimeout(() => document.getElementById(`manager-loop-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); };
+  const openRequest = (id: string, productId?: string): void => { if (productId) setFilter(projectScope(productId)); setFocusedRequestId(id); setView('work'); window.setTimeout(() => document.getElementById(`manager-request-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0); };
   const send = useCallback((entry: Pending, commandKey: string) => {
     void fetch('/api/console/commands', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Faktori-Console-Token': token }, body: JSON.stringify({ commandId: entry.id, command: entry.command }) })
       .then(async (response) => ({ response, body: await response.json() as { command?: { status?: string; result?: { detail?: string; url?: string } }; state?: ConsoleState } }))
@@ -413,13 +425,14 @@ function App() {
 
   if (!state) return <main className="loading"><h1>Faktori</h1><p>{error ?? 'Loading the coordinator projection…'}</p><button onClick={() => void refresh()}>Retry connection</button></main>;
   const views = ['overview', 'work', 'run', 'factory', 'settings'] as const;
+  const primaryViews = ['overview', 'projects', 'work', 'sessions', 'factory', 'settings'] as const;
   const title = view === 'run' ? 'Run detail' : view[0].toUpperCase() + view.slice(1);
   return <main className="app-shell">
     <a className="skip-link" href="#console-content">Skip to content</a>
-    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><img className="brand-logo" src={faktoriLogo} alt="" /><span className="brand-name">FAKTORI</span></a><nav aria-label="Console views">{views.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item === 'run' ? 'Run detail' : item}</span></button>)}</nav></aside>
+    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><img className="brand-logo" src={faktoriLogo} alt="" /><span className="brand-name">FAKTORI</span></a><nav aria-label="Console views">{primaryViews.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}><Icon name={item} /><span>{item}</span></button>)}</nav></aside>
     <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><span className="eyebrow">{state.hierarchy?.nodes?.find((node) => node.kind === 'factory')?.label ?? 'Local factory'}</span><h1>{title}</h1></div><div className="header-controls">{view !== 'settings' && <ScopeFilters hierarchy={state.hierarchy} filter={filter} setFilter={setFilter} />}<button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
     {error && <div className="alert" role="alert">{error}</div>}{pending.length > 0 && <div className="pending" role="status"><strong>{pending.length} command{pending.length === 1 ? '' : 's'} pending</strong>{pending.map((entry) => <span key={entry.id}>{entry.command.type.replaceAll('_', ' ')} {entry.status === 'failed' ? `failed: ${entry.detail}` : 'awaiting confirmation'}<button type="button" onClick={() => retry(entry)}>{entry.status === 'failed' ? 'Replay safely' : 'Retry with same identity'}</button></span>)}</div>}
-    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} filter={filter} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} submit={submit} submitManagerConnected={submitManagerConnected} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
+    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><summary>Connection settings</summary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} filter={filter} />}{view === 'projects' && <Projects workManagement={state.workManagement} navigation={{ openRun: selectRun, openLoop, openRequest }} />}{view === 'sessions' && <Sessions workManagement={state.workManagement} manager={state.managerConnected?.manager} lastHeartbeatAt={state.managerConnected?.lastHeartbeatAt} />}{view === 'work' && <Work state={state} runs={visibleRuns} filter={filter} selectRun={selectRun} openLoop={openLoop} openRequest={openRequest} focusedRequestId={focusedRequestId} submit={submit} submitManagerConnected={submitManagerConnected} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
   </main>;
 }
 

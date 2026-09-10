@@ -49,7 +49,7 @@ export function ManagerLoops({ loops = [], filter = { productId: '', podId: '' }
   return <section className="panel panel-primary manager-loops" aria-label="Manager loops">
     <div className="panel-heading"><div><h2>Manager loops</h2><p>Recorded phases, reviews, and repairs. Read-only; controlled by the loop runner.</p></div><strong>{visible.length}</strong></div>
     {visible.length === 0 && <p className="quiet">No connected loops in this scope.</p>}
-    <div className="loop-grid">{visible.map((loop) => <article className="loop-card" key={loop.id}>
+    <div className="loop-grid">{visible.map((loop) => <article id={`manager-loop-${loop.id}`} className="loop-card" key={loop.id}>
       <div className="panel-heading"><h3>{loop.id}</h3><span className={`state state-${loop.status}`}>{loopStatusLabel(loop)}</span></div>
       {loop.stale && loop.status === 'running' && <p className="notice">Last progress recorded {loop.updatedAt ? new Date(loop.updatedAt).toLocaleString() : 'at an unknown time'}; worker liveness unconfirmed.</p>}
       {loop.stale && loop.status !== 'running' && <p className="notice">This projection may be stale. Last progress recorded {loop.updatedAt ? new Date(loop.updatedAt).toLocaleString() : 'at an unknown time'}.</p>}

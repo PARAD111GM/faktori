@@ -3,6 +3,8 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 
+import type { ScopedWorkAssignment } from '../console/work-management.ts';
+
 export interface ManagerConnectedManager {
   threadId: string;
   title: string;
@@ -35,7 +37,7 @@ export type ManagerConnectedRequestStatus =
   | 'cancelled';
 
 export type ManagerConnectedAction =
-  | { type: 'enqueue'; id: string; sessionId: string; title: string; instruction: string }
+  | { type: 'enqueue'; id: string; sessionId: string; title: string; instruction: string; catalogRevision?: string; scope?: ScopedWorkAssignment }
   | { type: 'claim'; id: string }
   | { type: 'submitted'; id: string }
   | { type: 'complete'; id: string; threadId: string; summary: string }
@@ -67,6 +69,9 @@ export interface ManagerConnectedRequestSnapshot {
   uncertainAt?: string;
   uncertaintyReason?: 'restart_requires_reconciliation';
   report?: ManagerConnectedCompletionReport;
+  /** Immutable owner-visible catalog binding when the optional catalog is enabled. */
+  catalogRevision?: string;
+  scope?: ScopedWorkAssignment;
   /** The exact instruction is intentionally available only from a successful claim. */
   instructionAvailable: true;
 }
@@ -128,6 +133,8 @@ interface DurableRequest {
   uncertainAt?: string;
   uncertaintyReason?: 'restart_requires_reconciliation';
   report?: ManagerConnectedCompletionReport;
+  catalogRevision?: string;
+  scope?: ScopedWorkAssignment;
 }
 
 type EventType = 'queued' | 'claimed' | 'submission_observed' | 'response_observed'
@@ -144,6 +151,7 @@ interface ManagerConnectedEvent {
 type Listener = () => void;
 
 const SLUG = /^[a-z0-9](?:[a-z0-9._-]{0,78}[a-z0-9])?$/;
+const TICKET_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,78}[A-Za-z0-9])?$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_STATUSES = new Set<ManagerConnectedRequestStatus>(['queued', 'claimed', 'submitted', 'completed', 'uncertain', 'cancelled']);
 const EVENT_TYPES = new Set<EventType>(['queued', 'claimed', 'submission_observed', 'response_observed', 'cancelled', 'restart_requires_reconciliation', 'heartbeat']);
@@ -185,6 +193,12 @@ function slug(value: unknown, path: string): string {
   return parsed;
 }
 
+function ticketId(value: unknown, path: string): string {
+  const parsed = boundedText(value, path, 80);
+  if (!TICKET_ID.test(parsed)) return fail('invalid_input', `${path} must be a safe stable ticket identifier`);
+  return parsed;
+}
+
 function uuid(value: unknown, path: string): string {
   const parsed = boundedText(value, path, 36);
   if (!UUID.test(parsed)) return fail('invalid_input', `${path} must be a UUID`);
@@ -204,8 +218,12 @@ function timestamp(value: unknown, path: string): string {
   return new Date(value).toISOString();
 }
 
-function optionalSlug(input: InputRecord, key: 'podId' | 'planId' | 'phaseId' | 'ticketId', path: string): string | undefined {
+function optionalSlug(input: InputRecord, key: 'podId' | 'planId' | 'phaseId', path: string): string | undefined {
   return input[key] === undefined ? undefined : slug(input[key], `${path}.${key}`);
+}
+
+function optionalTicketId(input: InputRecord, path: string): string | undefined {
+  return input.ticketId === undefined ? undefined : ticketId(input.ticketId, `${path}.ticketId`);
 }
 
 function parseManager(value: unknown, path: string): ManagerConnectedManager {
@@ -229,7 +247,18 @@ function parseSession(value: unknown, path: string): ManagerConnectedSessionAssi
     ...(optionalSlug(input, 'podId', path) === undefined ? {} : { podId: optionalSlug(input, 'podId', path) }),
     ...(optionalSlug(input, 'planId', path) === undefined ? {} : { planId: optionalSlug(input, 'planId', path) }),
     ...(optionalSlug(input, 'phaseId', path) === undefined ? {} : { phaseId: optionalSlug(input, 'phaseId', path) }),
-    ...(optionalSlug(input, 'ticketId', path) === undefined ? {} : { ticketId: optionalSlug(input, 'ticketId', path) }),
+    ...(optionalTicketId(input, path) === undefined ? {} : { ticketId: optionalTicketId(input, path) }),
+  };
+}
+
+function parseScopedWorkAssignment(value: unknown, path: string): ScopedWorkAssignment {
+  const input = record(value, path);
+  exactKeys(input, ['productId', 'planId', 'phaseId', 'ticketId'], path);
+  return {
+    productId: slug(input.productId, `${path}.productId`),
+    planId: slug(input.planId, `${path}.planId`),
+    phaseId: slug(input.phaseId, `${path}.phaseId`),
+    ...(input.ticketId === undefined ? {} : { ticketId: ticketId(input.ticketId, `${path}.ticketId`) }),
   };
 }
 
@@ -260,8 +289,11 @@ function parseAction(value: unknown): ManagerConnectedAction {
   const input = record(value, 'action');
   const type = input.type;
   if (type === 'enqueue') {
-    exactKeys(input, ['type', 'id', 'sessionId', 'title', 'instruction'], 'action');
-    return { type, id: requestIdentity(input.id, 'action.id'), sessionId: slug(input.sessionId, 'action.sessionId'), title: boundedText(input.title, 'action.title', 256), instruction: boundedText(input.instruction, 'action.instruction', SAFE_TEXT_LIMIT) };
+    exactKeys(input, ['type', 'id', 'sessionId', 'title', 'instruction', 'catalogRevision', 'scope'], 'action');
+    const catalogRevision = input.catalogRevision === undefined ? undefined : boundedText(input.catalogRevision, 'action.catalogRevision', 128);
+    const scope = input.scope === undefined ? undefined : parseScopedWorkAssignment(input.scope, 'action.scope');
+    if ((catalogRevision === undefined) !== (scope === undefined)) fail('invalid_input', 'action.catalogRevision and action.scope must be supplied together');
+    return { type, id: requestIdentity(input.id, 'action.id'), sessionId: slug(input.sessionId, 'action.sessionId'), title: boundedText(input.title, 'action.title', 256), instruction: boundedText(input.instruction, 'action.instruction', SAFE_TEXT_LIMIT), ...(catalogRevision === undefined ? {} : { catalogRevision }), ...(scope === undefined ? {} : { scope }) };
   }
   if (type === 'claim' || type === 'submitted' || type === 'cancel') {
     exactKeys(input, ['type', 'id'], 'action');
@@ -321,6 +353,8 @@ function publicRequest(request: DurableRequest): ManagerConnectedRequestSnapshot
     ...(request.uncertainAt === undefined ? {} : { uncertainAt: request.uncertainAt }),
     ...(request.uncertaintyReason === undefined ? {} : { uncertaintyReason: request.uncertaintyReason }),
     ...(request.report === undefined ? {} : { report: { ...request.report, summary: safeProjectionText(request.report.summary) } }),
+    ...(request.catalogRevision === undefined ? {} : { catalogRevision: request.catalogRevision }),
+    ...(request.scope === undefined ? {} : { scope: structuredClone(request.scope) }),
     instructionAvailable: true,
   };
 }
@@ -341,7 +375,7 @@ function parseReport(value: unknown, path: string): ManagerConnectedCompletionRe
 
 function parseDurableRequest(value: unknown, path: string): DurableRequest {
   const input = record(value, path);
-  exactKeys(input, ['id', 'sessionId', 'title', 'instruction', 'status', 'assignment', 'callbackManager', 'createdAt', 'claimedAt', 'submittedAt', 'completedAt', 'cancelledAt', 'uncertainAt', 'uncertaintyReason', 'report'], path);
+  exactKeys(input, ['id', 'sessionId', 'title', 'instruction', 'status', 'assignment', 'callbackManager', 'createdAt', 'claimedAt', 'submittedAt', 'completedAt', 'cancelledAt', 'uncertainAt', 'uncertaintyReason', 'report', 'catalogRevision', 'scope'], path);
   if (typeof input.status !== 'string' || !REQUEST_STATUSES.has(input.status as ManagerConnectedRequestStatus)) fail('journal_corrupt', `${path}.status is invalid`);
   const status = input.status as ManagerConnectedRequestStatus;
   const optionalTimestamp = (key: 'claimedAt' | 'submittedAt' | 'completedAt' | 'cancelledAt' | 'uncertainAt'): string | undefined => input[key] === undefined ? undefined : timestamp(input[key], `${path}.${key}`);
@@ -361,7 +395,10 @@ function parseDurableRequest(value: unknown, path: string): DurableRequest {
     ...(optionalTimestamp('uncertainAt') === undefined ? {} : { uncertainAt: optionalTimestamp('uncertainAt') }),
     ...(input.uncertaintyReason === undefined ? {} : { uncertaintyReason: input.uncertaintyReason === 'restart_requires_reconciliation' ? input.uncertaintyReason : fail('journal_corrupt', `${path}.uncertaintyReason is invalid`) }),
     ...(input.report === undefined ? {} : { report: parseReport(input.report, `${path}.report`) }),
+    ...(input.catalogRevision === undefined ? {} : { catalogRevision: boundedText(input.catalogRevision, `${path}.catalogRevision`, 128) }),
+    ...(input.scope === undefined ? {} : { scope: parseScopedWorkAssignment(input.scope, `${path}.scope`) }),
   };
+  if ((request.catalogRevision === undefined) !== (request.scope === undefined)) fail('journal_corrupt', `${path}.catalogRevision and scope must occur together`);
   if (request.sessionId !== request.assignment.id) fail('journal_corrupt', `${path} session assignment identity changed`);
   const required: Partial<Record<ManagerConnectedRequestStatus, keyof DurableRequest>> = { claimed: 'claimedAt', submitted: 'submittedAt', completed: 'completedAt', cancelled: 'cancelledAt', uncertain: 'uncertainAt' };
   const requiredField = required[status];
@@ -409,6 +446,8 @@ function immutableRequest(request: DurableRequest): unknown {
     instruction: request.instruction,
     assignment: request.assignment,
     callbackManager: request.callbackManager,
+    ...(request.catalogRevision === undefined ? {} : { catalogRevision: request.catalogRevision }),
+    ...(request.scope === undefined ? {} : { scope: request.scope }),
     createdAt: request.createdAt,
   };
 }
@@ -657,10 +696,12 @@ export class ManagerConnectedStore {
         instruction: action.instruction,
         assignment,
         callbackManager: this.#config.manager,
+        ...(action.catalogRevision === undefined ? {} : { catalogRevision: action.catalogRevision }),
+        ...(action.scope === undefined ? {} : { scope: action.scope }),
       };
       const existing = this.#requests.get(action.id);
       if (existing !== undefined) {
-        const bound = { id: existing.id, sessionId: existing.sessionId, title: existing.title, instruction: existing.instruction, assignment: existing.assignment, callbackManager: existing.callbackManager };
+        const bound = { id: existing.id, sessionId: existing.sessionId, title: existing.title, instruction: existing.instruction, assignment: existing.assignment, callbackManager: existing.callbackManager, ...(existing.catalogRevision === undefined ? {} : { catalogRevision: existing.catalogRevision }), ...(existing.scope === undefined ? {} : { scope: existing.scope }) };
         if (!same(candidate, bound)) fail('request_identity_conflict', `request identity ${action.id} already binds different content or assignments`);
         return { type: 'enqueue', duplicate: true, request: publicRequest(existing) };
       }

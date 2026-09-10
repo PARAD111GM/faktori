@@ -15,6 +15,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { AppendOnlyJournal } from '../runtime/journal.ts';
+import { withOwnershipLock } from '../runtime/ownership-lock.ts';
 import { snapshotsFromEvents } from '../runtime/sqlite-projection.ts';
 import type { RecoveryRequirement, RunEvent, RunSnapshot } from '../runtime/contracts.ts';
 
@@ -181,6 +182,7 @@ async function assertNoSymlinks(root: string, target: string, label: string): Pr
 
 function isExcluded(path: string, exclusions: readonly string[]): boolean {
   return path.endsWith('.coordinator-lock')
+    || path.endsWith('.coordinator-lock.recovery-lock')
     || path.endsWith('.action-admission-lock')
     || path === 'update.lock'
     || path.endsWith('/update.lock')
@@ -255,11 +257,15 @@ function validateCommittedJournal(bytes: Uint8Array, label: string): void {
 }
 
 async function acquireOfflineLock(journal: string, purpose: string): Promise<{ release(): Promise<void> }> {
+  return withOwnershipLock(`${journal}.coordinator-lock`, () => acquireOfflineLockUnderGuard(journal, purpose));
+}
+
+async function acquireOfflineLockUnderGuard(journal: string, purpose: string): Promise<{ release(): Promise<void> }> {
   const lockPath = `${journal}.coordinator-lock`;
   let handle: Awaited<ReturnType<typeof open>>;
   try { handle = await open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') fail(`factory coordinator is active or ownership is unresolved; ${purpose} requires quiesced admission`);
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') fail(`factory coordinator is active or ownership is unresolved; ${purpose} requires quiesced admission. Run faktori backup inspect-lock with the absolute journal path; recover only confirmed stale ownership after stopping automatic restarts.`);
     throw error;
   }
   await handle.writeFile(`${JSON.stringify({ instanceId: `maintenance-${purpose}-${process.pid}`, pid: process.pid, processStartedAt: new Date().toISOString() })}\n`, 'utf8');

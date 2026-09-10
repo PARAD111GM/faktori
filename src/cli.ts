@@ -7,6 +7,8 @@ import {
   assembleContextPacket,
   createDiscoveryRecord,
   createFactoryBackup,
+  inspectCoordinatorLock,
+  recoverCoordinatorLock,
   createProvisioningProposal,
   createRunManifest,
   evaluateInstalledPreflightDocument,
@@ -53,6 +55,8 @@ const HELP = `Usage:
   faktori preflight <request.json>
   faktori readiness report <local-console.json>
   faktori backup create <request.json> <backup-directory>
+  faktori backup inspect-lock <absolute-journal-path>
+  faktori backup recover-lock <recovery-request.json>
   faktori backup restore <backup-directory> <restore-request.json>
   faktori backup reconcile <request.json>
   faktori update initialize <request.json>
@@ -245,6 +249,16 @@ async function run(argv: string[]): Promise<void> {
     return;
   }
 
+  if (group === 'backup' && action === 'inspect-lock') {
+    if (argv.length !== 3 || !source) throw new Error('backup inspect-lock requires one absolute journal path');
+    print(await inspectCoordinatorLock(source));
+    return;
+  }
+  if (group === 'backup' && action === 'recover-lock') {
+    if (argv.length !== 3 || !source) throw new Error('backup recover-lock requires one recovery request JSON path');
+    print(await recoverCoordinatorLock(await json(source, 'lock recovery request')));
+    return;
+  }
   if (group === 'backup' && action === 'create') {
     if (!extra) throw new Error('a new backup directory is required');
     print(await createFactoryBackup(await json(source, 'backup request'), extra));

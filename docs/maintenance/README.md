@@ -30,6 +30,47 @@ The packed check installs the tarball into a clean temporary consumer and runs
 the installed CLI and public exports. For a source checkout, the CLI examples
 are invoked with `npm run faktori -- ...`.
 
+### Recover a stale coordinator lock
+
+If backup reports active or unresolved ownership, do not delete the lock or
+start a Console merely to clear it. Stop admission and automatic restarts first;
+ensure no surviving workers are writing factory records. Recovery is local-host
+only, not for shared/network filesystems or another host's PID namespace.
+
+```sh
+faktori backup inspect-lock /absolute/path/operations.jsonl
+faktori backup recover-lock /absolute/path/recovery-request.json
+```
+
+Prepare the recovery request from the inspection result:
+
+```json
+{
+  "format": "faktori.lock-recovery-request/v1",
+  "journalPath": "/absolute/path/operations.jsonl",
+  "expectedLockToken": "copy-the-exact-lockToken-from-inspection",
+  "admissionQuiesced": true
+}
+```
+
+Set `admissionQuiesced` only after confirming the stopped state above. The
+command requires confirmed process absence; live PIDs (including reused PIDs),
+permission-denied/unknown probes, malformed locks, symlinks and changed identity
+are refused. It preserves the exact lock bytes in a unique `.recovered-*` file
+beside the lock, rechecks ownership, then removes only that stale lock. It does
+not modify journals, projections, credentials or workers. Retry backup while
+admission remains stopped. Keep the evidence file for investigation; do not
+restore it over a new owner's lock.
+
+A `.recovery-lock` serializes recovery, coordinator startup and backup lock
+acquisition. Older runtimes do not honor this guard: stop them and their
+supervisors before using recovery. Never mix old and new coordinators against
+the same records during an update. A remaining guard means an ownership
+operation is active or was interrupted. Investigate it
+before retrying; the command never automatically removes an unresolved guard.
+This command is a post-v0.2.0 source addition; the original v0.2.0 tarball does
+not contain it.
+
 ### Backup, restore, reconcile
 
 Create a request whose `sourceRoot` is the normalized absolute factory root.

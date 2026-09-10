@@ -18,5 +18,10 @@ jobs:
       - run: npm install --global npm@12.0.2 --ignore-scripts
       - run: npm ci --ignore-scripts
       - run: npm rebuild better-sqlite3
+      - name: Prepare offline update dependency cache
+        run: |
+          candidate_cache_dir=$(mktemp -d)
+          cp package.json "$candidate_cache_dir/package.json"
+          npm install --prefix "$candidate_cache_dir" --omit=dev --ignore-scripts --package-lock=false --no-audit --no-fund
       - run: npm run check
       - run: npm run skills:verify

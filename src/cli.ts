@@ -65,6 +65,7 @@ const HELP = `Usage:
   faktori manager claim <relay-connection.json> <request-id>
   faktori manager submitted <relay-connection.json> <request-id>
   faktori manager complete <relay-connection.json> <response.json>
+  faktori manager decision <create|acknowledge|resolve|uncertain> <relay-connection.json> <decision.json>
 
 Commands read explicit files and write JSON to stdout. Provision apply changes
 approved local factory state. Runtime rebuild replaces only the specified
@@ -101,6 +102,13 @@ function print(value: unknown): void {
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
   if (group === 'manager') {
+    if (action === 'decision') {
+      const [kind, connection, decisionPath] = [source, extra, argv[4]];
+      if (!connection || !decisionPath || argv.length !== 5 || !['create', 'acknowledge', 'resolve', 'uncertain'].includes(kind ?? '')) throw new Error('manager decision requires create, acknowledge, resolve, or uncertain plus a private relay connection and one decision JSON file');
+      const decision = record(await json(decisionPath, 'Manager decision'), 'Manager decision');
+      const type = kind === 'create' ? 'decision_create' : kind === 'acknowledge' ? 'decision_acknowledge' : kind === 'resolve' ? 'decision_resolve' : 'decision_uncertain';
+      print(await callManagerRelay(connection, { ...decision, type })); return;
+    }
     if (!source) throw new Error('private relay connection file is required');
     if (action === 'state' || action === 'heartbeat') { print(await callManagerRelay(source, { type: action })); return; }
     if ((action === 'claim' || action === 'submitted') && extra) { print(await callManagerRelay(source, { type: action, id: extra })); return; }
@@ -108,7 +116,7 @@ async function run(argv: string[]): Promise<void> {
       const response = record(await json(extra, 'Manager-observed response'), 'Manager-observed response');
       print(await callManagerRelay(source, { ...response, type: 'complete' })); return;
     }
-    throw new Error('unsupported manager command; use state, heartbeat, claim, submitted, or complete');
+    throw new Error('unsupported manager command; use state, heartbeat, claim, submitted, complete, or decision');
   }
   if (group === '--help' || group === '-h' || group === 'help' || !group) {
     process.stdout.write(`${HELP}\n`);

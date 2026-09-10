@@ -123,3 +123,44 @@ remaining concerns and usage gaps. No separate dashboards or progress services.
   double-counted aggregate. Batch 2 advisory estimate: 200k specialist tokens plus
   explicitly unmeasured root coordination, low confidence. Use compact briefs,
   two exclusive workstreams, one review, and a single installed proof.
+
+### Batch 2 candidate (owner proof pending)
+
+- Parallel backend/UI implementation provides durable scoped choice decisions,
+  separate private acknowledgement/resolution, a Decisions page, compact Overview
+  queue, and navigation from activity to retained decisions.
+- Independent review found and verified fixes for an unusable response control
+  on uncertain decisions and overbroad redaction of ordinary authority prose.
+- Integrated focused checks passed: 46 tests across six files. Typecheck and
+  production build passed. The isolated installed Console displays a real
+  presentation-preference decision awaiting the owner's response.
+- Required remaining gate: observe the owner's actual UI response, restart the
+  isolated Console before Manager acknowledgement, confirm one retained response,
+  acknowledge and resolve truthfully, and verify the resulting UI.
+- Reported specialist usage: backend 131,499 plus 5,802 remediation; UI 172,634
+  plus 4,124 remediation. Review/root telemetry remains incomplete. These reported
+  participant measurements exceed the 200k estimate and do not establish savings.
+  Explicit launch routing was Terra/high for both workers and review; model
+  self-descriptions are not a substitute for launch records.
+- Subsequent completeness check found missing concrete destinations for the
+  non-response decision actions. Repairs are in progress to link existing scoped
+  run/task controls and observed external records, not create new authority.
+- Assembled check initially failed five legacy loop tests at the default 5s
+  harness timeout. The documented four-worker rerun passed 495/498, with three
+  remaining timeout failures. These attempts are retained; the full gate is not
+  passed. Assertions and runtime execution limits have not been weakened.
+- The same fifteen loop journeys passed with a 15s harness allowance. Test
+  defaults now match the documented four-worker bound and allow 15s for tests,
+  without changing assertions or product execution limits. Final assembled
+  `npm run check` passed: 499 tests/66 files, typecheck, production build, and
+  clean-package CLI verification under Node 24.20.0.
+- Concrete action destinations now navigate to observed scoped run requests,
+  configured task composers, or observed Jira records; navigation does not execute
+  those actions. Resolved decision links expand retained history before scrolling.
+- The updated isolated installation retains the open real preference decision
+  and displays its full impact text. Owner response remains pending; no response
+  or acknowledgement has been fabricated. Batch 3 is not admitted yet.
+- Final targeted review tightened session destinations to exact plan/phase/ticket
+  scope, rejecting product-only assignments that the composer cannot use. Six
+  focused work-management tests and typecheck passed after that correction; the
+  499-test assembled gate above predates only this targeted correction and docs.

@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, open, readFile } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 
-import type { ManagerConnectedRequestSnapshot, ManagerConnectedSessionAssignment } from '../manager-connected/index.ts';
+import type { ManagerConnectedDecisionSnapshot, ManagerConnectedRequestSnapshot, ManagerConnectedSessionAssignment } from '../manager-connected/index.ts';
 
 /**
  * Browser-safe contract for the optional, owner-maintained work catalog.
@@ -82,6 +82,7 @@ export interface WorkManagementState {
   projects: WorkManagementProjectProjection[];
   sessions: WorkManagementSession[];
   requests: WorkManagementRequest[];
+  decisions: ManagerConnectedDecisionSnapshot[];
 }
 
 /** Server-only configuration: the browser receives no absolute path. */
@@ -364,11 +365,11 @@ export class WorkCatalogObserver {
 
   onChange(listener: () => void): () => void { this.#listeners.add(listener); return () => this.#listeners.delete(listener); }
 
-  snapshot(manager?: { sessions: WorkManagementSession[]; requests: WorkManagementRequest[] }): WorkManagementState {
+  snapshot(manager?: { sessions: WorkManagementSession[]; requests: WorkManagementRequest[]; decisions: ManagerConnectedDecisionSnapshot[] }): WorkManagementState {
     const catalog = this.#catalog;
     return {
       status: catalog ? (this.#error ? 'stale' : 'available') : 'unavailable', ...(this.#revision === undefined ? {} : { revision: this.#revision }), ...(this.#observedAt === undefined ? {} : { observedAt: this.#observedAt }), ...(this.#error === undefined ? {} : { error: this.#error }),
-      projects: catalog ? publicProjects(catalog, this.#artifacts).map((project) => ({ ...project, title: this.productNames.get(project.productId) ?? project.title })) : [], sessions: manager?.sessions ?? [], requests: manager?.requests ?? [],
+      projects: catalog ? publicProjects(catalog, this.#artifacts).map((project) => ({ ...project, title: this.productNames.get(project.productId) ?? project.title })) : [], sessions: manager?.sessions ?? [], requests: manager?.requests ?? [], decisions: manager?.decisions ?? [],
     };
   }
 

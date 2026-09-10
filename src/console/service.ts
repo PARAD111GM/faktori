@@ -352,9 +352,9 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       ...(managerConnected ? { managerConnected } : {}),
       workManagement: options.workCatalogObserver
         ? options.workCatalogObserver.snapshot(managerConnected)
-        : { status: 'unavailable' as const, error: 'work_catalog_not_configured', projects: [], sessions: managerConnected?.sessions ?? [], requests: managerConnected?.requests ?? [] },
+        : { status: 'unavailable' as const, error: 'work_catalog_not_configured', projects: [], sessions: managerConnected?.sessions ?? [], requests: managerConnected?.requests ?? [], decisions: managerConnected?.decisions ?? [] },
       jiraBoards,
-      activity: consoleActivity(options.coordinator.journal.events(), snapshots, managerLoops, jiraBoards.flatMap((board) => board.changes.map((change) => ({ ...change, source: 'jira' as const, ...(board.productId === undefined ? {} : { productId: board.productId }), ...(board.podId === undefined ? {} : { podId: board.podId }), ...(change.issueKey === undefined ? {} : { url: board.issues.find((issue) => issue.key === change.issueKey)?.url }) }))), managerConnected?.requests),
+      activity: consoleActivity(options.coordinator.journal.events(), snapshots, managerLoops, jiraBoards.flatMap((board) => board.changes.map((change) => ({ ...change, source: 'jira' as const, ...(board.productId === undefined ? {} : { productId: board.productId }), ...(board.podId === undefined ? {} : { podId: board.podId }), ...(change.issueKey === undefined ? {} : { url: board.issues.find((issue) => issue.key === change.issueKey)?.url }) }))), managerConnected?.requests, managerConnected?.decisions),
       blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
         .filter((blocker, index, values) => values.findIndex((candidate) => candidate.blockerId === blocker.blockerId) === index),
       ...(options.preflight === undefined ? {} : { preflight: options.preflight }),
@@ -469,7 +469,47 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   });
   if (options.managerConnected) {
     const { store, relayToken } = options.managerConnected;
-    registerManagerRelay(app, store, relayToken);
+    registerManagerRelay(app, store, relayToken, {
+      validateDecisionScope(scope, rawAction) {
+        const catalog = options.workCatalogObserver?.catalog();
+        if (!catalog) throw new Error('work_catalog_unavailable');
+        const current = options.workCatalogObserver!.snapshot();
+        if (current.status !== 'available') throw new Error('work_catalog_stale');
+        const decisionScope = validateWorkScope(catalog, scope);
+        const action = object(rawAction);
+        const descriptor = object(action?.action);
+        if (action?.capability !== 'supported' || descriptor === undefined) return;
+        if (descriptor.kind === 'record_owner_response') return;
+        const target = object(descriptor.target);
+        const project = catalog.projects.find((candidate) => candidate.productId === decisionScope.productId);
+        const plan = project?.plans.find((candidate) => candidate.id === decisionScope.planId);
+        const phase = plan?.phases.find((candidate) => candidate.id === decisionScope.phaseId);
+        const ticket = decisionScope.ticketId === undefined ? undefined : phase?.tickets.find((candidate) => candidate.id === decisionScope.ticketId);
+        if (descriptor.kind === 'answer_provider_request') {
+          const runId = typeof target?.runId === 'string' ? target.runId : '';
+          const requestId = typeof target?.requestId === 'string' ? target.requestId : '';
+          const run = options.coordinator.snapshots().find((candidate) => candidate.intent.runId === runId);
+          if (!ticket?.runIds?.includes(runId) || run?.intent.target.productId !== decisionScope.productId || !publicProviderRequests(options.coordinator, runId).some((request) => request.requestId === requestId && request.status === 'pending')) throw new Error('decision_action_target_unavailable');
+          return;
+        }
+        if (descriptor.kind === 'enqueue_agent_task') {
+          const sessionId = typeof target?.sessionId === 'string' ? target.sessionId : '';
+          const session = store.snapshot().sessions.find((candidate) => candidate.id === sessionId);
+          if (!session || session.productId !== decisionScope.productId
+            || session.planId !== decisionScope.planId
+            || session.phaseId !== decisionScope.phaseId
+            || session.ticketId !== decisionScope.ticketId) throw new Error('decision_action_target_unavailable');
+          return;
+        }
+        if (descriptor.kind === 'open_external_record') {
+          const url = typeof target?.url === 'string' ? target.url : '';
+          const observed = options.jiraObserver?.snapshot().some((board) => board.status === 'connected' && board.productId === decisionScope.productId && board.issues.some((issue) => issue.key === ticket?.issueKey && issue.url === url));
+          if (!ticket?.issueKey || !observed) throw new Error('decision_action_target_unavailable');
+          return;
+        }
+        throw new Error('decision_action_target_unavailable');
+      },
+    });
     app.post('/api/console/manager-connected', async (request, reply) => {
       if (!commandAuthorized(request, reply)) return reply;
       const action = object(request.body);
@@ -503,6 +543,22 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
         await store.operate(action); return { state: state() };
       }
       catch (error) { return reply.code(409).send({ error: safeText(error instanceof Error ? error.message : '') ?? 'manager_request_failed' }); }
+    });
+    app.post('/api/console/manager-connected/decision', async (request, reply) => {
+      if (!commandAuthorized(request, reply)) return reply;
+      const action = object(request.body);
+      if (!action || action.type !== 'record_owner_response') return reply.code(400).send({ error: 'unsupported_owner_action' });
+      try {
+        const result = await store.operate(action);
+        return { decision: 'decision' in result ? result.decision : undefined, state: state() };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'manager_decision_failed';
+        const code = message.includes('revision') ? 'decision_revision_conflict'
+          : message.includes('idempotency') ? 'decision_idempotency_conflict'
+            : message.includes('response') ? 'decision_response_conflict'
+              : 'manager_decision_failed';
+        return reply.code(409).send({ error: code, state: state() });
+      }
     });
   }
   app.get('/api/console/events', async (request, reply) => {

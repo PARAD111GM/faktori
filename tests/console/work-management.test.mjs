@@ -105,7 +105,7 @@ describe('scoped manager requests', () => {
     const observer = await WorkCatalogObserver.open({ path: catalogPath });
     const coordinator = await DurableCoordinator.open({ factoryId: 'factory', journalPath: join(directory, 'ops.jsonl'), projectionPath: join(directory, 'projection.sqlite'), identity: { instanceId: 'test', pid: process.pid, processStartedAt: 'now' }, limits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 5, maxTokens: 500, strictSpending: false, strictSpendingSupported: false } });
     await coordinator.claim();
-    const store = await ManagerConnectedStore.open({ directory: join(directory, 'manager'), manager: { threadId: IDS.manager, title: 'Manager' }, sessions: [{ id: 'phase-one', threadId: IDS.session, title: 'Phase one', role: 'implementer', productId: 'faktori', planId: 'console-plan', phaseId: 'batch-one', ticketId: 'CWM-006' }] });
+    const store = await ManagerConnectedStore.open({ directory: join(directory, 'manager'), manager: { threadId: IDS.manager, title: 'Manager' }, sessions: [{ id: 'phase-one', threadId: IDS.session, title: 'Phase one', role: 'implementer', productId: 'faktori', planId: 'console-plan', phaseId: 'batch-one', ticketId: 'CWM-006' }, { id: 'product-only', threadId: '019c89ea-34b1-7f65-8c96-0f496bb5d003', title: 'Product only', role: 'implementer', productId: 'faktori' }] });
     const app = createConsoleService({ coordinator, commandToken: 'owner-token', allowedOrigins: ['http://127.0.0.1:43177'], managerConnected: { store, relayToken: 'a'.repeat(64) }, workCatalogObserver: observer });
     opened.push({ app, store, coordinator });
     const headers = { origin: 'http://127.0.0.1:43177', 'x-faktori-console-token': 'owner-token' };
@@ -117,6 +117,24 @@ describe('scoped manager requests', () => {
     const state = (await app.inject('/api/console/state')).json();
     expect(state.activity.find((item) => item.source === 'request')).toMatchObject({ requestId: IDS.request, productId: 'faktori', planId: 'console-plan', phaseId: 'batch-one', ticketId: 'CWM-006' });
     expect(state.activity.find((item) => item.source === 'request').summary).toMatch(/queued for Manager-mediated delivery/);
+    // Prevents a private Manager from attaching a durable decision to a scope
+    // that the owner-controlled work graph does not recognize.
+    const decision = { type: 'decision_create', id: '019c89ea-34b1-7f65-8c96-0f496bb5c101', scope: action.scope, problem: 'Choose the decision display default.', cause: { basis: 'observed', summary: 'The Decisions inbox needs a preference.' }, evidence: [{ label: 'Batch 2 scope' }], accountableOwner: 'owner', recommendedNextAction: 'Record a bounded preference.', impact: 'No work is sent or approved.', capability: 'supported', action: { kind: 'record_owner_response', label: 'Record response for Manager observation' }, options: [{ id: 'collapsed', label: 'Collapsed' }, { id: 'expanded', label: 'Expanded' }] };
+    const relayHeaders = { host: '127.0.0.1:43177', authorization: `Bearer ${'a'.repeat(64)}` };
+    expect((await app.inject({ method: 'POST', url: '/api/manager-connected/relay', headers: relayHeaders, payload: { ...decision, scope: { ...decision.scope, phaseId: 'wrong' } } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: '/api/manager-connected/relay', headers: relayHeaders, payload: decision })).statusCode).toBe(200);
+    const decisionState = (await app.inject('/api/console/state')).json();
+    expect(decisionState.workManagement.decisions).toEqual([expect.objectContaining({ id: decision.id, state: 'open', scope: action.scope })]);
+    expect(decisionState.activity.find((item) => item.source === 'decision')).toMatchObject({ decisionId: decision.id, phaseId: 'batch-one' });
+    // Prevents enabled navigation to a guessed run or an out-of-scope session;
+    // only an explicitly assigned session becomes a supported navigation target.
+    const taskTarget = { ...decision, id: '019c89ea-34b1-7f65-8c96-0f496bb5c102', action: { kind: 'enqueue_agent_task', label: 'Open assigned task', target: { sessionId: 'phase-one' } } };
+    // Product-only sessions cannot be queued by the catalog-bound composer.
+    expect((await app.inject({ method: 'POST', url: '/api/manager-connected/relay', headers: relayHeaders, payload: { ...taskTarget, action: { ...taskTarget.action, target: { sessionId: 'product-only' } } } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: '/api/manager-connected/relay', headers: relayHeaders, payload: taskTarget })).statusCode).toBe(200);
+    expect((await app.inject('/api/console/state')).json().workManagement.decisions.find((candidate) => candidate.id === taskTarget.id)).toMatchObject({ id: taskTarget.id, capability: 'supported', action: { kind: 'enqueue_agent_task', target: { sessionId: 'phase-one' } } });
+    const guessedRun = { ...decision, id: '019c89ea-34b1-7f65-8c96-0f496bb5c103', action: { kind: 'answer_provider_request', label: 'Open run to answer', target: { runId: '019c89ea-34b1-7f65-8c96-0f496bb5d101', requestId: '019c89ea-34b1-7f65-8c96-0f496bb5d102' } } };
+    expect((await app.inject({ method: 'POST', url: '/api/manager-connected/relay', headers: relayHeaders, payload: guessedRun })).statusCode).toBe(409);
     await writeFile(catalogPath, '{broken', 'utf8');
     await observer.refresh();
     expect((await app.inject({ method: 'POST', url: '/api/console/manager-connected', headers, payload: { ...action, id: '019c89ea-34b1-7f65-8c96-0f496bb5b102' } })).json().error).toBe('work_catalog_stale');

@@ -78,20 +78,22 @@ describe('Console work-management UI', () => {
     expect(html).not.toContain('private-thread-id');
   });
 
-  it('routes activity only to retained run, loop, or request details', async () => {
+  it('routes activity only to retained run, loop, request, or decision details', async () => {
     const { ActivityFeed } = await server.ssrLoadModule('/console/src/work-visibility.tsx');
     const html = renderToStaticMarkup(createElement(ActivityFeed, {
-      filter: { productId: '', podId: '' }, selectRun() {}, selectLoop() {}, selectRequest() {},
+      filter: { productId: '', podId: '' }, selectRun() {}, selectLoop() {}, selectRequest() {}, selectDecision() {},
       items: [
         { id: 'activity-run', at: '2026-09-09T17:00:00.000Z', source: 'run', summary: 'Run recorded', runId: 'run-1' },
         { id: 'activity-loop', at: '2026-09-09T16:00:00.000Z', source: 'loop', summary: 'Loop recorded', loopId: 'loop-1' },
         { id: 'activity-request', at: '2026-09-09T15:00:00.000Z', source: 'request', summary: 'Request recorded', requestId: 'request-1' },
+        { id: 'activity-decision', at: '2026-09-09T14:00:00.000Z', source: 'decision', summary: 'Decision recorded', decisionId: 'decision-1' },
       ],
     }));
 
     expect(html).toContain('Open run');
     expect(html).toContain('Open loop');
     expect(html).toContain('Open request');
+    expect(html).toContain('Open decision');
     expect(html).not.toContain('Open Codex');
     expect(html).toContain('not a live agent transcript');
   });

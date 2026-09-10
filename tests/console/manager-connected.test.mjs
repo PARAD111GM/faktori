@@ -28,12 +28,23 @@ describe('Manager-connected Console transport', () => {
       expect((await send({ type: 'claim', id: action.id })).statusCode).toBe(400);
       expect((await send({ type: 'complete', id: action.id, threadId, summary: 'Fake result' })).statusCode).toBe(400);
       expect((await send({ type: 'claim', id: action.id }, ownerHeaders, '/api/manager-connected/relay')).statusCode).toBe(403);
+      // Prevents a browser from acknowledging/closing a decision or replacing
+      // an owner's durable choice while the private Manager is unavailable.
+      const decision = { type: 'decision_create', id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', scope: { productId: 'factory', planId: 'console-plan', phaseId: 'batch-two' }, problem: 'Choose a default.', cause: { basis: 'observed', summary: 'A display default is needed.' }, evidence: [{ label: 'Observed UI' }], accountableOwner: 'owner', recommendedNextAction: 'Record a bounded response.', impact: 'No dispatch or authority changes.', capability: 'supported', action: { kind: 'record_owner_response', label: 'Record response for Manager observation' }, options: [{ id: 'collapsed', label: 'Collapsed' }, { id: 'expanded', label: 'Expanded' }] };
+      await store.operate(decision);
+      const response = { type: 'record_owner_response', id: decision.id, responseId: 'collapsed', idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac', expectedRevision: 1 };
+      const decisionSend = (payload, headers = ownerHeaders) => app.inject({ method: 'POST', url: '/api/console/manager-connected/decision', headers, payload });
+      expect((await decisionSend(response, {})).statusCode).toBe(403);
+      expect((await decisionSend({ type: 'decision_acknowledge', id: decision.id, expectedRevision: 1 })).statusCode).toBe(400);
+      expect((await decisionSend(response)).json().decision).toMatchObject({ state: 'pending_manager_ack', ownerResponse: { optionId: 'collapsed' } });
+      expect((await decisionSend({ ...response, responseId: 'expanded' })).statusCode).toBe(409);
       const state = (await app.inject('/api/console/state')).body;
       expect(state).not.toContain(token);
       expect(state).not.toContain(action.instruction);
       const origin = await app.listen({ host: '127.0.0.1', port: 0 });
       remove = await writeManagerRelayConnection(join(root, 'manager'), origin, token);
       const path = join(root, 'manager', 'relay-connection.json');
+      expect((await callManagerRelay(path, { type: 'decision_acknowledge', id: decision.id, expectedRevision: 3 })).decision).toMatchObject({ state: 'manager_acknowledged' });
       expect(JSON.parse(await readFile(path, 'utf8')).origin).toBe(origin);
       const claim = await callManagerRelay(path, { type: 'claim', id: action.id });
       expect(JSON.stringify(claim)).toContain(action.instruction);

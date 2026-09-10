@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ManagerConnectedAction as StoreManagerConnectedAction,
   ManagerConnectedRequestSnapshot,
@@ -47,7 +47,7 @@ function SessionFacts({ session }: { session: ManagerConnectedSession }) {
   return <dl className="manager-session-facts">{facts.map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>;
 }
 
-export function ManagerConnected({ snapshot, workManagement, focusedRequestId, submit }: { snapshot?: ManagerConnectedSnapshot; workManagement?: WorkManagementState; focusedRequestId?: string; submit: (action: ManagerConnectedAction) => Promise<void> }) {
+export function ManagerConnected({ snapshot, workManagement, focusedRequestId, focusedSessionId, submit }: { snapshot?: ManagerConnectedSnapshot; workManagement?: WorkManagementState; focusedRequestId?: string; focusedSessionId?: string; submit: (action: ManagerConnectedAction) => Promise<void> }) {
   const [alias, setAlias] = useState('');
   const [title, setTitle] = useState('');
   const [instruction, setInstruction] = useState('');
@@ -66,6 +66,12 @@ export function ManagerConnected({ snapshot, workManagement, focusedRequestId, s
   const manager = snapshot?.manager;
   const managerTitle = manager?.title ?? 'Manager';
   const lastContactAt = snapshot?.lastHeartbeatAt;
+
+  useEffect(() => {
+    if (!focusedSessionId || pendingAction.current) return;
+    const selected = requestableSessions.find((session) => sessionId(session) === focusedSessionId);
+    if (selected) setAlias(sessionAlias(selected));
+  }, [focusedSessionId, requestableSessions]);
 
   if (!snapshot?.manager) return <section className="panel panel-support manager-connected manager-connected-setup" aria-labelledby="manager-connected-title">
     <div className="panel-heading"><div><h2 id="manager-connected-title">Manager-connected work</h2><p>Optional experimental work handoff.</p></div></div>
@@ -126,7 +132,7 @@ export function ManagerConnected({ snapshot, workManagement, focusedRequestId, s
     <p className="notice">Manager reports are not independent acceptance. Contact time is a record, not a liveness signal.{workManagement?.status === 'available' && ` New requests carry catalog revision ${workManagement.revision ?? 'not observed'} when available.`}</p>
     <div className="manager-connected-grid">
       <section className="manager-sessions"><h3>Recorded sessions</h3>{sessions.length === 0 ? <p className="quiet">No sessions have been published by this Manager.</p> : <ul>{sessions.map((session) => <li key={sessionId(session) || sessionAlias(session)}><strong>{session.title ?? sessionAlias(session)}</strong><small>{sessionAlias(session)}</small><SessionFacts session={session} /></li>)}</ul>}</section>
-      <form className="manager-enqueue" onSubmit={(event) => void enqueue(event)}>
+      <form className="manager-enqueue" id="manager-enqueue" onSubmit={(event) => void enqueue(event)}>
         <h3>Enqueue work</h3>
         <label>Session alias<input list="manager-session-aliases" value={alias} onChange={(event) => { setAlias(event.target.value); setError(undefined); }} disabled={Boolean(pendingAction.current)} placeholder="Choose a recorded session" required /><datalist id="manager-session-aliases">{requestableSessions.map((session) => <option key={sessionId(session) || sessionAlias(session)} value={sessionAlias(session)} />)}</datalist></label>
         <label>Title<input value={title} onChange={(event) => setTitle(event.target.value)} disabled={Boolean(pendingAction.current)} maxLength={240} placeholder="Name the bounded work" required /></label>

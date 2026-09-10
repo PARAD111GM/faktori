@@ -110,7 +110,7 @@ describe('Console presentation contract', () => {
     expect(factoryHtml).toContain('Unavailable measurements</dt><dd>0</dd>');
   });
 
-  it('keeps product and pod filters labeled and preserves every primary view in the shell', async () => {
+  it('keeps legacy scope controls labeled while placing project selection inside Work', async () => {
     const filterHtml = renderToStaticMarkup(createElement(presentation.ScopeFilters, {
       hierarchy: { filters: { products: [{ id: 'product-a', name: 'Product A' }], pods: [{ id: 'pod-a', productId: 'product-a' }] } },
       filter: { productId: '', podId: '' },
@@ -122,7 +122,9 @@ describe('Console presentation contract', () => {
     expect(filterHtml).toContain('<span>Pod</span>');
     expect(filterHtml).toContain('All products');
     expect(filterHtml).toContain('All pods');
-    expect(source).toContain("const views = ['overview', 'work', 'run', 'factory', 'settings'] as const;");
+    expect(source).toContain("const primaryViews = ['overview', 'projects', 'decisions', 'work', 'sessions', 'factory', 'settings'] as const;");
+    expect(source).toContain('>Project<select');
+    expect(source).not.toContain("{view !== 'settings' && <ScopeFilters");
     expect(source).toContain('className="session-key"');
     expect(source).toContain('className="header-controls"');
   });

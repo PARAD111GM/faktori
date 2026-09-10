@@ -25,13 +25,14 @@ export type JiraBoard = {
 export type ActivityItem = {
   id: string;
   at: string;
-  source: 'run' | 'loop' | 'jira' | 'request';
+  source: 'run' | 'loop' | 'jira' | 'request' | 'decision';
   summary: string;
   productId?: string;
   podId?: string;
   runId?: string;
   loopId?: string;
   requestId?: string;
+  decisionId?: string;
   issueKey?: string;
   url?: string;
 };
@@ -116,11 +117,11 @@ export function JiraWorkBoard({ boards, runs, filter, selectRun }: { boards: Jir
   </section>;
 }
 
-export function ActivityFeed({ items, filter, selectRun, selectLoop, selectRequest, compact = false }: { items: ActivityItem[]; filter: ScopeFilter; selectRun: (id: string) => void; selectLoop?: (id: string) => void; selectRequest?: (id: string) => void; compact?: boolean }) {
+export function ActivityFeed({ items, filter, selectRun, selectLoop, selectRequest, selectDecision, compact = false }: { items: ActivityItem[]; filter: ScopeFilter; selectRun: (id: string) => void; selectLoop?: (id: string) => void; selectRequest?: (id: string) => void; selectDecision?: (id: string) => void; compact?: boolean }) {
   const [source, setSource] = useState<'all' | ActivityItem['source']>('all');
   const visible = useMemo(() => filterActivity(items, filter, source).slice(0, compact ? 5 : 100), [compact, filter, items, source]);
-  return <section className={`panel panel-support activity-feed ${compact ? 'activity-feed-compact' : ''}`} aria-labelledby={compact ? 'overview-activity-title' : 'work-activity-title'}><div className="panel-heading"><div><h2 id={compact ? 'overview-activity-title' : 'work-activity-title'}>Running activity</h2><p>Up to {compact ? 5 : 100} recent published factory events in this scope. Recorded milestones, not a live agent transcript.</p></div><label>Source<select value={source} onChange={(event) => setSource(event.target.value as typeof source)}><option value="all">All sources</option><option value="run">Runs</option><option value="loop">Loops</option><option value="request">Requests</option><option value="jira">Jira</option></select></label></div>{visible.length === 0 ? <div className="empty"><strong>No activity published</strong><p>No safe run, loop, request, or Jira event summaries match this scope and source.</p></div> : <ol className="activity-list">{visible.map((item) => {
+  return <section className={`panel panel-support activity-feed ${compact ? 'activity-feed-compact' : ''}`} aria-labelledby={compact ? 'overview-activity-title' : 'work-activity-title'}><div className="panel-heading"><div><h2 id={compact ? 'overview-activity-title' : 'work-activity-title'}>Running activity</h2><p>Up to {compact ? 5 : 100} recent published factory events in this scope. Recorded milestones, not a live agent transcript.</p></div><label>Source<select value={source} onChange={(event) => setSource(event.target.value as typeof source)}><option value="all">All sources</option><option value="run">Runs</option><option value="loop">Loops</option><option value="request">Requests</option><option value="decision">Decisions</option><option value="jira">Jira</option></select></label></div>{visible.length === 0 ? <div className="empty"><strong>No activity published</strong><p>No safe run, loop, request, decision, or Jira event summaries match this scope and source.</p></div> : <ol className="activity-list">{visible.map((item) => {
     const externalUrl = safeExternalUrl(item.url);
-    return <li key={item.id}><span className={`activity-source activity-source-${item.source}`}>{item.source}</span><div><p>{item.summary}</p><small><time dateTime={item.at}>{formatDate(item.at)}</time>{item.issueKey ? ` · ${item.issueKey}` : ''}{item.loopId ? ` · ${item.loopId}` : ''}{item.requestId ? ` · ${item.requestId}` : ''}</small></div>{item.runId ? <button type="button" onClick={() => selectRun(item.runId!)}>Open run</button> : item.loopId && selectLoop ? <button type="button" onClick={() => selectLoop(item.loopId!)}>Open loop</button> : item.requestId && selectRequest ? <button type="button" onClick={() => selectRequest(item.requestId!)}>Open request</button> : externalUrl ? <a href={externalUrl} target="_blank" rel="noopener noreferrer">Open source<span className="sr-only"> in a new tab</span></a> : null}</li>;
+    return <li key={item.id}><span className={`activity-source activity-source-${item.source}`}>{item.source}</span><div><p>{item.summary}</p><small><time dateTime={item.at}>{formatDate(item.at)}</time>{item.issueKey ? ` · ${item.issueKey}` : ''}{item.loopId ? ` · ${item.loopId}` : ''}{item.requestId ? ` · ${item.requestId}` : ''}{item.decisionId ? ` · ${item.decisionId}` : ''}</small></div>{item.runId ? <button type="button" onClick={() => selectRun(item.runId!)}>Open run</button> : item.loopId && selectLoop ? <button type="button" onClick={() => selectLoop(item.loopId!)}>Open loop</button> : item.requestId && selectRequest ? <button type="button" onClick={() => selectRequest(item.requestId!)}>Open request</button> : item.decisionId && selectDecision ? <button type="button" onClick={() => selectDecision(item.decisionId!)}>Open decision</button> : externalUrl ? <a href={externalUrl} target="_blank" rel="noopener noreferrer">Open source<span className="sr-only"> in a new tab</span></a> : null}</li>;
   })}</ol>}{compact && <a className="loop-detail-link" href="#work">Open Work for the expanded activity feed</a>}</section>;
 }

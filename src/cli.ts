@@ -29,6 +29,8 @@ import {
   restoreFactoryBackup,
   SqliteProjection,
   startLocalConsoleFromFile,
+  callConsoleGMReview,
+  renderLocalGMScheduler,
 } from './index.ts';
 
 const HELP = `Usage:
@@ -55,6 +57,9 @@ const HELP = `Usage:
   faktori update apply <approved-request.json>
   faktori console serve <local-console.json>
   faktori console prepare <request.json>
+  faktori gm review <local-console.json> --scheduled
+  faktori gm review <local-console.json> --request-id <id>
+  faktori gm scheduler render <local-console.json> <launchd|systemd>
   faktori manager state <relay-connection.json>
   faktori manager heartbeat <relay-connection.json>
   faktori manager claim <relay-connection.json> <request-id>
@@ -267,6 +272,19 @@ async function run(argv: string[]): Promise<void> {
   if (group === 'console' && action === 'prepare') {
     print(prepareLocalCodexConsole(await json(source, 'Console preparation request')));
     return;
+  }
+
+  if (group === 'gm' && action === 'review') {
+    if (!source) throw new Error('GM review requires one local Console configuration path');
+    if (extra === '--scheduled' && argv.length === 4) { print(await callConsoleGMReview(source, { type: 'scheduled' })); return; }
+    if (extra === '--request-id' && typeof argv[4] === 'string' && argv.length === 5) { print(await callConsoleGMReview(source, { type: 'owner_requested', requestId: argv[4] })); return; }
+    throw new Error('GM review requires --scheduled or --request-id <id>');
+  }
+
+  if (group === 'gm' && action === 'scheduler' && source === 'render') {
+    const configurationPath = argv[3], platform = argv[4];
+    if (!configurationPath || (platform !== 'launchd' && platform !== 'systemd') || argv.length !== 5) throw new Error('GM scheduler render requires an absolute local Console configuration path and launchd or systemd');
+    print(await renderLocalGMScheduler(configurationPath, platform)); return;
   }
 
   throw new Error(`unknown command: ${argv.join(' ')}\n\n${HELP}`);

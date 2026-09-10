@@ -9,7 +9,7 @@
       "2": 220000,
       "3": 180000
     },
-    "progressSummary": "Phases 1 and 2 accepted with installed live validation and implementation proofs. Two rejected review attempts remain counted. Phase 3 admitted; Creator unchanged."
+    "progressSummary": "All three phases accepted locally: installed validation and implementation, hot observation, one scheduled GM call and unchanged-input suppression, final Console and package verified. Failed attempts remain counted; no broad savings claim. Creator unchanged."
   },
   "tickets": [
     {
@@ -78,13 +78,15 @@
       "id": "LEAN-05",
       "phase": 3,
       "title": "Deterministic findings and nightly GM",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "LEAN-03",
         "LEAN-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Phase 3 orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
       "notes": [],
       "evidence": []
@@ -93,13 +95,15 @@
       "id": "LEAN-06",
       "phase": 3,
       "title": "Efficiency and decision surface",
-      "status": "not_started",
+      "status": "complete",
       "dependencies": [
         "LEAN-03",
         "LEAN-04"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Phase 3 orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
       "notes": [],
       "evidence": []
@@ -153,6 +157,38 @@
       "from": "in_progress",
       "to": "complete",
       "reason": "Routing, exact evidence and zero-launch preflight tested; installed Luna roles proven."
+    },
+    {
+      "eventId": "status-1789004437259-4vs6pb",
+      "at": "2026-09-10T01:40:37.260Z",
+      "ticketId": "LEAN-05",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Phases 1/2 accepted; single nightly GM implementation admitted."
+    },
+    {
+      "eventId": "status-1789004437512-y8x1qj",
+      "at": "2026-09-10T01:40:37.513Z",
+      "ticketId": "LEAN-06",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Focused efficiency and decision UI admitted; broad redesign deferred."
+    },
+    {
+      "eventId": "status-1789009576676-97tr79",
+      "at": "2026-09-10T03:06:16.677Z",
+      "ticketId": "LEAN-05",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Accepted: installed launchd review, one durable invocation, duplicate and unchanged suppression, proposal-only output and final regression passed."
+    },
+    {
+      "eventId": "status-1789009576946-ov3kqs",
+      "at": "2026-09-10T03:06:16.947Z",
+      "ticketId": "LEAN-06",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Accepted: installed disabled/degraded/monitoring states, actual evidence-linked recommendations, qualified metrics and compact Overview verified."
     }
   ]
 }

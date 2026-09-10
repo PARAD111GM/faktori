@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 export type DeliveryGateId = 'local_acceptance' | 'publication' | 'review' | 'merge' | 'deployment' | 'staging_verification';
 export type DeliveryGateStatus = 'pending' | 'passed' | 'failed' | 'unobserved';
 export interface LoopDeliverySummary {
-  gates: Array<{ id: DeliveryGateId; label: string; status: DeliveryGateStatus; evidenceUrl?: string }>;
+  gates: Array<{ id: DeliveryGateId; label: string; status: DeliveryGateStatus; evidenceUrl?: string; observedAt?: string }>;
   nextAction: { label: string; role: string; url?: string };
   issue?: string;
 }
@@ -99,6 +99,7 @@ export function projectLoopDelivery(state: unknown, publication?: unknown, deliv
         if (['pending', 'failed', 'passed'].includes(String(entry.status)) && url && typeof entry.recordedBy === 'string' && ID.test(entry.recordedBy) && typeof entry.observedAt === 'string' && Number.isFinite(Date.parse(entry.observedAt))) {
           gate.status = entry.status as DeliveryGateStatus;
           gate.evidenceUrl = url;
+          gate.observedAt = new Date(entry.observedAt as string).toISOString();
         }
       }
     }

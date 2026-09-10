@@ -97,8 +97,8 @@ describe('Console presentation contract', () => {
     expect(html).toContain('1 scoped runs');
     expect(html).toContain('Scoped reservations</dt><dd>125</dd>');
     expect(html).not.toContain('900');
-    expect(html).toContain('Factory reported usage</dt><dd>Unavailable</dd>');
-    expect(html).toContain('Factory unavailable measurements</dt><dd>2</dd>');
+    expect(html).toContain('Coordinator reported usage</dt><dd>Unavailable</dd>');
+    expect(html).toContain('Coordinator unavailable measurements</dt><dd>2</dd>');
 
     const factoryHtml = renderToStaticMarkup(createElement(presentation.Factory, {
       state: { resources: { knownUsageTokens: 0, reportedUsageCount: 0, unavailableMeasurements: 0 } },

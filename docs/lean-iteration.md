@@ -1,6 +1,6 @@
 # Lean iteration: less coordination, more shipping
 
-Status: approved implementation in progress. This is an opt-in change, not a migration of active factories.
+Status: all three phases accepted locally. Installed proof and limitations are recorded in `lean-proof.md`. This is an opt-in change, not a migration of active factories; Creator rollout and GitHub publication are not included.
 
 ## Contract
 

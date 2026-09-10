@@ -191,6 +191,8 @@ collaboration. They are directions—not shipped features or prerequisites.
 | [Configuration](docs/configuration/README.md) | Products, pods, providers, budgets, and overrides. |
 | [Templates](templates/README.md) | Copy and run a ready-made workflow, starting with the Manager Loop. |
 | [Manager Loop proof of concept](docs/manager-loop.md) | Run phased Codex implementation, independent review, and bounded repairs in a disposable project. |
+| [Lean execution](docs/lean-execution.md) | Skip unnecessary foremen: validate existing goods or build an approved brief, keeping independent inspection. Opt-in; existing factories stay unchanged. |
+| [Nightly Factory GM](docs/nightly-gm.md) | Let code count the bolts; call the GM only when changed evidence deserves judgment. |
 | [Manager-connected mode](docs/manager-connected.md) | Use the Console beside visible Codex tasks, with an active Manager relaying scoped instructions and observed results. Experimental. |
 | [Publication handoff](docs/loop-publication.md) | Freeze the reviewed goods, publish the matching commit, and retry without manufacturing duplicate PRs. |
 | [Delivery evidence](docs/loop-delivery.md) | Keep local acceptance, review, merge, deployment, and staging proof on separate inspection stamps. |

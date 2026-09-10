@@ -63,7 +63,7 @@ is smaller, but excluding its preceding failures would misrepresent iteration
 cost. Prompt-contract repairs required Build Manager intervention. None of
 these receipts establishes publication, deployment or product acceptance.
 
-## Remaining gates
+## Phase 2 gate record
 
 - Small implementation passed from the installed package in 54.307 seconds:
   one Luna/medium builder (62,804 input; 29,184 cached; 930 output), one
@@ -73,8 +73,67 @@ these receipts establishes publication, deployment or product acceptance.
   this run. The Manager independently reran the external verifier successfully;
   only seven lines in the disposable candidate changed. There is no equivalent
   implementation baseline, so no comparative savings claim.
-- Nightly GM: one useful evidence-linked response, unchanged-input skip, durable daily ownership and visible failed/disabled states.
-- Assembled regression/package checks, opt-in documentation, and qualified comparison.
+- Nightly GM: passed the live scheduled and unchanged-input proof described below.
+- Final UI/package confirmation passed after the configuration and presentation corrections (see final acceptance below).
 
-Phase 2's live execution gates passed. GM supervision and complete rollout
-remain unaccepted; no general efficiency improvement is claimed.
+At Phase 2 acceptance, GM supervision remained pending. Its subsequent proof
+is below; rollout to Creator remains excluded. No general efficiency improvement is claimed.
+
+An installed-package missing-executable drill returned exit 1 / blocked twice,
+with zero stages, two identical preflight failures and `launchSuppressed:true`.
+It made no provider or quota-probe call. This is an intentionally configured
+prerequisite failure, not a broken product environment.
+
+## Phase 3 installed acceptance observations
+
+The first full assembled run passed 474 of 475 tests. One streamed observer
+test timed out; it is not counted as passing pending repair and rerun.
+Installed UI inspection found that metrics were incorrectly conditional on GM
+configuration and the expanded loop list remained duplicated on Overview.
+These are acceptance findings, not deferred design work.
+
+Two scheduled fixture attempts recorded durable failures before a worker-start
+callback. The initial PATH omission was corrected, but non-inference version
+and identity probes showed that it was not the remaining cause. The exact
+adapter rejection was a 20,000-token route estimate against the proof Console's
+leftover observation-only allowance of zero. Startup now rejects that mismatch
+with an actionable configuration error before any launch intent. Failed daily
+identities remain retained rather than overwritten or automatically retried;
+their recorded usage remains unavailable. No product configuration changed.
+
+The corrected isolated fixture ran through the generated macOS launchd job.
+One GPT-5.6-Luna/medium invocation completed in 10.437 seconds from durable
+review intent to completion. Usage: 15,681 input, zero cached input, 225 output,
+15,906 total; reasoning subset unavailable. It retained the evidence-linked
+preflight concern and proposed a bounded operator action without changing
+authority, files, product work or billing routes. The finding came from an
+intentional prerequisite drill; this demonstrates operation, not the quality
+of recommendations across a production workload.
+
+Repeating the scheduled request returned the exact completed identity. A new
+owner request against unchanged facts returned `skipped_unchanged`. The journal
+still contained exactly one worker launch; GM review overhead appeared
+separately, without retriggering itself. The GM workspace stayed Git-clean.
+Disabled supervision and degraded-before-first-evaluation were observed in the
+installed Console; after the review it reported monitoring. Expanded loops
+were removed from Overview and its activity feed limited to five items linking
+to Work. Local acceptance, merge, deployment and product acceptance remained
+distinct (three local successes, no claimed delivered outcomes).
+
+The assembled suite passed 477 tests across 63 files. The final coverage-only
+correction passed its three metric tests; the additional startup configuration
+gate passed its three cases and typecheck. Clean offline packed-CLI installation
+passed. Linux systemd definitions are covered by deterministic tests, not a
+live Linux scheduler claim. Creator remains unchanged and the Manager remains
+its efficiency owner until a GM is explicitly configured there.
+
+## Final assembled acceptance
+
+The final source passed **478 tests across 63 files**, strict typechecking,
+build and clean offline packed-CLI verification under Node 24.20.0/npm 12.0.2.
+The final installed Console displayed the actual retained GM recommendations,
+their evidence and next actions. Restart preserved usage and the completed GM
+identity; duplicate/unchanged checks retained exactly one worker launch.
+Both disposable launchd jobs were unloaded after proof. No Creator settings,
+workers, publication or deployment were changed. All six lean tickets are
+accepted locally; the bounded proof does not establish broad cost savings.

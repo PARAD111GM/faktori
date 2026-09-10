@@ -1,5 +1,6 @@
 import type { DurableCoordinator } from '../runtime/coordinator.ts';
 import type { GMFinding, GMImprovementProposal, DurableGMStore } from './index.ts';
+import type { GMNightlyAttempt, GMNightlyStore } from './nightly.ts';
 
 const UNSAFE_TEXT = /(?:bearer\s+|authorization|api[_ -]?key|credential|secret|session[_ -]?id|\/Users\/|\\Users\\|\.codex|\.claude)/i;
 
@@ -28,6 +29,13 @@ function proposal(value: unknown): GMImprovementProposal | undefined {
   return candidate as unknown as GMImprovementProposal;
 }
 
+function nightlyAttempt(value: unknown): GMNightlyAttempt | undefined {
+  const candidate = object(value);
+  if (candidate?.format !== 'faktori.gm-nightly-attempt/v1' || typeof candidate.attemptId !== 'string'
+    || !['intended', 'completed', 'failed', 'skipped_unchanged'].includes(String(candidate.status)) || !safe(candidate)) return undefined;
+  return candidate as unknown as GMNightlyAttempt;
+}
+
 /** Read-only current GM projection, rebuilt entirely from coordinator journal records. */
 export function coordinatorGMState(coordinator: DurableCoordinator): { findings: GMFinding[]; improvements: GMImprovementProposal[] } {
   const findings = new Map<string, GMFinding>();
@@ -43,6 +51,13 @@ export function coordinatorGMState(coordinator: DurableCoordinator): { findings:
     }
   }
   return { findings: [...findings.values()], improvements: [...improvements.values()] };
+}
+
+export function coordinatorGMNightlyAttempts(coordinator: DurableCoordinator): GMNightlyAttempt[] {
+  return coordinator.journal.events().filter((event) => event.kind === 'gm.nightly.attempt').flatMap((event) => {
+    const parsed = nightlyAttempt(event.data.attempt);
+    return parsed === undefined ? [] : [structuredClone(parsed)];
+  });
 }
 
 /** Durable GM store backed by the same append-only coordinator journal as runs and actions. */
@@ -70,5 +85,23 @@ export class CoordinatorGMStore implements DurableGMStore {
       return;
     }
     await this.#coordinator.record('gm.improvement.proposed', this.#coordinator.factoryId, { proposal: parsed });
+  }
+}
+
+export class CoordinatorGMNightlyStore implements GMNightlyStore {
+  readonly #coordinator: DurableCoordinator;
+  constructor(coordinator: DurableCoordinator) { this.#coordinator = coordinator; }
+  async attempts(): Promise<GMNightlyAttempt[]> { return coordinatorGMNightlyAttempts(this.#coordinator); }
+  async append(value: GMNightlyAttempt): Promise<void> {
+    const parsed = nightlyAttempt(value);
+    if (!parsed) throw new Error('GM nightly attempt is invalid or unsafe');
+    const matching = coordinatorGMNightlyAttempts(this.#coordinator).filter((attempt) => attempt.attemptId === parsed.attemptId);
+    const terminal = matching.find((attempt) => attempt.status !== 'intended');
+    if (terminal) {
+      if (JSON.stringify(terminal) === JSON.stringify(parsed)) return;
+      throw new Error('GM nightly attempt is already terminal');
+    }
+    if (matching.some((attempt) => attempt.status === parsed.status && JSON.stringify(attempt) === JSON.stringify(parsed))) return;
+    await this.#coordinator.record('gm.nightly.attempt', this.#coordinator.factoryId, { attempt: parsed });
   }
 }

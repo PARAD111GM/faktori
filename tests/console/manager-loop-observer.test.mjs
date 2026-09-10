@@ -51,6 +51,25 @@ async function waitFor(read, predicate, timeoutMs = 2_000) {
   throw new Error('timed out waiting for Manager Loop projection');
 }
 
+async function waitForStream(reader, predicate, timeoutMs = 1_000) {
+  const decoder = new TextDecoder();
+  let received = '';
+  let timer;
+  try {
+    return await Promise.race([
+      (async () => {
+        while (true) {
+          const item = await reader.read();
+          if (item.done) throw new Error('SSE stream ended before the expected update');
+          received += decoder.decode(item.value, { stream: true });
+          if (predicate(received)) return received;
+        }
+      })(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('SSE update timeout')), timeoutMs); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 describe('Manager Loop Console observer', () => {
   it('shows deterministic acceptance without counting a fictional provider session or missing telemetry', async () => {
     const { root, artifacts, coordinator } = await fixture();
@@ -180,16 +199,11 @@ describe('Manager Loop Console observer', () => {
 
       const response = await fetch(`${address}/api/console/events`);
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       await reader.read();
       await writeFile(join(artifacts, 'state.json'), `${JSON.stringify(loopState({ status: 'succeeded', currentStage: undefined, completedPhases: ['arithmetic', 'geometry'], updatedAt: '2026-09-09T12:02:00.000Z' }))}\n`);
-      const update = await Promise.race([
-        reader.read().then((item) => decoder.decode(item.value)),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('SSE update timeout')), 1_000)),
-      ]);
+      const update = await waitForStream(reader, (content) => content.includes('"status":"succeeded"'));
       expect(update).toContain('"status":"succeeded"');
       expect(update).toContain('"completedPhases":["arithmetic","geometry"]');
-      await reader.cancel();
     } finally {
       await app.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true });
     }
@@ -206,15 +220,10 @@ describe('Manager Loop Console observer', () => {
       await waitFor(() => app.inject({ method: 'GET', url: '/api/console/state' }).then((response) => response.json()), (state) => state.managerLoops[0]?.status === 'running' && state.managerLoops[0]?.stale === false);
       const response = await fetch(`${address}/api/console/events`);
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       await reader.read();
       observedNow += 1_000;
-      const update = await Promise.race([
-        reader.read().then((item) => decoder.decode(item.value)),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('stale SSE update timeout')), 1_000)),
-      ]);
+      const update = await waitForStream(reader, (content) => content.includes('"status":"running","stale":true'));
       expect(update).toContain('"status":"running","stale":true');
-      await reader.cancel();
     } finally {
       await app.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true });
     }

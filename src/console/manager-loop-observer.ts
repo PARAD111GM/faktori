@@ -48,6 +48,8 @@ export interface ManagerLoopSummary {
   status: ManagerLoopStatus;
   stale: boolean;
   updatedAt?: string;
+  claimedAt?: string;
+  localAcceptedAt?: string;
   completedPhases: string[];
   currentStage?: { phaseId: string; kind: ManagerLoopStageSummary['kind']; round: number };
   stages: ManagerLoopStageSummary[];
@@ -55,6 +57,14 @@ export interface ManagerLoopSummary {
   delivery?: LoopDeliverySummary;
   usage?: ReturnType<typeof summarizeUsage>['actual'] & { unknownMeasurements: number };
   outcomes?: ReturnType<typeof summarizeOutcomeCohorts>;
+  /** Safe outcome identities used for factory-wide dedupe; never session identities. */
+  references?: ManagerLoopReferences;
+  preflight?: { passed: boolean; failedChecks: Array<{ id: string; detail: string }>; quota: 'available' | 'exhausted' | 'unknown'; consecutiveFailures: number; launchSuppressed: boolean; observedAt: string };
+}
+
+export interface ManagerLoopEfficiencySnapshot {
+  records: Record<string, unknown>[];
+  summaries: ManagerLoopSummary[];
 }
 
 export interface ManagerLoopObserverOptions {
@@ -222,6 +232,7 @@ function stageUsageRecords(source: ManagerLoopSource, rawStages: unknown[], curr
       ...(counters === undefined ? { telemetry: 'unknown' } : { counters }),
       ...(source.references === undefined ? {} : { references: source.references }),
       ...(typeof input?.outcome === 'string' ? { attemptOutcome: input.outcome } : {}),
+      workClass: input?.kind === 'repair' ? 'rework' : ['manager_brief', 'review', 'manager_accept'].includes(String(input?.kind)) ? 'coordination' : 'delivery',
     });
   }
   const currentStageId = identifier(current?.stageId);
@@ -258,7 +269,18 @@ function observedOutcomeSource(source: ManagerLoopSource, delivery: LoopDelivery
   };
 }
 
-function projection(source: ManagerLoopSource, value: unknown, modifiedAtMs: number, nowMs: number, staleAfterMs: number, externalRecords: Record<string, unknown>[] = [], delivery?: LoopDeliverySummary): ManagerLoopSummary | undefined {
+function leanPreflight(value: unknown): ManagerLoopSummary['preflight'] {
+  const input = record(value);
+  if (input?.format !== 'faktori.lean-preflight-receipt/v1' || typeof input.passed !== 'boolean' || !Array.isArray(input.checks)
+    || !['available', 'exhausted', 'unknown'].includes(String(input.quota)) || !Number.isInteger(input.consecutiveFailures) || typeof input.launchSuppressed !== 'boolean' || timestamp(input.observedAt) === undefined) return undefined;
+  const failedChecks = input.checks.flatMap((raw) => {
+    const check = record(raw), id = identifier(check?.id), detail = typeof check?.detail === 'string' && check.detail.length <= 256 && !check.detail.includes('/') ? check.detail : undefined;
+    return check?.passed === false && id && detail ? [{ id, detail }] : [];
+  });
+  return { passed: input.passed, failedChecks, quota: input.quota as 'available' | 'exhausted' | 'unknown', consecutiveFailures: Number(input.consecutiveFailures), launchSuppressed: input.launchSuppressed, observedAt: timestamp(input.observedAt)! };
+}
+
+function projection(source: ManagerLoopSource, value: unknown, modifiedAtMs: number, nowMs: number, staleAfterMs: number, externalRecords: Record<string, unknown>[] = [], delivery?: LoopDeliverySummary, preflight?: ManagerLoopSummary['preflight']): { summary: ManagerLoopSummary; records: Record<string, unknown>[] } | undefined {
   const input = record(value);
   const status = input?.status;
   const updatedAt = timestamp(input?.updatedAt);
@@ -287,7 +309,9 @@ function projection(source: ManagerLoopSource, value: unknown, modifiedAtMs: num
     ...externalRecords.map((entry) => ({ ...entry, ...(outcomeSource.references === undefined ? {} : { references: outcomeSource.references }) })),
   ];
   const normalizedUsage = summarizeUsage(usageRecords, 0);
-  return {
+  const acceptedStage = [...(stages as ManagerLoopStageSummary[])].reverse().find((item) => (item.kind === 'manager_accept' || item.kind === 'deterministic_accept') && item.decision === 'accepted');
+  const claimedAt = timestamp(input.claimedAt ?? input.createdAt);
+  return { summary: {
     id: source.id,
     ...(source.productId === undefined ? {} : { productId: source.productId }),
     ...(source.podId === undefined ? {} : { podId: source.podId }),
@@ -295,14 +319,18 @@ function projection(source: ManagerLoopSource, value: unknown, modifiedAtMs: num
     // A persisted `running` value is recorded activity, not a process-liveness claim.
     stale: status === 'running' && nowMs - modifiedAtMs > staleAfterMs,
     updatedAt,
+    ...(claimedAt === undefined ? {} : { claimedAt }),
+    ...(acceptedStage === undefined ? {} : { localAcceptedAt: acceptedStage.completedAt }),
     completedPhases: [...new Set(completedPhases as string[])],
     ...(current === undefined ? {} : { currentStage: { phaseId: currentPhaseId as string, kind: currentKind as ManagerLoopStageSummary['kind'], round: Number(currentRound) } }),
     stages: stages as ManagerLoopStageSummary[],
     usage: { ...normalizedUsage.actual, unknownMeasurements: normalizedUsage.unknown.length },
     outcomes: summarizeOutcomeCohorts(usageRecords),
+    ...(outcomeSource.references === undefined ? {} : { references: outcomeSource.references }),
+    ...(preflight === undefined ? {} : { preflight }),
     ...(delivery === undefined ? {} : { delivery }),
     ...(reason === undefined ? {} : { reason }),
-  };
+  }, records: usageRecords };
 }
 
 async function externalUsageRecords(source: ManagerLoopSource): Promise<Record<string, unknown>[]> {
@@ -339,6 +367,7 @@ async function externalUsageRecords(source: ManagerLoopSource): Promise<Record<s
         ...(entry.phaseAttribution === 'unknown' ? { phaseAttribution: 'unknown' } : {}),
         ...(source.references === undefined ? {} : { references: source.references }),
         ...(typeof entry.attemptOutcome === 'string' ? { attemptOutcome: entry.attemptOutcome } : {}),
+        ...(['rework', 'coordination', 'delivery'].includes(String(entry.workClass)) ? { workClass: entry.workClass } : {}),
       };
     });
   } catch {
@@ -346,16 +375,17 @@ async function externalUsageRecords(source: ManagerLoopSource): Promise<Record<s
   } finally { await handle?.close(); }
 }
 
-async function readSource(source: ManagerLoopSource, nowMs: number, staleAfterMs: number): Promise<ManagerLoopSummary> {
+async function readSource(source: ManagerLoopSource, nowMs: number, staleAfterMs: number): Promise<{ summary: ManagerLoopSummary; records: Record<string, unknown>[] }> {
+  const failed = (reason: string, updatedAt?: string) => ({ summary: unavailable(source, reason, updatedAt), records: [] });
   try {
     const artifacts = await lstat(source.artifactsDirectory);
-    if (!artifacts.isDirectory()) return unavailable(source, 'artifacts_not_directory');
-    if (source.observationRoot !== undefined && !inside(source.observationRoot, await realpath(source.artifactsDirectory))) return unavailable(source, 'artifacts_root_escape');
+    if (!artifacts.isDirectory()) return failed('artifacts_not_directory');
+    if (source.observationRoot !== undefined && !inside(source.observationRoot, await realpath(source.artifactsDirectory))) return failed('artifacts_root_escape');
   } catch (error) {
     // Static configured sources historically surface a missing state file as
     // `state_missing`; retain that compatibility. Registered sources carry a
     // root seal and fail closed before any path below the root is opened.
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || source.observationRoot !== undefined) return unavailable(source, 'artifacts_unreadable');
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || source.observationRoot !== undefined) return failed('artifacts_unreadable');
   }
   const statePath = join(source.artifactsDirectory, 'state.json');
   let handle;
@@ -363,26 +393,28 @@ async function readSource(source: ManagerLoopSource, nowMs: number, staleAfterMs
     handle = await open(statePath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const details = await handle.stat();
     const modifiedAt = new Date(details.mtimeMs).toISOString();
-    if (!details.isFile() || details.size > MAX_STATE_BYTES) return unavailable(source, 'state_not_regular_file', modifiedAt);
+    if (!details.isFile() || details.size > MAX_STATE_BYTES) return failed('state_not_regular_file', modifiedAt);
     const buffer = Buffer.alloc(MAX_STATE_BYTES + 1);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    if (bytesRead > MAX_STATE_BYTES) return unavailable(source, 'state_too_large', modifiedAt);
+    if (bytesRead > MAX_STATE_BYTES) return failed('state_too_large', modifiedAt);
     const content = buffer.subarray(0, bytesRead).toString('utf8');
     let parsed: unknown;
-    try { parsed = JSON.parse(content) as unknown; } catch { return unavailable(source, 'state_malformed', modifiedAt); }
+    try { parsed = JSON.parse(content) as unknown; } catch { return failed('state_malformed', modifiedAt); }
     let delivery: LoopDeliverySummary;
     try {
       const publication = await readDeliveryRecord(join(source.artifactsDirectory, 'publication.json'));
       const receipt = await readDeliveryRecord(join(source.artifactsDirectory, 'delivery.json'));
       delivery = projectLoopDelivery(parsed, publication, receipt);
     } catch { delivery = projectLoopDelivery(parsed, undefined, undefined, true); }
+    let preflight: ManagerLoopSummary['preflight'];
+    try { preflight = leanPreflight(await readDeliveryRecord(join(source.artifactsDirectory, 'preflight.json'))); } catch { preflight = undefined; }
     const outcomeSource = observedOutcomeSource(source, delivery);
-    const summary = projection(source, parsed, details.mtimeMs, nowMs, staleAfterMs, await externalUsageRecords(outcomeSource), delivery);
-    if (!summary) return unavailable(source, 'state_malformed', modifiedAt);
+    const summary = projection(source, parsed, details.mtimeMs, nowMs, staleAfterMs, await externalUsageRecords(outcomeSource), delivery, preflight);
+    if (!summary) return failed('state_malformed', modifiedAt);
     return summary;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    return unavailable(source, code === 'ENOENT' ? 'state_missing' : code === 'ELOOP' ? 'state_symlink_rejected' : 'state_unreadable');
+    return failed(code === 'ENOENT' ? 'state_missing' : code === 'ELOOP' ? 'state_symlink_rejected' : 'state_unreadable');
   } finally {
     await handle?.close();
   }
@@ -399,6 +431,7 @@ export class ManagerLoopObserver {
   readonly #now: () => Date;
   readonly #listeners = new Set<Listener>();
   #summaries: ManagerLoopSummary[];
+  #records: Record<string, unknown>[] = [];
   #timer?: ReturnType<typeof setInterval>;
   #polling = false;
 
@@ -415,6 +448,10 @@ export class ManagerLoopObserver {
   }
 
   sources(): ManagerLoopSource[] { return structuredClone(this.#sources); }
+
+  efficiencySnapshot(): ManagerLoopEfficiencySnapshot {
+    return { records: structuredClone(this.#records), summaries: this.summaries() };
+  }
 
   /** Registration changes the cached source set; it never starts or controls a loop worker. */
   async register(source: ManagerLoopSource): Promise<boolean> {
@@ -440,9 +477,12 @@ export class ManagerLoopObserver {
     this.#polling = true;
     try {
       const nowMs = this.#now().getTime();
-      const next = await Promise.all(this.#sources.map((source) => readSource(source, nowMs, this.#staleAfterMs)));
-      if (JSON.stringify(next) === JSON.stringify(this.#summaries)) return;
+      const observed = await Promise.all(this.#sources.map((source) => readSource(source, nowMs, this.#staleAfterMs)));
+      const next = observed.map((item) => item.summary);
+      const nextRecords = observed.flatMap((item) => item.records);
+      if (JSON.stringify(next) === JSON.stringify(this.#summaries) && JSON.stringify(nextRecords) === JSON.stringify(this.#records)) return;
       this.#summaries = next;
+      this.#records = nextRecords;
       for (const listener of this.#listeners) listener();
     } finally { this.#polling = false; }
   }

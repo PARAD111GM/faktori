@@ -15,6 +15,7 @@ import type {
 import { isTerminalRunState } from './contracts.ts';
 import { AppendOnlyJournal, type JournalClock } from './journal.ts';
 import { SqliteProjection, snapshotsFromEvents } from './sqlite-projection.ts';
+import { withOwnershipLock } from './ownership-lock.ts';
 
 export type ProcessStatus = 'alive' | 'dead' | 'unknown' | 'mismatch';
 
@@ -124,6 +125,10 @@ export class DurableCoordinator {
 
   async claim(): Promise<void> {
     await mkdir(dirname(this.lockPath), { recursive: true });
+    return withOwnershipLock(this.lockPath, () => this.claimUnderLock());
+  }
+
+  private async claimUnderLock(): Promise<void> {
     try {
       const handle = await open(this.lockPath, 'wx');
       try {
@@ -148,7 +153,7 @@ export class DurableCoordinator {
         throw new Error('Coordinator lock changed after stale-owner probe; refusing to reclaim ownership');
       }
       await unlink(this.lockPath);
-      return this.claim();
+      return this.claimUnderLock();
     }
     this.#claimed = true;
     await this.record('coordinator.claimed', 'factory', { factoryId: this.factoryId, identity: this.identity });

@@ -51,7 +51,100 @@ async function waitFor(read, predicate, timeoutMs = 2_000) {
   throw new Error('timed out waiting for Manager Loop projection');
 }
 
+async function waitForStream(reader, predicate, timeoutMs = 1_000) {
+  const decoder = new TextDecoder();
+  let received = '';
+  let timer;
+  try {
+    return await Promise.race([
+      (async () => {
+        while (true) {
+          const item = await reader.read();
+          if (item.done) throw new Error('SSE stream ended before the expected update');
+          received += decoder.decode(item.value, { stream: true });
+          if (predicate(received)) return received;
+        }
+      })(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('SSE update timeout')), timeoutMs); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 describe('Manager Loop Console observer', () => {
+  it('shows deterministic acceptance without counting a fictional provider session or missing telemetry', async () => {
+    const { root, artifacts, coordinator } = await fixture();
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const review = { stageId: 'review-one', phaseId: 'work', kind: 'review', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:00:00Z', evidence: { contentDigest: digest }, usage: { availability: 'reported', inputTokens: 10, outputTokens: 5 }, response: { verdict: 'pass' } };
+    const receipt = { format: 'faktori.lean-acceptance-receipt/v1', accepted: true, actor: { kind: 'deterministic', id: 'faktori.lean.accept/v1' }, loopId: 'two-phase-math-proof', stageId: 'accepted', evidence: { candidate: { contentDigest: digest }, reviewStageIds: ['review-one'] } };
+    const acceptance = { stageId: 'accepted', phaseId: 'work', kind: 'deterministic_accept', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:01:00Z', evidence: { contentDigest: digest }, usage: { availability: 'unavailable', unavailableReason: 'deterministic_stage_has_no_provider_usage' }, response: { accepted: true, evidenceDigest: digest, receipt } };
+    await writeFile(join(artifacts, 'state.json'), JSON.stringify(loopState({ status: 'succeeded', currentStage: undefined, completedPhases: ['work'], stages: [review, acceptance] })));
+    const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: artifacts }] });
+    try {
+      await observer.poll();
+      const summary = observer.summaries()[0];
+      expect(summary.stages).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'deterministic_accept', actor: 'deterministic', decision: 'accepted' })]));
+      expect(summary.outcomes.coverage).toEqual({ registeredSessions: 1, usableSessions: 1, ratio: 1 });
+      expect(summary.usage.unknownMeasurements).toBe(0);
+      expect(summary.delivery.gates[0].status).toBe('passed');
+    } finally { observer.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('projects reported and unavailable stage telemetry through shared lower-bound accounting and outcome cohorts', async () => {
+    const { root, artifacts, coordinator } = await fixture();
+    await writeFile(join(artifacts, 'state.json'), JSON.stringify(loopState({
+      status: 'failed', currentStage: undefined,
+      stages: [
+        { stageId: 'failed-implement', phaseId: 'arithmetic', kind: 'implement', round: 0, outcome: 'failed', completedAt: '2026-09-09T12:00:00Z', evidence: {}, sessionId: 'resume-1', usage: { availability: 'reported', inputTokens: 80, cachedInputTokens: 30, outputTokens: 20, reasoningTokens: 10 } },
+        { stageId: 'unavailable-review', phaseId: 'arithmetic', kind: 'review', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:01:00Z', evidence: {}, usage: { availability: 'unavailable', unavailableReason: 'provider did not emit telemetry' } },
+      ],
+    })));
+    const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: artifacts, references: { ticket: 'LEAN-01', pullRequest: 'pr-1', pullRequestMerged: true, feature: 'feature-1', deploymentAccepted: true } }] });
+    try {
+      await observer.poll();
+      const summary = observer.summaries()[0];
+      expect(summary.usage).toEqual({ input: 80, uncachedInput: 50, output: 20, cached: 30, reasoning: 10, total: 100, excludedChildCount: 0, unknownMeasurements: 1 });
+      expect(summary.outcomes).toMatchObject({ mergedPullRequests: { count: 0 }, deploymentAcceptedFeatures: { count: 0 }, failedAttempts: { usage: { total: 100 } }, coverage: { registeredSessions: 2, usableSessions: 1, ratio: 0.5 } });
+      expect(JSON.stringify(summary)).not.toMatch(/resume-1|provider did not emit/);
+    } finally { observer.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('uses validated delivery receipts for merged and product-accepted cohorts, never a deployment receipt alone', async () => {
+    const { root, artifacts, coordinator } = await fixture();
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const commit = 'b'.repeat(40);
+    const stage = { stageId: 'implementation', phaseId: 'arithmetic', kind: 'implement', round: 0, outcome: 'failed', completedAt: '2026-09-09T12:00:00Z', evidence: {}, usage: { availability: 'reported', inputTokens: 40, cachedInputTokens: 10, outputTokens: 10 } };
+    const acceptance = { stageId: 'acceptance', phaseId: 'arithmetic', kind: 'manager_accept', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:01:00Z', evidence: { contentDigest: digest }, usage: { availability: 'unavailable', unavailableReason: 'not emitted' }, response: { accepted: true } };
+    await writeFile(join(artifacts, 'state.json'), JSON.stringify(loopState({ status: 'succeeded', currentStage: undefined, stages: [stage, acceptance] })));
+    await writeFile(join(artifacts, 'publication.json'), JSON.stringify({ format: 'faktori.loop-publication-receipt/v1', status: 'published', loop: { loopId: 'two-phase-math-proof', acceptedEvidenceDigest: digest }, binding: { repository: 'example/product', branch: 'feature', baseRefName: 'main', expectedRevision: commit }, pr: { number: 1, url: 'https://github.com/example/product/pull/1', headRefName: 'feature', baseRefName: 'main', headRefOid: commit } }));
+    const delivery = (staging) => ({ format: 'faktori.loop-delivery/v1', loopId: 'two-phase-math-proof', acceptedEvidenceDigest: digest, reviewedCommit: commit, gates: [
+      { id: 'review', status: 'passed', evidenceUrl: 'https://example.com/review', recordedBy: 'owner', observedAt: '2026-09-09T12:02:00Z' },
+      { id: 'merge', status: 'passed', evidenceUrl: 'https://example.com/merge', recordedBy: 'owner', observedAt: '2026-09-09T12:03:00Z' },
+      { id: 'deployment', status: 'passed', evidenceUrl: 'https://example.com/deploy', recordedBy: 'owner', observedAt: '2026-09-09T12:04:00Z' },
+      { id: 'staging_verification', status: staging, evidenceUrl: 'https://example.com/staging', recordedBy: 'owner', observedAt: '2026-09-09T12:05:00Z' },
+    ] });
+    await writeFile(join(artifacts, 'delivery.json'), JSON.stringify(delivery('pending')));
+    const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: artifacts, references: { pullRequest: 'pr-1', feature: 'feature-1' } }] });
+    try {
+      await observer.poll();
+      expect(observer.summaries()[0].outcomes).toMatchObject({ mergedPullRequests: { count: 1, usage: { total: 50 } }, deploymentAcceptedFeatures: { count: 0 } });
+      await writeFile(join(artifacts, 'delivery.json'), JSON.stringify(delivery('passed')));
+      await observer.poll();
+      expect(observer.summaries()[0].outcomes).toMatchObject({ mergedPullRequests: { count: 1, usage: { total: 50 } }, deploymentAcceptedFeatures: { count: 1, usage: { total: 50 } } });
+    } finally { observer.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('counts a current recorded stage as unknown coverage and keeps prior loop spend visible as WIP', async () => {
+    const { root, artifacts, coordinator } = await fixture();
+    await writeFile(join(artifacts, 'state.json'), JSON.stringify(loopState({
+      stages: [{ stageId: 'brief', phaseId: 'arithmetic', kind: 'manager_brief', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:00:00Z', evidence: {}, usage: { availability: 'reported', inputTokens: 20, cachedInputTokens: 5, outputTokens: 10 } }],
+    })));
+    const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: artifacts }] });
+    try {
+      await observer.poll();
+      expect(observer.summaries()[0].outcomes).toMatchObject({ workInProgress: { recordCount: 2, usage: { total: 30 } }, coverage: { registeredSessions: 2, usableSessions: 1, ratio: 0.5 } });
+    } finally { observer.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
   it('refreshes publication evidence even when the accepted loop state does not change', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-delivery-observer-'));
     const digest = `sha256:${'a'.repeat(64)}`;
@@ -90,7 +183,7 @@ describe('Manager Loop Console observer', () => {
         () => app.inject({ method: 'GET', url: '/api/console/state' }).then((response) => response.json()),
         (state) => state.managerLoops[0]?.status === 'running',
       );
-      expect(initialState.managerLoops).toEqual([{
+      expect(initialState.managerLoops).toMatchObject([{
         id: 'two-phase-math-proof', productId: 'math', podId: 'proof-pod', status: 'running', stale: false,
         updatedAt: '2026-09-09T12:01:00.000Z', completedPhases: ['arithmetic'],
         currentStage: { phaseId: 'geometry', kind: 'implement', round: 0 },
@@ -106,16 +199,11 @@ describe('Manager Loop Console observer', () => {
 
       const response = await fetch(`${address}/api/console/events`);
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       await reader.read();
       await writeFile(join(artifacts, 'state.json'), `${JSON.stringify(loopState({ status: 'succeeded', currentStage: undefined, completedPhases: ['arithmetic', 'geometry'], updatedAt: '2026-09-09T12:02:00.000Z' }))}\n`);
-      const update = await Promise.race([
-        reader.read().then((item) => decoder.decode(item.value)),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('SSE update timeout')), 1_000)),
-      ]);
+      const update = await waitForStream(reader, (content) => content.includes('"status":"succeeded"'));
       expect(update).toContain('"status":"succeeded"');
       expect(update).toContain('"completedPhases":["arithmetic","geometry"]');
-      await reader.cancel();
     } finally {
       await app.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true });
     }
@@ -132,15 +220,10 @@ describe('Manager Loop Console observer', () => {
       await waitFor(() => app.inject({ method: 'GET', url: '/api/console/state' }).then((response) => response.json()), (state) => state.managerLoops[0]?.status === 'running' && state.managerLoops[0]?.stale === false);
       const response = await fetch(`${address}/api/console/events`);
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       await reader.read();
       observedNow += 1_000;
-      const update = await Promise.race([
-        reader.read().then((item) => decoder.decode(item.value)),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('stale SSE update timeout')), 1_000)),
-      ]);
+      const update = await waitForStream(reader, (content) => content.includes('"status":"running","stale":true'));
       expect(update).toContain('"status":"running","stale":true');
-      await reader.cancel();
     } finally {
       await app.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true });
     }

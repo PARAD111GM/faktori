@@ -29,6 +29,8 @@ export type GMHealthSignal =
       summary: string;
     };
 
+export type GMFindingCategory = GMHealthSignal['kind'] | 'environment_failure' | 'unchanged_candidate_repetition' | 'overdue_delivery' | 'missing_telemetry' | 'coordination_overhead' | 'manager_delivery_uncertain';
+
 export type GMRoutineAction =
   | 'refresh_projection'
   | 'reconcile_unresolved_operations'
@@ -53,13 +55,20 @@ export interface GMFinding {
   findingId: string;
   findingKey: string;
   factoryId: string;
-  category: GMHealthSignal['kind'];
+  category: GMFindingCategory;
   productId?: string;
   podId?: string;
   occurrenceCount: number;
   openedAt: string;
   updatedAt: string;
   latestSummary: string;
+  /** Deterministic operational classification; legacy findings may omit it. */
+  classification?: 'infrastructure' | 'delivery';
+  status?: 'active' | 'resolved';
+  evidence?: string[];
+  affectedWork?: string[];
+  accountableRole?: string;
+  nextAction?: { label: string; control?: 'open_work' | 'open_factory' | 'open_settings'; url?: string };
   ownerAttention: 'none' | 'owner_once';
   /** Durable timestamp for the single owner-inbox transition. */
   ownerAlertedAt?: string;
@@ -104,7 +113,7 @@ export interface GMDiagnosisRequest {
   findingKey: string;
   instructionRevision: string;
   instructions: string;
-  category: GMHealthSignal['kind'];
+  category: GMFindingCategory;
   occurrenceCount: number;
   latestSummary: string;
   /** The provider must keep its result within this bound. */
@@ -324,3 +333,7 @@ export class FactoryGM {
 
 export * from './coordinator-store.ts';
 export * from './health-observer.ts';
+export * from './metrics.ts';
+export * from './nightly.ts';
+export * from './factory-observer.ts';
+export * from './scheduler.ts';

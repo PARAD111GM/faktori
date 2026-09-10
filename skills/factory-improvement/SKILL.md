@@ -21,6 +21,26 @@ Bypass for operating an unchanged factory, one-off product work, or speculative 
 4. Make the proposal revision-bound. Include alternatives only when they materially change cost, control, workload, isolation, or recovery.
 5. Request approval before Build. Record the approver, approved scope, and exact reference; leave an unapproved improvement in proposed state.
 
+## Measure shipping, not ceremony
+
+Use deterministic usage and delivery records. Compare tokens per distinct
+merged PR and per deployment-bound accepted feature as separate, overlapping
+views. Include retries and reviews; show unfinished expenditure and shared or
+unattributed overhead alongside them. Never invent allocation or recover tokens
+from subscription percentages. Report sample size, time window and telemetry
+coverage with every ratio; no completed outcomes means the ratio is unavailable.
+
+Track lead time, accepted-work wait, repair/repeated-work share, coordination
+share, regressions and human intervention. A lower token count is not an
+improvement if quality drops or work never ships. Compare equivalent cases;
+otherwise establish a baseline without claiming savings.
+
+Prioritize removal of unnecessary inference, repeated context and duplicate
+review before adding more orchestration. Implement bookkeeping in code. Require
+an expected delivery benefit and a bounded verification for each proposed
+optimization. Keep estimates advisory and preserve independent review and
+authority at consequential boundaries.
+
 ## Apply the normal lifecycle
 
 | Scale | Apply when | Minimum package |

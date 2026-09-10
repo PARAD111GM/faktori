@@ -178,6 +178,7 @@ export type RunEventKind =
   | 'console.command'
   | 'gm.finding.upserted'
   | 'gm.improvement.proposed'
+  | 'gm.nightly.attempt'
   | 'recovery.required'
   | 'recovery.resolved'
   | 'reservation.released';

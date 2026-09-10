@@ -14,7 +14,7 @@ import { buildDockerExecutionPlan, type ContainerIdentityProbe, type CredentialP
 import { NativeClaudeProcessRunner } from '../execution/claude-process.ts';
 import { CursorAcpStdioTransport } from '../execution/cursor-acp-stdio.ts';
 import { BoundedCommandRunner, DockerCliIdentityProbe, DockerCliRunner, DockerCodexProcessRunner, NativeCodexProcessRunner, NativeIdentityProbe } from '../execution/transports.ts';
-import { CoordinatorGMHealthObserver, CoordinatorGMStore, FactoryGM, type GMProviderDiagnosisPort } from '../gm/index.ts';
+import { CoordinatorGMHealthObserver, CoordinatorGMNightlyStore, CoordinatorGMStore, FactoryGM, NightlyGM, coordinatorGMNightlyAttempts, coordinatorGMState, observeFactoryDeterministically, persistDeterministicFindings, projectGMNightlyState, type GMNightlyReviewPort, type GMProviderDiagnosisPort } from '../gm/index.ts';
 import { observeDurableDockerTermination, observeDurableNativeTermination, prepareDurableDockerTermination, prepareDurableNativeTermination, type DurableDockerTerminationPreparation, type DurableNativeTerminationPreparation } from '../runtime/cancellation.ts';
 import { createConsoleOwnerActions } from './owner-actions.ts';
 import { ConsoleProviderRequestBroker } from './provider-requests.ts';
@@ -25,6 +25,7 @@ import type { PreflightResult } from '../diagnostics/preflight.ts';
 import { createConsoleSettings } from './settings.ts';
 import { FileConsoleSettingsEditor, type ConsoleSettingsEditor } from './settings-edit.ts';
 import { ManagerLoopObserver, type ManagerLoopSource } from './manager-loop-observer.ts';
+import { ManagerLoopRegistry } from './manager-loop-registry.ts';
 import { JiraObserver, parseJiraSources, type JiraSource } from './jira-observer.ts';
 import { ManagerConnectedStore, parseManagerConnectedConfig, type ManagerConnectedConfig } from '../manager-connected/index.ts';
 import { newManagerRelayToken, writeManagerRelayConnection } from './manager-relay.ts';
@@ -43,6 +44,8 @@ export interface LocalConsoleConfiguration {
   runtime?: LocalConsoleRuntimeConfiguration;
   /** Owner-allowlisted, server-only Manager Loop artifact directories. */
   managerLoops: ManagerLoopSource[];
+  /** Optional controller-owned persistence for hot, allowlisted loop sources. */
+  managerLoopRegistry?: { path: string; allowedArtifactRoots: string[] };
   /** Read-only tracker sources; credentials remain in server environment. */
   jiraSources?: JiraSource[];
   managerConnected?: ManagerConnectedConfig;
@@ -60,9 +63,15 @@ export interface LocalConsoleRuntimeConfiguration {
   workItems: Array<{ workItemId: string; intent: RunIntent; context: ProviderCurrentContext; dependsOnWorkItemIds: string[] }>;
   resumePlans: Array<{ sourceRunId: string; targetWorkItemId: string }>;
   gm?: {
+    mode: 'event' | 'nightly';
     instructions: { revision: string; content: string };
     /** Owner-approved scope template; controller supplies only bounded journal-derived diagnosis context. */
     diagnosisTemplate: { intent: RunIntent };
+    reviewRoutes: Array<{ intent: RunIntent }>;
+    schedule?: { enabled: boolean; timezone: string; localTime: string };
+    deliveryDeadlineHours?: number;
+    coordinationAttentionShare?: number;
+    ownerDecisions: Array<{ id: string; decidedAt: string; summary: string }>;
     configuredRoutineActions?: Array<'refresh_projection' | 'reconcile_unresolved_operations' | 'prune_expired_console_commands'>;
   };
 }
@@ -82,32 +91,54 @@ function absolutePath(value: unknown, field: string): string {
   return path;
 }
 
+function managerLoopSource(value: unknown, index: number, catalog?: ResolvedFactoryConfiguration): ManagerLoopSource {
+  const allowedKeys = new Set(['id', 'artifactsDirectory', 'productId', 'podId', 'usageExportPath', 'references']);
+  const loopIdPattern = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+  const scopeIdPattern = /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{0,126}[a-zA-Z0-9])?$/;
+  const input = object(value);
+  if (input === undefined || Object.keys(input).some((key) => !allowedKeys.has(key))) throw new Error(`managerLoops[${index}] has unsupported fields`);
+  const id = requiredText(input.id, `managerLoops[${index}].id`);
+  if (!loopIdPattern.test(id)) throw new Error(`managerLoops[${index}].id must match the Manager Loop lowercase slug format`);
+  const productId = input.productId === undefined ? undefined : requiredText(input.productId, `managerLoops[${index}].productId`);
+  const podId = input.podId === undefined ? undefined : requiredText(input.podId, `managerLoops[${index}].podId`);
+  if (productId !== undefined && !scopeIdPattern.test(productId)) throw new Error(`managerLoops[${index}].productId must be a bounded identifier`);
+  if (podId !== undefined && !scopeIdPattern.test(podId)) throw new Error(`managerLoops[${index}].podId must be a bounded identifier`);
+  if (podId !== undefined && productId === undefined) throw new Error(`managerLoops[${index}].podId requires productId so the loop remains visible under product filters`);
+  if (catalog !== undefined && productId !== undefined && !catalog.products.some((product) => product.id === productId)) throw new Error(`managerLoops[${index}].productId must reference a configured product`);
+  if (catalog !== undefined && podId !== undefined) {
+    const pod = catalog.pods.find((candidate) => candidate.id === podId);
+    if (pod === undefined || (productId !== undefined && pod.productId !== productId)) throw new Error(`managerLoops[${index}].podId must reference a configured pod in the selected product`);
+  }
+  const references = object(input.references);
+  const referenceKeys = new Set(['ticket', 'feature', 'candidate', 'pullRequest', 'pullRequestMerged', 'deploymentAccepted', 'shared', 'workInProgress']);
+  if (references !== undefined && Object.keys(references).some((key) => !referenceKeys.has(key))) throw new Error(`managerLoops[${index}].references has unsupported fields`);
+  const safeReferences = references === undefined ? undefined : Object.fromEntries(Object.entries(references).filter(([key, item]) => (
+    ['ticket', 'feature', 'candidate', 'pullRequest'].includes(key) ? typeof item === 'string' && scopeIdPattern.test(item) : typeof item === 'boolean'
+  )));
+  return {
+    id, artifactsDirectory: absolutePath(input.artifactsDirectory, `managerLoops[${index}].artifactsDirectory`),
+    ...(productId === undefined ? {} : { productId }), ...(podId === undefined ? {} : { podId }),
+    ...(input.usageExportPath === undefined ? {} : { usageExportPath: absolutePath(input.usageExportPath, `managerLoops[${index}].usageExportPath`) }),
+    ...(safeReferences === undefined || Object.keys(safeReferences).length === 0 ? {} : { references: safeReferences }),
+  };
+}
+
 function managerLoopSources(value: unknown, catalog?: ResolvedFactoryConfiguration): ManagerLoopSource[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 100) throw new Error('managerLoops must be an array of at most 100 configured loops');
-  const allowedKeys = new Set(['id', 'artifactsDirectory', 'productId', 'podId']);
-  const loopIdPattern = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
-  const scopeIdPattern = /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{0,126}[a-zA-Z0-9])?$/;
-  const sources = value.map((item, index): ManagerLoopSource => {
-    const input = object(item);
-    if (input === undefined || Object.keys(input).some((key) => !allowedKeys.has(key))) throw new Error(`managerLoops[${index}] must contain only id, artifactsDirectory, productId, and podId`);
-    const id = requiredText(input.id, `managerLoops[${index}].id`);
-    if (!loopIdPattern.test(id)) throw new Error(`managerLoops[${index}].id must match the Manager Loop lowercase slug format`);
-    const productId = input.productId === undefined ? undefined : requiredText(input.productId, `managerLoops[${index}].productId`);
-    const podId = input.podId === undefined ? undefined : requiredText(input.podId, `managerLoops[${index}].podId`);
-    if (productId !== undefined && !scopeIdPattern.test(productId)) throw new Error(`managerLoops[${index}].productId must be a bounded identifier`);
-    if (podId !== undefined && !scopeIdPattern.test(podId)) throw new Error(`managerLoops[${index}].podId must be a bounded identifier`);
-    if (podId !== undefined && productId === undefined) throw new Error(`managerLoops[${index}].podId requires productId so the loop remains visible under product filters`);
-    if (catalog !== undefined && productId !== undefined && !catalog.products.some((product) => product.id === productId)) throw new Error(`managerLoops[${index}].productId must reference a configured product`);
-    if (catalog !== undefined && podId !== undefined) {
-      const pod = catalog.pods.find((candidate) => candidate.id === podId);
-      if (pod === undefined || (productId !== undefined && pod.productId !== productId)) throw new Error(`managerLoops[${index}].podId must reference a configured pod in the selected product`);
-    }
-    return { id, artifactsDirectory: absolutePath(input.artifactsDirectory, `managerLoops[${index}].artifactsDirectory`), ...(productId === undefined ? {} : { productId }), ...(podId === undefined ? {} : { podId }) };
-  });
+  const sources = value.map((item, index) => managerLoopSource(item, index, catalog));
   if (new Set(sources.map((source) => source.id)).size !== sources.length) throw new Error('managerLoops ids must be unique');
   if (new Set(sources.map((source) => source.artifactsDirectory)).size !== sources.length) throw new Error('managerLoops artifact directories must be unique');
   return sources;
+}
+
+function managerLoopRegistry(value: unknown): LocalConsoleConfiguration['managerLoopRegistry'] {
+  if (value === undefined) return undefined;
+  const input = object(value);
+  if (input === undefined || Object.keys(input).some((key) => key !== 'path' && key !== 'allowedArtifactRoots') || !Array.isArray(input.allowedArtifactRoots) || input.allowedArtifactRoots.length === 0) throw new Error('managerLoopRegistry must contain path and non-empty allowedArtifactRoots only');
+  const roots = input.allowedArtifactRoots.map((root, index) => absolutePath(root, `managerLoopRegistry.allowedArtifactRoots[${index}]`));
+  if (new Set(roots).size !== roots.length) throw new Error('managerLoopRegistry.allowedArtifactRoots must be unique');
+  return { path: absolutePath(input.path, 'managerLoopRegistry.path'), allowedArtifactRoots: roots };
 }
 
 function limits(value: unknown): AdmissionLimits {
@@ -212,13 +243,42 @@ function runtime(value: unknown, factoryId: string): LocalConsoleRuntimeConfigur
   if (new Set(resumePlans.map((item) => item.sourceRunId)).size !== resumePlans.length) throw new Error('runtime resume source run IDs must be unique');
   const gmInput = object(input.gm);
   const gm = gmInput === undefined ? undefined : (() => {
-    const template = object(gmInput.diagnosisTemplate);
-    const intent = template?.intent as RunIntent | undefined;
-    if (intent?.format !== 'faktori.run-intent/v1' || intent.target.factoryId !== factoryId || intent.execution.profile !== 'native'
-      || !providerRoutes.has(`${intent.execution.providerId}:${intent.execution.profile}`)) throw new Error('runtime GM diagnosis template must contain a factory-bound intent on a configured provider/profile route');
+    const mode: 'event' | 'nightly' = gmInput.mode === undefined ? 'event' : gmInput.mode === 'nightly' ? 'nightly' : gmInput.mode === 'event' ? 'event' : (() => { throw new Error('runtime.gm.mode must be event or nightly'); })();
+    const rawRoutes = Array.isArray(gmInput.reviewRoutes) ? gmInput.reviewRoutes : gmInput.diagnosisTemplate === undefined ? [] : [gmInput.diagnosisTemplate];
+    if (rawRoutes.length === 0) throw new Error('runtime GM must include at least one owner-configured review route');
+    const reviewRoutes = rawRoutes.map((raw) => ({ intent: object(raw)?.intent as RunIntent })).map((template) => {
+      const intent = template.intent;
+      if (intent?.format !== 'faktori.run-intent/v1' || intent.target.factoryId !== factoryId || intent.execution.profile !== 'native'
+        || !providerRoutes.has(`${intent.execution.providerId}:${intent.execution.profile}`)) throw new Error('runtime GM review route must contain a factory-bound native intent on a configured provider/profile route');
+      const provider = providers.find((route) => route.id === intent.execution.providerId && route.profile === intent.execution.profile);
+      if (provider && 'compatibleModels' in provider && !provider.compatibleModels.includes(intent.execution.model)) throw new Error('runtime GM review route model must be compatible with its owner-configured provider route');
+      return { intent };
+    });
+    const scheduleInput = object(gmInput.schedule);
+    let schedule: { enabled: boolean; timezone: string; localTime: string } | undefined;
+    if (mode === 'nightly') {
+      const timezone = requiredText(scheduleInput?.timezone, 'runtime.gm.schedule.timezone');
+      try { new Intl.DateTimeFormat('en', { timeZone: timezone }).format(new Date()); } catch { throw new Error('runtime.gm.schedule.timezone must be an IANA timezone'); }
+      const localTime = scheduleInput?.localTime === undefined ? '02:00' : requiredText(scheduleInput.localTime, 'runtime.gm.schedule.localTime');
+      if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(localTime) || typeof scheduleInput?.enabled !== 'boolean') throw new Error('runtime.gm.schedule must contain enabled, IANA timezone, and HH:MM localTime');
+      schedule = { enabled: scheduleInput.enabled, timezone, localTime };
+    }
+    const deliveryDeadlineHours = gmInput.deliveryDeadlineHours === undefined ? undefined : Number(gmInput.deliveryDeadlineHours);
+    if (deliveryDeadlineHours !== undefined && (!Number.isFinite(deliveryDeadlineHours) || deliveryDeadlineHours <= 0)) throw new Error('runtime.gm.deliveryDeadlineHours must be a positive number');
+    const coordinationAttentionShare = gmInput.coordinationAttentionShare === undefined ? undefined : Number(gmInput.coordinationAttentionShare);
+    if (coordinationAttentionShare !== undefined && (!Number.isFinite(coordinationAttentionShare) || coordinationAttentionShare < 0 || coordinationAttentionShare > 1)) throw new Error('runtime.gm.coordinationAttentionShare must be between 0 and 1');
+    const ownerDecisions = (Array.isArray(gmInput.ownerDecisions) ? gmInput.ownerDecisions : []).map((raw, index) => {
+      const decision = object(raw), decidedAt = requiredText(decision?.decidedAt, `runtime.gm.ownerDecisions[${index}].decidedAt`);
+      if (!Number.isFinite(Date.parse(decidedAt))) throw new Error(`runtime.gm.ownerDecisions[${index}].decidedAt must be a timestamp`);
+      return { id: requiredText(decision?.id, `runtime.gm.ownerDecisions[${index}].id`), decidedAt: new Date(decidedAt).toISOString(), summary: requiredText(decision?.summary, `runtime.gm.ownerDecisions[${index}].summary`) };
+    });
     return {
+      mode,
       instructions: { revision: requiredText(object(gmInput.instructions)?.revision, 'runtime.gm.instructions.revision'), content: requiredText(object(gmInput.instructions)?.content, 'runtime.gm.instructions.content') },
-      diagnosisTemplate: { intent },
+      diagnosisTemplate: reviewRoutes[0]!, reviewRoutes, ownerDecisions,
+      ...(schedule === undefined ? {} : { schedule }),
+      ...(deliveryDeadlineHours === undefined ? {} : { deliveryDeadlineHours }),
+      ...(coordinationAttentionShare === undefined ? {} : { coordinationAttentionShare }),
       ...(Array.isArray(gmInput.configuredRoutineActions) ? { configuredRoutineActions: gmInput.configuredRoutineActions as Array<'refresh_projection' | 'reconcile_unresolved_operations' | 'prune_expired_console_commands'> } : {}),
     };
   })();
@@ -311,15 +371,30 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   }
   const preflight = input.preflightRequest === undefined ? undefined : evaluateInstalledPreflight(input.preflightRequest, { factoryId, projectionPath });
   if (preflight !== undefined && preflight.scope.factoryId !== 'unresolved' && preflight.scope.factoryId !== factoryId) throw new Error('preflightRequest must target the Console factoryId');
+  const configuredLimits = limits(input.limits);
   const configuredRuntime = runtime(input.runtime, factoryId);
+  configuredRuntime?.gm?.reviewRoutes.forEach((route, index) => {
+    const { attempt, budget } = route.intent;
+    if (!Number.isInteger(attempt) || attempt < 1 || attempt > configuredLimits.maxRetries + 1) {
+      throw new Error(`runtime.gm.reviewRoutes[${index}].intent.attempt must be between 1 and limits.maxRetries + 1 (${configuredLimits.maxRetries + 1})`);
+    }
+    if (!Number.isInteger(budget?.maxRuntimeMinutes) || budget.maxRuntimeMinutes < 1 || budget.maxRuntimeMinutes > configuredLimits.maxRuntimeMinutes) {
+      throw new Error(`runtime.gm.reviewRoutes[${index}].intent.budget.maxRuntimeMinutes must fit limits.maxRuntimeMinutes (${configuredLimits.maxRuntimeMinutes})`);
+    }
+    if (!Number.isInteger(budget?.estimatedTokens) || budget.estimatedTokens < 0 || budget.estimatedTokens > configuredLimits.maxTokens) {
+      throw new Error(`runtime.gm.reviewRoutes[${index}].intent.budget.estimatedTokens must fit limits.maxTokens (${configuredLimits.maxTokens}); raise the configured token limit or lower the GM route estimate before startup`);
+    }
+  });
+  if (configuredRuntime?.gm?.mode === 'nightly' && configuredRuntime.gm.schedule?.enabled && commandToken === undefined) throw new Error('enabled nightly GM requires an explicit commandToken for the local scheduler route');
   const managerLoops = managerLoopSources(input.managerLoops, factoryConfiguration);
+  const registry = managerLoopRegistry(input.managerLoopRegistry);
   const jiraSources = parseJiraSources(input.jiraSources, factoryConfiguration);
   const managerConnected = input.managerConnected === undefined ? undefined : parseManagerConnectedConfig(input.managerConnected);
   if (managerConnected && factoryConfiguration) for (const session of managerConnected.sessions) {
     if (!factoryConfiguration.products.some((product) => product.id === session.productId)) throw new Error('managerConnected session must reference a configured product');
     if (session.podId && !factoryConfiguration.pods.some((pod) => pod.id === session.podId && pod.productId === session.productId)) throw new Error('managerConnected session pod must belong to its product');
   }
-  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), managerLoops, jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: configuredLimits, managerLoops, ...(registry === undefined ? {} : { managerLoopRegistry: registry }), jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -327,12 +402,14 @@ export interface StartedConsole {
   app: ReturnType<typeof createConsoleService>;
   url: string;
   gm?: FactoryGM;
+  nightlyGM?: NightlyGM;
   close(): Promise<void>;
 }
 
 interface ConfiguredRuntime {
   ownerActions: ConsoleOwnerActions;
   diagnosis?: GMProviderDiagnosisPort;
+  nightlyReview?: GMNightlyReviewPort;
   diagnosisWorkItemIds: ReadonlySet<string>;
   shutdown(): Promise<void>;
 }
@@ -640,10 +717,28 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
     },
   };
 
+  const nightlyReview: GMNightlyReviewPort | undefined = configuration.gm?.mode !== 'nightly' ? undefined : {
+    review: async ({ prompt, attemptId, maxOutputCharacters }) => {
+      // Owner order is cost order. There is deliberately no automatic fallback:
+      // a failed or uncertain first attempt remains terminal for this identity.
+      const template = configuration.gm!.reviewRoutes[0]!.intent;
+      const suffix = createHash('sha256').update(attemptId).digest('hex').slice(0, 24);
+      const context: ProviderCurrentContext = { packetRevision: template.context.packetRevision, digest: `sha256:${createHash('sha256').update(`faktori-gm-nightly:${prompt}`).digest('hex')}`, prompt };
+      const intent: RunIntent = { ...structuredClone(template), runId: `gm-nightly-${suffix}`, admissionKey: `gm-nightly-${suffix}`, context: { packetRevision: context.packetRevision, digest: context.digest }, execution: { ...template.execution, approvedInputDigests: [providerContextPayloadDigest(context)] }, budget: { ...template.budget, reservationId: `gm-nightly-${suffix}`, status: 'held' }, attempt: 1 };
+      const entry = { workItemId: intent.workItem.id, intent, context, dependsOnWorkItemIds: [] };
+      const admitted = await coordinator.admit(entry.intent);
+      if (!admitted.accepted) throw new Error(admitted.reason ?? 'GM nightly review admission rejected');
+      const result = await deliver(entry);
+      if (!['completed', 'unchanged_verified'].includes(result.final.outcome) || typeof result.final.summary !== 'string' || result.final.summary.length > maxOutputCharacters) throw new Error('GM nightly review provider result was not bounded successful JSON');
+      return JSON.parse(result.final.summary) as unknown;
+    },
+  };
+
   return {
     ownerActions,
     ...(diagnosis === undefined ? {} : { diagnosis }),
-    diagnosisWorkItemIds: new Set(configuration.gm === undefined ? [] : [configuration.gm.diagnosisTemplate.intent.workItem.id]),
+    ...(nightlyReview === undefined ? {} : { nightlyReview }),
+    diagnosisWorkItemIds: new Set(configuration.gm === undefined ? [] : configuration.gm.reviewRoutes.map((route) => route.intent.workItem.id)),
     async shutdown(): Promise<void> {
       requestBroker?.close();
       await Promise.allSettled([...active].map(async ([runId, delivery]) => { await delivery.cancel(runId); await observePrepared(runId); }));
@@ -658,10 +753,12 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   await coordinator.claim();
   let configured: ConfiguredRuntime | undefined;
   let gm: FactoryGM | undefined;
+  let nightlyGM: NightlyGM | undefined;
   let observer: CoordinatorGMHealthObserver | undefined;
   let app: ReturnType<typeof createConsoleService> | undefined;
   let pollInterval: ReturnType<typeof setInterval> | undefined;
   let managerStore: ManagerConnectedStore | undefined;
+  let managerLoopRegistry: ManagerLoopRegistry | undefined;
   let removeRelayConnection: (() => Promise<void>) | undefined;
   try {
     // Reconstruct and quarantine unresolved work before any configured runtime
@@ -669,22 +766,40 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     // evidence that a worker disappeared.
     await coordinator.recover();
     configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies, configuration.factoryConfiguration);
-    gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
+    gm = configuration.runtime?.gm?.mode !== 'event' ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
     observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
-    const managerLoopObserver = new ManagerLoopObserver({ sources: configuration.managerLoops });
+    managerLoopRegistry = configuration.managerLoopRegistry === undefined ? undefined : await ManagerLoopRegistry.open({
+      ...configuration.managerLoopRegistry,
+      reservedSources: configuration.managerLoops,
+      validate: (source) => managerLoopSource(source, 0, configuration.factoryConfiguration),
+    });
+    const registeredLoops = managerLoopRegistry?.sources() ?? [];
+    const allLoopSources = [...configuration.managerLoops, ...registeredLoops];
+    if (new Set(allLoopSources.map((source) => source.id)).size !== allLoopSources.length || new Set(allLoopSources.map((source) => source.artifactsDirectory)).size !== allLoopSources.length) throw new Error('persisted manager loop registration conflicts with configured source');
+    const managerLoopObserver = new ManagerLoopObserver({ sources: allLoopSources });
     await managerLoopObserver.poll();
     const jiraObserver = new JiraObserver(configuration.jiraSources ?? []);
     managerStore = configuration.managerConnected ? await ManagerConnectedStore.open(configuration.managerConnected) : undefined;
+    let factoryObservation = observeFactoryDeterministically({ factoryId: configuration.factoryId, coordinator, loops: managerLoopObserver.efficiencySnapshot(), ...(managerStore ? { managerConnected: managerStore.snapshot() } : {}), deliveryDeadlineHours: configuration.runtime?.gm?.deliveryDeadlineHours, coordinationAttentionShare: configuration.runtime?.gm?.coordinationAttentionShare, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
+    const refreshFactoryObservation = async () => {
+      await managerLoopObserver.poll();
+      factoryObservation = observeFactoryDeterministically({ factoryId: configuration.factoryId, coordinator, loops: managerLoopObserver.efficiencySnapshot(), ...(managerStore ? { managerConnected: managerStore.snapshot() } : {}), deliveryDeadlineHours: configuration.runtime?.gm?.deliveryDeadlineHours, coordinationAttentionShare: configuration.runtime?.gm?.coordinationAttentionShare, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
+      const findings = configuration.runtime?.gm?.mode === 'nightly' ? await persistDeterministicFindings(coordinator, factoryObservation) : coordinatorGMState(coordinator).findings;
+      return { ...factoryObservation, findings: findings.filter((finding) => finding.status !== 'resolved') };
+    };
+    await refreshFactoryObservation();
+    const nightlyConfig = configuration.runtime?.gm?.mode === 'nightly' ? configuration.runtime.gm : undefined;
+    nightlyGM = nightlyConfig?.schedule && configured?.nightlyReview ? new NightlyGM({ schedule: nightlyConfig.schedule, instructions: nightlyConfig.instructions, store: new CoordinatorGMNightlyStore(coordinator), review: configured.nightlyReview, ownerDecisions: nightlyConfig.ownerDecisions, snapshot: refreshFactoryObservation }) : undefined;
     const relayToken = newManagerRelayToken();
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, jiraObserver, ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}) });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
     const listeningApp = app;
-    pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
+    pollInterval = setInterval(() => { void observer?.poll(); void refreshFactoryObservation(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();
     const address = await listeningApp.listen({ host: '127.0.0.1', port: configuration.port });
     if (configuration.managerConnected) removeRelayConnection = await writeManagerRelayConnection(configuration.managerConnected.directory, address, relayToken);
     await observer?.poll();
     return {
-      coordinator, app: listeningApp, url: address, ...(gm === undefined ? {} : { gm }),
+      coordinator, app: listeningApp, url: address, ...(gm === undefined ? {} : { gm }), ...(nightlyGM === undefined ? {} : { nightlyGM }),
       async close(): Promise<void> {
         if (pollInterval !== undefined) clearInterval(pollInterval);
         await listeningApp.close();

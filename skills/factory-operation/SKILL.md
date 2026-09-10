@@ -35,6 +35,31 @@ Bypass for product discovery, design, implementation, test, deployment, or facto
 4. Recheck authority at the local effect boundary. Treat provider output as evidence, not permission to merge, publish, spend, alter policy, or widen scope.
 5. Record normalized provider outcome, observed local effect, and terminal classification separately. Do not equate a process exit, receipt, CI result, PR, or deployment with product acceptance.
 
+## Spend inference on decisions, not observation
+
+Use the configured deterministic observers for registration, status, usage,
+deduplication and health checks. Do not wake an agent to poll, acknowledge an
+unchanged state, copy a receipt or recount work. Distinguish recorded progress
+from observed worker activity; absent liveness is unknown, not idle.
+
+For opted-in lean execution, use an approved brief directly or validate an
+existing candidate without inventing implementation work. Keep executable
+verification and independent review. Deterministic acceptance proves the
+declared evidence gate, not that software has shipped or met product intent.
+
+Consolidate nonurgent GM interpretation into the configured nightly review.
+Send only changed findings, qualified metrics, prior recommendations and owner
+decisions. No material change means no inference. Use the cheapest adequate
+owner-configured model; do not fan out specialists or retry failed diagnosis
+repeatedly. Keep urgent containment deterministic and within existing authority.
+
+Send agent-to-agent handoffs as objective, constraints, changed facts, evidence
+references and next action. Use prose for the human's problem, consequence,
+owner and decision. Never resend a full conversation when references suffice.
+
+Until GM supervision passes an observed operational test, name the human or
+Build Manager accountable for efficiency. Configuration alone is not coverage.
+
 ## Contain incidents and recover safely
 
 1. Prefer containment: pause affected admission, revoke the affected capability, preserve the journal, quarantine unproven worker identity, and notify the recorded owner with the precise blocked decision.

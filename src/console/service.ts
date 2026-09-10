@@ -9,11 +9,13 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type { QueuedMessage, RunSnapshot } from '../runtime/contracts.ts';
 import type { DurableCoordinator } from '../runtime/coordinator.ts';
 import { coordinatorGMState } from '../gm/coordinator-store.ts';
+import type { FactoryEfficiencyMetrics, GMNightlyAttempt, GMNightlyState } from '../gm/index.ts';
 import { projectStructuredBlocker, structuredBlockersFromEvents, type StructuredBlocker } from '../diagnostics/blockers.ts';
 import type { PreflightResult } from '../diagnostics/preflight.ts';
 import type { ConsoleSettings } from './settings.ts';
 import type { ConsoleSettingsEditor } from './settings-edit.ts';
 import type { ManagerLoopObserver } from './manager-loop-observer.ts';
+import type { ManagerLoopRegistry } from './manager-loop-registry.ts';
 import type { JiraObserver } from './jira-observer.ts';
 import { consoleActivity } from './activity.ts';
 import type { ManagerConnectedStore } from '../manager-connected/index.ts';
@@ -62,8 +64,13 @@ export interface ConsoleServiceOptions {
   settingsEditor?: ConsoleSettingsEditor;
   /** Server-owned observer for explicitly configured Manager Loop artifact directories. */
   managerLoopObserver?: ManagerLoopObserver;
+  /** Authenticated source registration; it grants observation only. */
+  managerLoopRegistry?: ManagerLoopRegistry;
   jiraObserver?: JiraObserver;
   managerConnected?: { store: ManagerConnectedStore; relayToken: string };
+  factoryGM?: () => ReturnType<typeof coordinatorGMState> & { nightly?: GMNightlyState; efficiency: FactoryEfficiencyMetrics };
+  requestGMReview?: (requestId: string) => Promise<GMNightlyAttempt>;
+  runScheduledGMReview?: () => Promise<GMNightlyAttempt>;
   assetsDirectory?: string;
   now?: () => Date;
   /** Test seam for the local append-only journal watcher. */
@@ -280,6 +287,7 @@ function hierarchyState(snapshots: RunSnapshot[], configured: ConsoleServiceOpti
 export function createConsoleService(options: ConsoleServiceOptions): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 32_768 });
   const events = new EventEmitter();
+  const eventStreams = new Set<FastifyReply['raw']>();
   const now = options.now ?? (() => new Date());
   let commandTail: Promise<unknown> = Promise.resolve();
   let settingsTail: Promise<unknown> = Promise.resolve();
@@ -339,7 +347,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       hierarchy: hierarchyState(snapshots, options.hierarchy),
       overview: { activeRuns: snapshots.filter((snapshot) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(snapshot.state)).length, waitingDecisions: waiting.length, failedRuns: snapshots.filter((snapshot) => snapshot.state === 'failed').length },
       resources: { knownUsageTokens: knownTokens, reportedUsageCount: reported.length, unavailableUsageCount: usages.length - reported.length, reservedTokens, unavailableMeasurements: usages.filter((usage) => usage.availability === 'unavailable').length, queueAge: snapshots.filter((snapshot) => snapshot.state === 'queued' || snapshot.state === 'admitted').map((snapshot) => ({ runId: snapshot.intent.runId, createdAt: snapshot.intent.createdAt })) },
-      factoryGM: coordinatorGMState(options.coordinator),
+      factoryGM: options.factoryGM?.() ?? coordinatorGMState(options.coordinator),
     };
   }
 
@@ -413,6 +421,10 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   }
 
   app.addHook('onSend', async (_request, reply) => { secureHeaders(reply); });
+  app.addHook('preClose', async () => {
+    for (const stream of eventStreams) stream.end();
+    eventStreams.clear();
+  });
   app.addHook('onClose', async () => {
     closed = true;
     if (jiraPoll) clearInterval(jiraPoll);
@@ -423,6 +435,21 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());
+  app.post('/api/console/manager-loops/register', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (options.managerLoopRegistry === undefined || options.managerLoopObserver === undefined) return reply.code(409).send({ error: 'manager_loop_registration_unavailable' });
+    try {
+      const registered = await options.managerLoopRegistry.register(request.body);
+      const observed = await options.managerLoopObserver.register(registered.source);
+      events.emit('state');
+      return { registration: { id: registered.source.id, ...(registered.source.productId === undefined ? {} : { productId: registered.source.productId }), ...(registered.source.podId === undefined ? {} : { podId: registered.source.podId }) }, created: registered.created || observed, state: state() };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '';
+      if (detail === 'manager_loop_registration_conflict') return reply.code(409).send({ error: detail });
+      if (detail === 'manager_loop_registration_outside_allowlisted_roots') return reply.code(400).send({ error: detail });
+      return reply.code(400).send({ error: 'manager_loop_registration_rejected' });
+    }
+  });
   if (options.managerConnected) {
     const { store, relayToken } = options.managerConnected;
     registerManagerRelay(app, store, relayToken);
@@ -438,8 +465,11 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     secureHeaders(reply);
     reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive', 'Cache-Control': 'no-store' });
     const push = (): void => { reply.raw.write(`event: state\ndata: ${JSON.stringify(state())}\n\n`); };
+    const close = (): void => { events.off('state', push); eventStreams.delete(reply.raw); };
+    eventStreams.add(reply.raw);
     push(); events.on('state', push);
-    request.raw.on('close', () => events.off('state', push));
+    request.raw.once('close', close);
+    reply.raw.once('close', close);
     return reply;
   });
   app.post('/api/console/commands', async (request, reply) => {
@@ -450,6 +480,25 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     commandTail = next.catch(() => undefined);
     const completed = await next;
     return reply.code(completed.status === 'failed' ? 409 : 200).send({ command: completed, state: state() });
+  });
+  app.post('/api/console/gm/review', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (!options.requestGMReview) return reply.code(409).send({ error: 'gm_nightly_review_not_configured' });
+    const requestId = safeText(object(request.body)?.requestId, 128);
+    if (!requestId || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(requestId)) return reply.code(400).send({ error: 'gm_review_request_id_invalid' });
+    const attempt = await options.requestGMReview(requestId);
+    events.emit('state');
+    return reply.code(attempt.status === 'failed' ? 502 : 200).send({ attempt, state: state() });
+  });
+  app.post('/api/console/gm/scheduled', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (!options.runScheduledGMReview) return reply.code(409).send({ error: 'gm_nightly_review_not_configured' });
+    try {
+      const attempt = await options.runScheduledGMReview(); events.emit('state');
+      return reply.code(attempt.status === 'failed' ? 502 : 200).send({ attempt, state: state() });
+    } catch (error) {
+      return reply.code(error instanceof Error && error.message === 'gm_scheduled_review_not_due' ? 204 : 409).send();
+    }
   });
   const settingsFailure = (reply: FastifyReply, error: unknown): FastifyReply => {
     const message = error instanceof Error ? error.message : 'invalid_settings_request';

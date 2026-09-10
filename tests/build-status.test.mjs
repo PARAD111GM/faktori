@@ -12,6 +12,19 @@ function invoke(checklist, ...args) {
   return spawnSync(process.execPath, [command, '--checklist', checklist, '--ticket', 'F0-02', ...args], { encoding: 'utf8' });
 }
 
+test('updates a later iteration ticket from its declared checklist and rejects absent work', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'faktori-status-'));
+  const checklist = join(dir, 'checklist.json');
+  await writeFile(checklist, JSON.stringify({ schemaVersion: 1, tickets: [{ id: 'LEAN-01', status: 'not_started' }], history: [] }));
+  const result = spawnSync(process.execPath, [command, '--checklist', checklist, '--ticket', 'LEAN-01', '--status', 'in_progress'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const saved = await readFile(checklist, 'utf8');
+  assert.equal(JSON.parse(saved).history[0].ticketId, 'LEAN-01');
+  const absent = spawnSync(process.execPath, [command, '--checklist', checklist, '--ticket', 'LEAN-99', '--status', 'complete'], { encoding: 'utf8' });
+  assert.notEqual(absent.status, 0);
+  assert.equal(await readFile(checklist, 'utf8'), saved);
+});
+
 test('preserves append-only reopened and split history', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'faktori-status-'));
   const checklist = join(dir, 'checklist.json');

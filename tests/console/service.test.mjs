@@ -214,6 +214,9 @@ describe('loopback Console service', () => {
       const config = parseLocalConsoleConfiguration({ factoryId: 'factory', journalPath: join(root, 'operations.jsonl'), projectionPath: join(root, 'projection.sqlite'), port: 0, allowedOrigins: ['http://127.0.0.1:4173'], limits: { maxConcurrentRuns: 2, maxRetries: 1, maxRuntimeMinutes: 10, maxTokens: 100, strictSpending: false, strictSpendingSupported: false } });
       const started = await startLocalConsole(config);
       expect(started.url).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      const state = (await started.app.inject({ method: 'GET', url: '/api/console/state' })).json();
+      expect(state.factoryGM.efficiency).toMatchObject({ cohort: { sourceCount: 0, recordCount: 0 }, coverage: { registeredSessions: 0, usableSessions: 0, ratio: null }, outcomes: { localAccepted: 0 } });
+      expect(state.factoryGM.nightly).toBeUndefined();
       await started.close();
       expect(() => parseLocalConsoleConfiguration({ ...config, allowedOrigins: ['*'] })).toThrow(/exact loopback/);
     } finally { await rm(root, { recursive: true, force: true }); }

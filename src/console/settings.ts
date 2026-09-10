@@ -47,6 +47,12 @@ export interface ConsoleSettings {
     configured: boolean;
     routineActions: string[];
   };
+  generalManager: {
+    mode: 'not_configured' | 'event' | 'nightly';
+    reviewRouteCount: number;
+    schedule?: { enabled: boolean; timezone: string; localTime: string };
+    deliveryDeadlineHours?: number;
+  };
   persistence?: {
     editable: boolean;
     loadedRevision: string;
@@ -146,6 +152,12 @@ export function createConsoleSettings(configuration: LocalConsoleConfiguration):
     recovery: {
       configured: routineActions.length > 0,
       routineActions: [...routineActions],
+    },
+    generalManager: configuration.runtime?.gm === undefined ? { mode: 'not_configured', reviewRouteCount: 0 } : {
+      mode: configuration.runtime.gm.mode,
+      reviewRouteCount: configuration.runtime.gm.reviewRoutes.length,
+      ...(configuration.runtime.gm.schedule === undefined ? {} : { schedule: { ...configuration.runtime.gm.schedule } }),
+      ...(configuration.runtime.gm.deliveryDeadlineHours === undefined ? {} : { deliveryDeadlineHours: configuration.runtime.gm.deliveryDeadlineHours }),
     },
   };
 }

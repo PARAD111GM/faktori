@@ -1,0 +1,59 @@
+{
+  "factoryId": "example-factory",
+  "journalPath": "/absolute/path/to/private/operations.jsonl",
+  "projectionPath": "/absolute/path/to/private/projection.sqlite",
+  "port": 4173,
+  "commandToken": "replace-with-an-owner-generated-local-secret",
+  "allowedOrigins": ["http://127.0.0.1:4173"],
+  "limits": {
+    "maxConcurrentRuns": 1,
+    "maxRetries": 0,
+    "maxRuntimeMinutes": 10,
+    "maxTokens": 0,
+    "strictSpending": false,
+    "strictSpendingSupported": false
+  },
+  "managerLoops": [],
+  "runtime": {
+    "providers": [
+      {
+        "id": "codex",
+        "profile": "native",
+        "environment": {"PATH": "/owner/controlled/provider/path"},
+        "compatibleModels": ["owner-configured-low-cost-model"],
+        "runNonce": "replace-for-this-console-start",
+        "contextIsolation": "bounded"
+      }
+    ],
+    "workItems": [],
+    "resumePlans": [],
+    "gm": {
+      "mode": "nightly",
+      "instructions": {
+        "revision": "factory-gm@1",
+        "content": "Review factory efficiency and actionable operational findings only. Preserve owner policy, product, spending, merge, release, and provider authority."
+      },
+      "reviewRoutes": [
+        {
+          "intent": {
+            "format": "faktori.run-intent/v1",
+            "runId": "gm-template-not-launched",
+            "admissionKey": "gm-template-not-launched",
+            "workItem": {"id": "nightly-gm-review", "revision": "factory-gm@1", "role": "gm"},
+            "target": {"factoryId": "example-factory", "productId": "factory-operations", "repository": "owner/factory-operations", "branch": "main", "baseRevision": "owner-approved-base", "expectedRevision": "owner-approved-head"},
+            "context": {"packetRevision": "factory-gm@1", "digest": "replaced-by-console"},
+            "execution": {"profile": "native", "workspaceId": "factory-gm", "workspacePath": "/absolute/path/to/empty/independent/workspace", "providerId": "codex", "model": "owner-configured-low-cost-model", "reasoning": "medium", "approvedInputDigests": []},
+            "budget": {"reservationId": "gm-template-not-launched", "maxRuntimeMinutes": 10, "estimatedTokens": 0, "status": "held"},
+            "authority": {"authorityRevision": "factory-gm-authority@1", "epoch": 1, "scopeDigest": "owner-approved-factory-observation-only", "policy": {"requireIntentApproval": true, "requireSpecificationApproval": true, "requireIndependentReview": true, "mergeAuthority": "human", "productionReleaseAuthority": "human", "allowPreviewDeployment": false, "allowLocalDeployment": false, "allowSeparateBilling": false}},
+            "attempt": 1,
+            "createdAt": "2026-09-09T00:00:00.000Z"
+          }
+        }
+      ],
+      "schedule": {"enabled": true, "timezone": "America/Chicago", "localTime": "02:00"},
+      "deliveryDeadlineHours": 48,
+      "coordinationAttentionShare": 0.3,
+      "ownerDecisions": []
+    }
+  }
+}

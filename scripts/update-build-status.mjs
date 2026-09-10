@@ -38,7 +38,8 @@ async function update() {
   if (checklist.schemaVersion !== 1 || !Array.isArray(checklist.tickets) || !Array.isArray(checklist.history)) throw new Error('Checklist must use schemaVersion 1 with tickets and history arrays');
   const ticket = checklist.tickets.find((candidate) => candidate.id === options.ticket);
   if (!ticket) throw new Error(`Unknown ticket: ${options.ticket}`);
-  if (!canonicalTickets().includes(options.ticket) && !ticket.splitFrom) throw new Error(`Ticket is not part of the canonical 32-ticket model: ${options.ticket}`);
+  // The owner-supplied checklist defines the iteration's work. Keep the V1
+  // canonical IDs for split collision checks, not as a ban on future tickets.
   const splitInto = options.status === 'split' ? commaValues(options['split-into'], 'A split status') : [];
   const titles = options['split-titles'] === undefined ? undefined : commaValues(options['split-titles'], '--split-titles');
   if (titles && titles.length !== splitInto.length) throw new Error('--split-titles must provide one title for each derived ticket');

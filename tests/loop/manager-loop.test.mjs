@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -29,6 +29,28 @@ function providerResult(response, sessionId = 'session-1') {
 }
 
 describe('manager loop proof of concept', () => {
+  it('retains provider-reported stage usage when a failed response cannot be accepted', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-manager-usage-failure-'));
+    const workspace = join(root, 'workspace'); const artifacts = join(root, 'records');
+    await mkdir(workspace); initializeRepository(workspace);
+    const adapterFactory = () => ({
+      async start() {
+        return { command: 'start', sessionId: 'failed-session', events: [], malformedEventCount: 0, final: {
+          outcome: 'failed', sessionId: 'failed-session', summary: 'not strict JSON',
+          usage: { availability: 'reported', inputTokens: 30, cachedInputTokens: 10, outputTokens: 20, reasoningTokens: 8, reportedBy: 'fixture' }, nativeCancellationReceipt: false,
+        } };
+      },
+      async resume() { throw new Error('unexpected resume'); },
+    });
+    try {
+      await expect(runManagerLoop(configuration(workspace, artifacts), { adapterFactory, environment: { PATH: '/usr/bin:/bin' } })).resolves.toMatchObject({ status: 'failed' });
+      const state = JSON.parse(await readFile(join(artifacts, 'state.json'), 'utf8'));
+      expect(state.stages).toHaveLength(1);
+      expect(state.stages[0]).toMatchObject({ kind: 'manager_brief', outcome: 'failed', usage: { availability: 'reported', inputTokens: 30, cachedInputTokens: 10, outputTokens: 20, reasoningTokens: 8, reportedBy: 'fixture' } });
+      expect(state.stages[0]).not.toHaveProperty('response');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('runs the real native process transport through manager, fresh implementer, independent review, repair, verification, and exact acceptance', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-manager-loop-'));
     const workspace = join(root, 'workspace');

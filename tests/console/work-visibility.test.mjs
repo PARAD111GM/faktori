@@ -81,7 +81,7 @@ describe('Console work visibility', () => {
     expect(empty).toContain('No activity published');
   });
 
-  it('keeps completed Manager Loop work visible when no coordinator run exists', () => {
+  it('keeps a compact link to completed Manager Loop work when no coordinator run exists', () => {
     const completedLoop = {
       id: 'two-phase-math-proof', productId: 'product-a', podId: 'pod-a', status: 'succeeded', stale: false,
       updatedAt: '2026-09-09T12:02:00Z', completedPhases: ['prove-addition', 'prove-subtraction'], currentStage: undefined,
@@ -91,15 +91,14 @@ describe('Console work visibility', () => {
       state: { managerLoops: [completedLoop], blockers: [] }, runs: [], filter: { productId: 'product-a', podId: 'pod-a' }, selectRun() {},
     }));
     expect(html).toContain('Current and recent work');
-    expect(html).toContain('two-phase-math-proof');
-    expect(html).toContain('2</b> accepted phases');
-    expect(html).toContain('Last step: prove-subtraction / review');
+    expect(html).toContain('1 recorded Manager Loop available in <a href="#work">Work</a>');
+    expect(html).not.toContain('Last step: prove-subtraction / review');
     expect(html).toContain('Coordinator runs</span><strong>0');
     expect(html).toContain('Manager loops</span><strong>1');
     expect(html).toContain('Recorded active loops</span><strong>0');
     expect(html).toContain('Accepted loop phases</span><strong>2');
     expect(html).toContain('Active coordinator runs</span><strong>0');
-    expect(html).toContain('View phase and review details');
+    expect(html).toContain('Open Work for the expanded activity feed');
   });
 
   it('does not present stale recorded loop state as live and applies the overview scope', () => {
@@ -112,8 +111,7 @@ describe('Console work visibility', () => {
     }));
     expect(html).toContain('stale-loop');
     expect(html).not.toContain('other-loop');
-    expect(html).toContain('Recorded running · stale');
-    expect(html).toContain('Worker liveness unconfirmed');
+    expect(html).toContain('Recorded state stale');
     expect(html).toContain('Manager loops</span><strong>1');
     expect(html).toContain('Recorded active loops</span><strong>1');
     expect(html).toContain('Accepted loop phases</span><strong>1');

@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": "Faktori Lean Iteration",
+    "currentPhase": 3,
+    "source": "docs/lean-iteration.md",
+    "phaseBudgets": {
+      "1": 180000,
+      "2": 220000,
+      "3": 180000
+    },
+    "progressSummary": "All three phases accepted locally: installed validation and implementation, hot observation, one scheduled GM call and unchanged-input suppression, final Console and package verified. Failed attempts remain counted; no broad savings claim. Creator unchanged."
+  },
+  "tickets": [
+    {
+      "id": "LEAN-01",
+      "phase": 1,
+      "title": "Connect usage to outcomes",
+      "status": "complete",
+      "dependencies": [],
+      "owner": {
+        "role": "Phase 1 orchestrator",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "LEAN-02",
+      "phase": 1,
+      "title": "One deterministic observer",
+      "status": "complete",
+      "dependencies": [],
+      "owner": {
+        "role": "Phase 1 orchestrator",
+        "model": "gpt-5.6-terra",
+        "reasoning": "high"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "LEAN-03",
+      "phase": 2,
+      "title": "Lean execution and validation-only",
+      "status": "complete",
+      "dependencies": [
+        "LEAN-01",
+        "LEAN-02"
+      ],
+      "owner": {
+        "role": "Phase 2 orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "LEAN-04",
+      "phase": 2,
+      "title": "Routing, compact packets and preflight",
+      "status": "complete",
+      "dependencies": [
+        "LEAN-01",
+        "LEAN-02"
+      ],
+      "owner": {
+        "role": "Phase 2 orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "LEAN-05",
+      "phase": 3,
+      "title": "Deterministic findings and nightly GM",
+      "status": "complete",
+      "dependencies": [
+        "LEAN-03",
+        "LEAN-04"
+      ],
+      "owner": {
+        "role": "Phase 3 orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
+      },
+      "notes": [],
+      "evidence": []
+    },
+    {
+      "id": "LEAN-06",
+      "phase": 3,
+      "title": "Efficiency and decision surface",
+      "status": "complete",
+      "dependencies": [
+        "LEAN-03",
+        "LEAN-04"
+      ],
+      "owner": {
+        "role": "Phase 3 orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
+      },
+      "notes": [],
+      "evidence": []
+    }
+  ],
+  "history": [
+    {
+      "eventId": "status-1789001576598-bc8juf",
+      "at": "2026-09-10T00:52:56.599Z",
+      "ticketId": "LEAN-01",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Accepted: independent accounting tests and live baseline totals reconcile; unavailable categories remain explicit"
+    },
+    {
+      "eventId": "status-1789001576882-rqzn14",
+      "at": "2026-09-10T00:52:56.883Z",
+      "ticketId": "LEAN-02",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Accepted: authenticated duplicate-safe live registration, observed progression, retained source and totals after restart"
+    },
+    {
+      "eventId": "status-1789001577149-vinav9",
+      "at": "2026-09-10T00:52:57.150Z",
+      "ticketId": "LEAN-03",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Phase 1 accepted; lean execution implementation admitted"
+    },
+    {
+      "eventId": "status-1789001577419-1f9roo",
+      "at": "2026-09-10T00:52:57.420Z",
+      "ticketId": "LEAN-04",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Phase 1 accepted; routing and preflight implementation admitted"
+    },
+    {
+      "eventId": "status-1789004316583-ghdzpx",
+      "at": "2026-09-10T01:38:36.584Z",
+      "ticketId": "LEAN-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Installed validation-only and implementation proofs accepted; rejected attempts retained."
+    },
+    {
+      "eventId": "status-1789004316857-m3m384",
+      "at": "2026-09-10T01:38:36.858Z",
+      "ticketId": "LEAN-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Routing, exact evidence and zero-launch preflight tested; installed Luna roles proven."
+    },
+    {
+      "eventId": "status-1789004437259-4vs6pb",
+      "at": "2026-09-10T01:40:37.260Z",
+      "ticketId": "LEAN-05",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Phases 1/2 accepted; single nightly GM implementation admitted."
+    },
+    {
+      "eventId": "status-1789004437512-y8x1qj",
+      "at": "2026-09-10T01:40:37.513Z",
+      "ticketId": "LEAN-06",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Focused efficiency and decision UI admitted; broad redesign deferred."
+    },
+    {
+      "eventId": "status-1789009576676-97tr79",
+      "at": "2026-09-10T03:06:16.677Z",
+      "ticketId": "LEAN-05",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Accepted: installed launchd review, one durable invocation, duplicate and unchanged suppression, proposal-only output and final regression passed."
+    },
+    {
+      "eventId": "status-1789009576946-ov3kqs",
+      "at": "2026-09-10T03:06:16.947Z",
+      "ticketId": "LEAN-06",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Accepted: installed disabled/degraded/monitoring states, actual evidence-linked recommendations, qualified metrics and compact Overview verified."
+    }
+  ]
+}

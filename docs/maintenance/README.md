@@ -76,5 +76,13 @@ material and are not overwritten. Installation keeps lifecycle scripts disabled,
 then builds only the exact pinned `better-sqlite3` dependency and requires a real
 SQLite projection rebuild through the selected installed CLI before activation.
 
+Before updating an existing installation, create an ordinary backup and inspect
+the update preview/diff with the owner. Preserve the active runtime until the
+owner accepts the exact preview. An update neither restarts workers nor changes
+provider authentication, credentials, configured spending, or billing routes.
+Those are separate owner decisions. After a safe cutover window, inspect the
+offline setup-readiness inventory in [the agent update guide](../agent-update-guide.md);
+it identifies omitted routes and integrations but does not prove a live service.
+
 See [the local customization example](../../examples/maintenance/README.md),
 [troubleshooting](troubleshooting.md), and [compatibility](compatibility.md).

@@ -55,6 +55,14 @@ that the installed runtime does not have.
    as untrusted: only the installed read-only projection check can establish
    projection readiness, while execution and live evidence require their own
    independent provenance.
+8. Produce a required integration inventory from the selected configuration:
+   every provider route, Jira project mapping, and GM scheduler is either
+   enabled and verified by a separately observed bounded exercise, pending
+   authentication/observation, or deliberately deferred by an owner decision.
+   A cataloged provider is not a configured/authenticated route; configured
+   `runtime.gm` is not observed scheduler health. Use `faktori readiness report
+   <absolute-local-console.json>` to detect configuration omissions, but do not
+   call its offline result verification of a live integration.
 
 ## Scale, output, and handoff
 
@@ -65,7 +73,9 @@ that the installed runtime does not have.
 - Emit: discovery record; proposal; approval record; resolved profile and
   locked versions; local-operation identities and observed results; explicit
   pending/unsupported effects; prepared Console configuration; preflight result;
-  and a small delivery-loop demonstration plan.
+  and a small delivery-loop demonstration plan. Include the integration
+  inventory with owner decisions and separate evidence references for every
+  enabled-and-verified item.
 - Record evidence as `proposal@<revision>`, `config@<revision>`, approver,
   operation ID, exact root, source-snapshot digest when applicable, observed
   filesystem/Git result, and remaining gate.

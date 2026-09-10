@@ -1,5 +1,10 @@
 # Console usability repairs — 2026-09-10
 
+Historical intermediate proof: the separate local-ticket layout described below
+was subsequently replaced at the owner's request with one unified Work Kanban.
+The current local workflow retains To do, In progress, and Done columns; there
+is no empty-column toggle. See the v0.2 release audit for the final layout proof.
+
 Scope: project list/detail navigation; readable Sessions layout; editable settings with actionable recovery; local catalog tickets alongside project-scoped Jira boards. Cross-session aggregation is deferred. No Twinzy configuration or workers were changed.
 
 ## Verification

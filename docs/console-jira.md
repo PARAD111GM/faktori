@@ -15,6 +15,14 @@ not a separate login per project. The current integration accepts an existing
 server-side authorization header; it does not implement a browser OAuth login.
 This does not require combining independent factories or coding sessions.
 
+Record every selected project mapping in the installation's integration
+inventory. A source becomes **enabled and verified** only after an approved,
+bounded successful poll is observed. A configured mapping with missing or
+unexercised authorization is **pending auth/observation**, not connected. If an
+owner does not want Jira for a product, record it as deliberately deferred and
+use that product's local work-catalog tickets instead; Faktori does not create a
+shadow Jira board.
+
 ## Configuration
 
 Add an allowlisted source to the local Console configuration:

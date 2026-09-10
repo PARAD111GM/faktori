@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2 release notes](docs/releases/v0.2.0.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -90,7 +90,7 @@ you want three providers, a new pod, or another paid service. Logins stay in
 the providers' own flows. Unavailable capabilities and blocked steps must be
 reported rather than silently substituted.
 
-**This is an early development kit, not a one-click production release.**
+**v0.2.0 is an experimental development-kit release, not a one-click production release.**
 Start with a disposable product and approved test resources. Read
 [onboarding](docs/onboarding/interview.md), [provisioning](docs/provisioning/README.md),
 and the [compatibility matrix](docs/maintenance/compatibility.md) before connecting
@@ -159,10 +159,17 @@ repository; product artifacts normally live beside product code.
 
 The ribbon-cutting committee has been asked to wait for evidence.
 
-`main` includes accepted Phases 0–6, the complete 16-skill SDLC kit, the Phase 7
-runtime and validation work, and manager-accepted Phase 8 operational clarity.
-Phase 8 provides structured blockers, redacted run manifests, and fail-closed
-read-only preflight/remediation through the public CLI and Console.
+v0.2.0 packages the accepted local runtime and maintenance work, the complete
+16-skill SDLC kit, operational clarity, and the Console's local work-management
+surfaces. Its setup/readiness guidance now makes selected integrations explicit
+instead of letting a provider catalog, configured GM, or Console page imply
+that a route is authenticated or observed.
+
+The release is intentionally bounded: its checks are local and deterministic
+unless a document says an observed exercise occurred. It does not claim a
+whole-system E2E run, live Jira connectivity, authenticated Claude execution,
+or an installed/healthy GM scheduler. See the [v0.2.0 release notes](docs/releases/v0.2.0.md)
+for the evidence boundary and upgrade path.
 
 Phase 7 is deliberately not represented as fully accepted. F7-01 cold-start
 validation and F7-02 isolated Linux Node/Python delivery were accepted. F7-03,
@@ -202,6 +209,7 @@ collaboration. They are directions—not shipped features or prerequisites.
 | [Providers](docs/providers/README.md) | Understand adapter contracts and capability boundaries. |
 | [Runtime](docs/runtime/README.md) | Explore execution, cancellation, publication, and recovery. |
 | [Operational clarity](docs/operational-clarity.md) | Inspect blockers, run manifests, and fail-closed preflight results. |
+| [Agent setup and update](docs/agent-update-guide.md) | Inventory provider routes, Jira mappings, and GM scheduling without mistaking configuration for live proof. |
 | [Maintenance](docs/maintenance/README.md) | Back up, restore, reconcile, and update. |
 | [Implementation plan](docs/implementation-plan.md) | Read the full V1 commitment and acceptance criteria. |
 | [Skill verification report](docs/build/sdlc-skills-report.md) | See what was checked and what remains unproved. |

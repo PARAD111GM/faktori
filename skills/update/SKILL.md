@@ -40,22 +40,25 @@ invent a version, bypass identity checks, or silently switch installation modes.
    Fetch and inspect upstream changes. Use a clean separate checkout if local
    modifications prevent a safe fast-forward. Never reset, auto-stash, force-push,
    discard changes or merge product branches as part of an installation update.
-3. Build and validate the selected revision with its documented Node/npm versions,
+3. Before cutover, create/review a backup appropriate to the factory and present
+   the exact update preview/diff to the owner. Do not infer approval from a
+   selected revision or successful build.
+4. Build and validate the selected revision with its documented Node/npm versions,
    lockfile and bounded tests. Follow `INSTALL.md`; do not run source-only scripts
    inside an installed tarball or assume an npm registry release exists.
-4. Update the runtime actually serving the Console, not merely a source clone.
+5. Update the runtime actually serving the Console, not merely a source clone.
    Use documented update preview/apply with the exact preview digest and approval
    for managed installations. For source/packed installs, stage the replacement
    before cutover and preserve a recoverable prior runtime. Never overwrite loaded
    runtime modules while agents or the coordinator are using them. Keep provider
    credentials out of replacement runtimes and backups.
-5. When loop visibility is requested, reconcile `managerLoops` in the existing
+6. When loop visibility is requested, reconcile `managerLoops` in the existing
    owner-controlled Console configuration. Set `id` to the exact loop `loopId` and
    `artifactsDirectory` to its existing absolute records path. Use optional existing
    product/pod identifiers only when known; a pod requires its product. Preserve
    other entries and settings. Treat the same ID with a different directory as a
    conflict requiring resolution, not permission to overwrite it.
-6. Establish a safe restart window from current process and work observations.
+7. Establish a safe restart window from current process and work observations.
    Restart only the affected Console. If shutdown waits on browser event streams,
    disconnect those Console pages without discarding unsaved forms. Confirm the old
    coordinator exited before starting its replacement. Never delete locks, clear
@@ -73,6 +76,15 @@ invent a version, bypass identity checks, or silently switch installation modes.
   refresh as not exercised. Never launch paid work or fabricate progress to prove
   an update. Do not rerun completed phases.
 - Check that owner settings and records remain intact except for approved changes.
+  Do not copy credentials or alter provider authentication, configured spending,
+  billing routes, or worker state as part of the update.
+- Regenerate and review the setup-readiness inventory using the current local
+  Console configuration. It must account for every provider route, Jira mapping,
+  and GM scheduler as enabled-and-verified, pending auth/observation, or an
+  explicit owner deferral. An offline readiness report detects omissions; it
+  cannot upgrade any route to verified. Preserve Jira's one authorization source
+  per site and reuse it only for the owner's explicitly mapped projects; products
+  without a mapping retain local Faktori tickets.
   Report previous/installed revision, runtime/config paths, Console URL, registered
   loops, checks actually performed, remaining gaps and the safe next action. Keep
   private paths out of public commits and shared reports.

@@ -102,7 +102,8 @@ describe('Console work-management UI', () => {
     expect(html).toContain('faktori / console-batch-1 / phase-one / CWM-001');
     expect(html).toContain('Provider</dt><dd>Not observed');
     expect(html).toContain('Current activity</dt><dd>Unknown — no liveness observation');
-    expect(html).toContain('not evidence that a task is currently active');
+    expect(html).toContain('Last recorded contact');
+    expect(html).not.toContain('<h2>Sessions</h2>'); // Page title belongs to the shared app header.
     expect(html).not.toContain('private-thread-id');
   });
 

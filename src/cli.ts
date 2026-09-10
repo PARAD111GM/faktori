@@ -10,6 +10,7 @@ import {
   createProvisioningProposal,
   createRunManifest,
   evaluateInstalledPreflightDocument,
+  evaluateSetupReadiness,
   initializeRuntimeInstallation,
   runManagerLoop,
   runLeanLoop,
@@ -21,6 +22,7 @@ import {
   previewNewProduct,
   parseRunManifestJournal,
   prepareLocalCodexConsole,
+  parseLocalConsoleConfiguration,
   provisionApprovedProposal,
   provisionApprovedNewProduct,
   reconcileRestoredFactory,
@@ -49,6 +51,7 @@ const HELP = `Usage:
   faktori loop publication prepare <request.json>
   faktori loop publication publish <request.json>
   faktori preflight <request.json>
+  faktori readiness report <local-console.json>
   faktori backup create <request.json> <backup-directory>
   faktori backup restore <backup-directory> <restore-request.json>
   faktori backup reconcile <request.json>
@@ -232,6 +235,13 @@ async function run(argv: string[]): Promise<void> {
   if (group === 'preflight') {
     if (argv.length !== 2 || !action) throw new Error('preflight requires exactly one request JSON path');
     print(evaluateInstalledPreflightDocument(await json(action, 'preflight request')));
+    return;
+  }
+
+  if (group === 'readiness' && action === 'report') {
+    if (argv.length !== 3 || !source) throw new Error('readiness report requires exactly one local Console configuration JSON path');
+    const configuration = await json(source, 'local Console configuration');
+    print(evaluateSetupReadiness(parseLocalConsoleConfiguration(configuration)));
     return;
   }
 

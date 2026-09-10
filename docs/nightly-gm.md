@@ -6,6 +6,13 @@ Nightly GM is opt-in. Existing `runtime.gm` configurations without
 installed or healthy: Console reports **degraded** until it observes a due
 scheduled evaluation.
 
+For setup and update handoffs, list GM scheduling separately in the integration
+inventory. `runtime.gm` configured is only a configuration fact. It is enabled
+and verified only after the installed scheduler has made and recorded a due
+scheduled evaluation; until then it is pending observation. If the owner elects
+not to schedule GM supervision, record that deliberate deferral rather than
+leaving an apparently configured schedule unexplained.
+
 ## Configure
 
 Start from [`examples/config/nightly-gm.json`](../examples/config/nightly-gm.json).

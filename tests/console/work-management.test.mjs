@@ -37,6 +37,74 @@ afterEach(async () => {
 });
 
 describe('work catalog boundary', () => {
+  it('counts only explicit catalog ticket state and keeps acceptance evidence separate from reports or merged PRs', async () => {
+    const directory = await root();
+    const path = join(directory, 'work.json');
+    const source = catalog();
+    const tickets = source.projects[0].plans[0].phases[0].tickets;
+    tickets[0].status = 'done';
+    tickets[0].evidence = { local: 'owner_published', reviewed: 'owner_published', merged: 'owner_published', deployed: 'owner_published', productAccepted: 'unknown' };
+    tickets[0].statusEvents = [{ at: '2026-09-09T10:00:00.000Z', status: 'in_progress' }, { at: '2026-09-10T10:00:00.000Z', status: 'done' }];
+    tickets.push({ id: 'CWM-007', order: 2, title: 'Blocked', goal: 'Wait.', dependencies: [], status: 'blocked' });
+    source.projects[0].linkedPullRequests = [{ ticketId: 'CWM-006', repository: 'example/faktori', number: 7 }];
+    await writeFile(path, JSON.stringify(source), 'utf8');
+    const observer = await WorkCatalogObserver.open({ path });
+    const project = observer.snapshot().projects[0];
+    expect(project.progress).toEqual(expect.objectContaining({ populationBasis: 'catalog_tickets_explicit_status', tickets: { total: 2, done: 1, inProgress: 0, remaining: 0, blocked: 1, unknown: 0 }, evidence: { local: 'owner_published', reviewed: 'owner_published', merged: 'owner_published', deployed: 'owner_published', productAccepted: 'unknown' }, pullRequests: expect.objectContaining({ denominator: 1, merged: 0, independentReviewPassed: 0, independentReviewUnknown: 1 }) }));
+    expect(project.dailySummaries).toEqual([expect.objectContaining({ populationBasis: 'retained_same_day_events', timezone: expect.any(String), done: 1, inProgress: 0, remaining: 0, blocked: 1, activity: expect.objectContaining({ managerReports: 0, decisionTransitions: 0, blockers: 0, ticketTransitions: 1, ticketDoneTransitions: 1, loopPhaseEvents: 0, pullRequestChangeCoverage: 'unavailable' }) })]);
+    expect(project.pullRequests).toEqual([expect.objectContaining({ status: 'unavailable', merged: 'unknown', review: 'unknown' })]);
+    expect(JSON.stringify(project)).not.toMatch(/"report"|productAcceptance/i);
+  });
+
+  it('rejects a linked PR outside the project ticket allowlist', () => {
+    const source = catalog();
+    source.projects[0].linkedPullRequests = [{ ticketId: 'other', repository: 'example/faktori', number: 7 }];
+    expect(() => parseWorkCatalog(source)).toThrow(/must name a ticket in its project/);
+  });
+
+  it('uses the owner timezone and retained same-day observations without changing catalog progress', async () => {
+    const directory = await root(); const path = join(directory, 'work.json');
+    const source = catalog(); source.projects[0].plans[0].phases[0].tickets[0].status = 'remaining';
+    const current = new Date(); source.projects[0].plans[0].phases[0].tickets[0].statusEvents = [{ at: current.toISOString(), status: 'done' }];
+    await writeFile(path, JSON.stringify(source), 'utf8');
+    const observer = await WorkCatalogObserver.open({ path, timezone: 'America/Chicago' });
+    const project = observer.snapshot(undefined, [], [
+      { at: current.toISOString(), productId: 'faktori', kind: 'manager_report' },
+      { at: current.toISOString(), productId: 'faktori', kind: 'decision_transition' },
+      { at: current.toISOString(), productId: 'other', kind: 'blocker' },
+    ]).projects[0];
+    expect(project.dailySummaries).toEqual([expect.objectContaining({ timezone: 'America/Chicago', populationBasis: 'retained_same_day_events', remaining: 1, activity: { managerReports: 1, decisionTransitions: 1, blockers: 0, ticketTransitions: 1, ticketDoneTransitions: 1, loopPhaseEvents: 0, pullRequestChanges: 0, pullRequestChangeCoverage: 'unavailable' } })]);
+    expect(project.progress.tickets).toEqual({ total: 1, done: 0, inProgress: 0, remaining: 1, blocked: 0, unknown: 0 });
+  });
+
+  it('advances the current owner day without a catalog change while retaining catalog freshness separately', async () => {
+    const directory = await root(); const path = join(directory, 'work.json');
+    await writeFile(path, JSON.stringify(catalog()), 'utf8');
+    let now = new Date('2026-09-10T04:59:00.000Z').getTime();
+    const observer = await WorkCatalogObserver.open({ path, timezone: 'America/Chicago' }, undefined, { now: () => new Date(now) });
+    const first = observer.snapshot().projects[0];
+    now = new Date('2026-09-10T05:01:00.000Z').getTime();
+    const second = observer.snapshot().projects[0];
+    expect(first.dailySummaries[0].date).toBe('2026-09-09');
+    expect(second.dailySummaries[0].date).toBe('2026-09-10');
+    expect(second.progress.observedAt).toBe(first.progress.observedAt);
+  });
+
+  it('does not notify on an unchanged same-day poll but notifies on the live day rollover', async () => {
+    const directory = await root(); const path = join(directory, 'work.json');
+    await writeFile(path, JSON.stringify(catalog()), 'utf8');
+    let now = new Date('2026-09-10T04:58:00.000Z').getTime();
+    const observer = await WorkCatalogObserver.open({ path, timezone: 'America/Chicago' }, undefined, { now: () => new Date(now) });
+    let changes = 0; observer.onChange(() => { changes += 1; });
+    now += 60_000;
+    await observer.refresh();
+    expect(changes).toBe(0);
+    now += 2 * 60_000;
+    await observer.refresh();
+    expect(changes).toBe(1);
+    expect(observer.snapshot().projects[0].dailySummaries[0].date).toBe('2026-09-10');
+  });
+
   it('rejects invalid dependency graph boundaries instead of manufacturing a project tree', () => {
     const cyclic = catalog();
     cyclic.projects[0].plans[0].phases[0].tickets.push({ id: 'CWM-007', order: 2, title: 'Cycle', goal: 'Nope.', dependencies: ['CWM-006'] });

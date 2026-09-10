@@ -90,7 +90,7 @@ Keep industrial bento styling/4px spacing; human titles first, IDs secondary.
 
 - [x] Batch 1 implemented, reviewed and installed proof accepted.
 - [x] Batch 2 implemented, reviewed and real decision proof accepted.
-- [ ] Batch 3 assembled gate, installed journey and documentation accepted.
+- [x] Batch 3 assembled gate, installed journey and documentation accepted.
 
 Manager maintains this ledger; agents return compact diffs, commands, evidence,
 remaining concerns and usage gaps. No separate dashboards or progress services.
@@ -124,7 +124,7 @@ remaining concerns and usage gaps. No separate dashboards or progress services.
   explicitly unmeasured root coordination, low confidence. Use compact briefs,
   two exclusive workstreams, one review, and a single installed proof.
 
-### Batch 2 candidate (owner proof pending)
+### Batch 2 evidence (accepted; earlier attempts retained below)
 
 - Parallel backend/UI implementation provides durable scoped choice decisions,
   separate private acknowledgement/resolution, a Decisions page, compact Overview
@@ -178,3 +178,61 @@ estimate 250k (backend 110k, UI 90k, review/rework 50k), low confidence, with ro
 coordination separately unmeasured. Reduce overhead by reusing existing metrics,
 one shared typed projection, deterministic summaries, and a single final installed
 journey. No native goal cap. Prior estimates were exceeded, not treated as stops.
+
+Linux artifact smoke proof passed in the existing Node 24.20.0 image, with network
+disabled, a read-only root filesystem, dropped capabilities, and a bounded tmpfs.
+The actual reader returned a regular file, rejected final/intermediate symlinks,
+and did not expose the outside sentinel. This is static path-boundary runtime
+evidence, not a claim of exhaustive race testing. Host bind mounts were unavailable;
+only the explicit reader/test sources were streamed to the disposable container.
+
+### Batch 3 verification in progress
+
+- Live, read-only observation of this repository's merged PR 7 returned a real
+  merge observation. Review remained unknown; merge was not promoted to deployment
+  or product acceptance. No remote write was performed.
+- The first assembled gate passed 503/504 tests; an old Overview test still
+  expected expanded activity rows. Its expectation was updated to the accepted
+  compact Overview behavior, and focused UI checks passed.
+- Independent review found unbounded PR process fan-out, stale ticket associations
+  during hot reload, and ambiguous owner-published evidence labels. Repairs add
+  four concurrent reads, real process deadlines, unchanged/failure backoff,
+  coalesced refresh, current-scope projection, and explicit evidence provenance.
+- Review also found daily summaries tied to the last catalog update rather than
+  the current local day, plus incomplete retained-event coverage. These are being
+  corrected before the final installed acceptance. Batch 3 is not yet accepted.
+
+Final verification evidence (before the final link-contrast-only adjustment):
+
+- Independent targeted source review found no remaining high-confidence blocker.
+  Follow-up integration fixes preserve backoff during identical catalog reloads
+  and prevent timestamp-only SSE churn while notifying once on local-day rollover.
+- Frozen assembled `npm run check` passed: 513 tests in 67 files, typecheck,
+  production build, and clean-package CLI verification under Node 24.20.0.
+  Earlier failing runs remain recorded above; they were not acceptance evidence.
+- The updated isolated package retained the real resolved owner decision, twelve
+  explicitly accepted catalog tickets and six in-progress tickets. Catalog totals
+  did not become deployment evidence. Configured session liveness remained unknown.
+- Installed hot reload passed again: valid edit, malformed edit retaining a stale
+  last-good view, and exact restoration without restarting the Console.
+- Real-browser checks at 390x844 and 1440x1000 showed no document horizontal
+  overflow. Projects displayed the owner-local day and unavailable PR history;
+  Overview contained only compact rollups and decisions. Work retained its detailed
+  surfaces; Sessions and Factory showed unknown liveness and GM-not-configured
+  honestly. A fresh navigation after installation was necessary to load the new
+  asset bundle rather than merely changing the old page's hash. No browser errors
+  were observed after that fresh load and subsequent navigation.
+- Explicit limits: PR-change history and independent exact-head review aggregate
+  coverage remain unavailable, not fabricated. This proof does not establish live
+  Jira synchronization, product deployment, or new provider execution.
+- Construction accounting remains incomplete: the native Manager goal stayed
+  blocked after the owner wait, with its last recorded 2,421,263-token value
+  unchanged. Continued work and child overlap are not fully captured; no aggregate
+  budget variance or token-savings claim can be made. Estimates remained advisory.
+
+Manager acceptance: Batch 3 is accepted locally. The final contrast-only link
+adjustment passed 33 focused UI checks and typecheck, followed by a fresh build,
+package install and in-app screenshot verification. No runtime behavior changed
+after the 513-test gate. The isolated Console is the installed proof surface;
+the active product Console and Creator installation were not upgraded. These
+Console batches are local commits, not a GitHub publication or deployment claim.

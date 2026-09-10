@@ -20,7 +20,8 @@ import type { JiraObserver } from './jira-observer.ts';
 import { consoleActivity } from './activity.ts';
 import type { ManagerConnectedStore } from '../manager-connected/index.ts';
 import { registerManagerRelay } from './manager-relay.ts';
-import { validateWorkScope, type WorkCatalogObserver } from './work-management.ts';
+import { validateWorkScope, type WorkCatalogObserver, type WorkManagementDailyEvent } from './work-management.ts';
+import type { GitHubWorkObserver } from './github-observer.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -70,6 +71,7 @@ export interface ConsoleServiceOptions {
   jiraObserver?: JiraObserver;
   managerConnected?: { store: ManagerConnectedStore; relayToken: string };
   workCatalogObserver?: WorkCatalogObserver;
+  githubWorkObserver?: GitHubWorkObserver;
   factoryGM?: () => ReturnType<typeof coordinatorGMState> & { nightly?: GMNightlyState; efficiency: FactoryEfficiencyMetrics };
   requestGMReview?: (requestId: string) => Promise<GMNightlyAttempt>;
   runScheduledGMReview?: () => Promise<GMNightlyAttempt>;
@@ -95,6 +97,25 @@ const MIME: Record<string, string> = {
   '.map': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
 };
 const UNSAFE_TEXT = /(?:bearer\s+|authorization|api[_ -]?key|credential|secret|session[_ -]?id|\/Users\/|\\Users\\|\.codex|\.claude)/i;
+
+function retainedWorkManagementDailyEvents(events: readonly import('../runtime/contracts.ts').RunEvent[], snapshots: readonly RunSnapshot[], manager?: { requests: import('../manager-connected/index.ts').ManagerConnectedRequestSnapshot[]; decisions: import('../manager-connected/index.ts').ManagerConnectedDecisionSnapshot[] }, loops: readonly import('./manager-loop-observer.ts').ManagerLoopSummary[] = []): WorkManagementDailyEvent[] {
+  const productByRun = new Map(snapshots.map((snapshot) => [snapshot.intent.runId, snapshot.intent.target.productId]));
+  const result: WorkManagementDailyEvent[] = [];
+  for (const event of events) if (event.kind === 'provider.event' && event.data.type === 'delegation.blocked' && productByRun.get(event.runId) !== undefined) {
+    result.push({ at: event.occurredAt, productId: productByRun.get(event.runId), kind: 'blocker' });
+  }
+  for (const request of manager?.requests ?? []) if (request.report !== undefined) {
+    result.push({ at: request.report.observedAt, productId: request.scope?.productId ?? request.assignment.productId, kind: 'manager_report' });
+  }
+  for (const decision of manager?.decisions ?? []) {
+    const timestamps = [decision.createdAt, decision.ownerResponse?.recordedAt, decision.managerAcknowledgedAt, decision.resolvedAt, decision.uncertainAt];
+    for (const at of timestamps) if (at !== undefined) result.push({ at, productId: decision.scope.productId, kind: 'decision_transition' });
+  }
+  for (const loop of loops) if (loop.productId !== undefined) for (const stage of loop.stages) {
+    result.push({ at: stage.completedAt, productId: loop.productId, kind: 'loop_phase' });
+  }
+  return result.filter((event) => Number.isFinite(Date.parse(event.at)));
+}
 
 function installedAssetsDirectory(): string {
   // Works in source and in the packed dist/ tree: both resolve to package-root console/dist.
@@ -304,6 +325,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   const unsubscribeManagerLoops = options.managerLoopObserver?.onChange(() => events.emit('state'));
   const unsubscribeManagerConnected = options.managerConnected?.store.onChange(() => events.emit('state'));
   const unsubscribeWorkCatalog = options.workCatalogObserver?.onChange(() => events.emit('state'));
+  const unsubscribeGitHubWork = options.githubWorkObserver?.onChange(() => events.emit('state'));
   options.managerLoopObserver?.start();
   let closed = false;
   let jiraRefreshing = false;
@@ -324,10 +346,24 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   const refreshCatalog = async (): Promise<void> => {
     if (closed || catalogRefreshing || !options.workCatalogObserver) return;
     catalogRefreshing = true;
-    try { await options.workCatalogObserver.refresh(); } finally { catalogRefreshing = false; }
+    try {
+      await options.workCatalogObserver.refresh();
+      options.githubWorkObserver?.setLinks(options.workCatalogObserver.catalog()?.projects.flatMap((project) => project.linkedPullRequests ?? []) ?? []);
+    } finally { catalogRefreshing = false; }
   };
   const catalogPoll = options.workCatalogObserver ? setInterval(() => { void refreshCatalog(); }, 1_000) : undefined;
   catalogPoll?.unref();
+  let githubWorkRefreshing = false;
+  const refreshGitHubWork = async (): Promise<void> => {
+    if (closed || githubWorkRefreshing || !options.githubWorkObserver) return;
+    githubWorkRefreshing = true;
+    try { await options.githubWorkObserver.refresh(); } finally { githubWorkRefreshing = false; }
+  };
+  // The observer owns its 30s→5m success/failure backoff. This light tick
+  // cannot queue a second poll while one is active.
+  const githubWorkPoll = options.githubWorkObserver ? setInterval(() => { void refreshGitHubWork(); }, 1_000) : undefined;
+  githubWorkPoll?.unref();
+  void refreshGitHubWork();
 
   function records(): RecordedCommand[] {
     return options.coordinator.journal.events().map(commandRecord).filter((value): value is RecordedCommand => value !== undefined);
@@ -344,6 +380,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     const managerLoops = options.managerLoopObserver?.summaries() ?? [];
     const jiraBoards = options.jiraObserver?.snapshot() ?? [];
     const managerConnected = options.managerConnected?.store.snapshot();
+    const dailyEvents = retainedWorkManagementDailyEvents(options.coordinator.journal.events(), snapshots, managerConnected, managerLoops);
     return {
       format: 'faktori.console-state/v1', observedAt: now().toISOString(), stale: false,
       admissionPaused: currentPause(records()),
@@ -351,8 +388,8 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       managerLoops,
       ...(managerConnected ? { managerConnected } : {}),
       workManagement: options.workCatalogObserver
-        ? options.workCatalogObserver.snapshot(managerConnected)
-        : { status: 'unavailable' as const, error: 'work_catalog_not_configured', projects: [], sessions: managerConnected?.sessions ?? [], requests: managerConnected?.requests ?? [], decisions: managerConnected?.decisions ?? [] },
+        ? options.workCatalogObserver.snapshot(managerConnected, options.githubWorkObserver?.snapshot(), dailyEvents)
+        : { status: 'unavailable' as const, error: 'work_catalog_not_configured', projects: [], sessions: (managerConnected?.sessions ?? []).map((session) => ({ ...session, liveness: 'unknown' as const })), requests: managerConnected?.requests ?? [], decisions: managerConnected?.decisions ?? [] },
       jiraBoards,
       activity: consoleActivity(options.coordinator.journal.events(), snapshots, managerLoops, jiraBoards.flatMap((board) => board.changes.map((change) => ({ ...change, source: 'jira' as const, ...(board.productId === undefined ? {} : { productId: board.productId }), ...(board.podId === undefined ? {} : { podId: board.podId }), ...(change.issueKey === undefined ? {} : { url: board.issues.find((issue) => issue.key === change.issueKey)?.url }) }))), managerConnected?.requests, managerConnected?.decisions),
       blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
@@ -444,11 +481,13 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     closed = true;
     if (jiraPoll) clearInterval(jiraPoll);
     if (catalogPoll) clearInterval(catalogPoll);
+    if (githubWorkPoll) clearInterval(githubWorkPoll);
     options.jiraObserver?.close();
     clearInterval(journalPoll);
     unsubscribeManagerLoops?.();
     unsubscribeManagerConnected?.();
     unsubscribeWorkCatalog?.();
+    unsubscribeGitHubWork?.();
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());

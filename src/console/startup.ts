@@ -30,6 +30,8 @@ import { JiraObserver, parseJiraSources, type JiraSource } from './jira-observer
 import { ManagerConnectedStore, parseManagerConnectedConfig, type ManagerConnectedConfig } from '../manager-connected/index.ts';
 import { newManagerRelayToken, writeManagerRelayConnection } from './manager-relay.ts';
 import { WorkCatalogObserver, type WorkCatalogConfiguration } from './work-management.ts';
+import { GitHubWorkObserver } from './github-observer.ts';
+import { spawnGh } from '../integrations/github.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -147,8 +149,11 @@ function managerLoopRegistry(value: unknown): LocalConsoleConfiguration['manager
 function workCatalogConfiguration(value: unknown): WorkCatalogConfiguration | undefined {
   if (value === undefined) return undefined;
   const input = object(value);
-  if (input === undefined || Object.keys(input).some((key) => key !== 'path')) throw new Error('workCatalog must contain its absolute path only');
-  return { path: absolutePath(input.path, 'workCatalog.path') };
+  if (input === undefined || Object.keys(input).some((key) => key !== 'path' && key !== 'observeLinkedPullRequests' && key !== 'timezone')) throw new Error('workCatalog must contain its absolute path, optional explicit PR observation opt-in, and optional timezone only');
+  if (input.observeLinkedPullRequests !== undefined && input.observeLinkedPullRequests !== true) throw new Error('workCatalog.observeLinkedPullRequests must be true when configured');
+  const timezone = input.timezone === undefined ? undefined : requiredText(input.timezone, 'workCatalog.timezone');
+  if (timezone !== undefined) try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }); } catch { throw new Error('workCatalog.timezone must be an IANA timezone'); }
+  return { path: absolutePath(input.path, 'workCatalog.path'), ...(input.observeLinkedPullRequests === true ? { observeLinkedPullRequests: true as const } : {}), ...(timezone === undefined ? {} : { timezone }) };
 }
 
 function limits(value: unknown): AdmissionLimits {
@@ -770,6 +775,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   let pollInterval: ReturnType<typeof setInterval> | undefined;
   let managerStore: ManagerConnectedStore | undefined;
   let workCatalogObserver: WorkCatalogObserver | undefined;
+  let githubWorkObserver: GitHubWorkObserver | undefined;
   let managerLoopRegistry: ManagerLoopRegistry | undefined;
   let removeRelayConnection: (() => Promise<void>) | undefined;
   try {
@@ -810,6 +816,9 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
         const phase = plan?.phases.find((candidate) => candidate.id === session.phaseId);
         if (!phase || (session.ticketId !== undefined && !phase.tickets.some((candidate) => candidate.id === session.ticketId))) throw new Error(`managerConnected session ${session.id} must reference a matching workCatalog scope`);
       }
+      if (configuration.workCatalog?.observeLinkedPullRequests) {
+        githubWorkObserver = new GitHubWorkObserver({ links: catalog.projects.flatMap((project) => project.linkedPullRequests ?? []), command: spawnGh });
+      }
     }
     managerStore = configuration.managerConnected ? await ManagerConnectedStore.open(configuration.managerConnected) : undefined;
     let factoryObservation = observeFactoryDeterministically({ factoryId: configuration.factoryId, coordinator, loops: managerLoopObserver.efficiencySnapshot(), ...(managerStore ? { managerConnected: managerStore.snapshot() } : {}), deliveryDeadlineHours: configuration.runtime?.gm?.deliveryDeadlineHours, coordinationAttentionShare: configuration.runtime?.gm?.coordinationAttentionShare, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
@@ -823,7 +832,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     const nightlyConfig = configuration.runtime?.gm?.mode === 'nightly' ? configuration.runtime.gm : undefined;
     nightlyGM = nightlyConfig?.schedule && configured?.nightlyReview ? new NightlyGM({ schedule: nightlyConfig.schedule, instructions: nightlyConfig.instructions, store: new CoordinatorGMNightlyStore(coordinator), review: configured.nightlyReview, ownerDecisions: nightlyConfig.ownerDecisions, snapshot: refreshFactoryObservation }) : undefined;
     const relayToken = newManagerRelayToken();
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(workCatalogObserver ? { workCatalogObserver } : {}), ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(workCatalogObserver ? { workCatalogObserver } : {}), ...(githubWorkObserver ? { githubWorkObserver } : {}), ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
     const listeningApp = app;
     pollInterval = setInterval(() => { void observer?.poll(); void refreshFactoryObservation(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();

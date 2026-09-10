@@ -47,7 +47,9 @@ describe('Console presentation contract', () => {
     expect(scoped).not.toContain('quality-loop');
     expect(scoped).toContain('No connected loops in this scope');
     const overview = renderToStaticMarkup(createElement(presentation.Overview, { state: { managerLoops: loops }, runs: [], selectRun() {} }));
-    expect(overview).toContain('quality-loop');
+    expect(overview).toContain('At a glance');
+    expect(overview).not.toContain('quality-loop');
+    expect(overview).not.toContain('Running activity');
   });
   it('offers flexible role assignments without implying merge authority', async () => {
     const { RoleAssignments } = await server.ssrLoadModule('/console/src/role-assignments.tsx');
@@ -94,11 +96,11 @@ describe('Console presentation contract', () => {
 
     const html = renderToStaticMarkup(createElement(presentation.Overview, { state, runs: visibleRuns, selectRun() {} }));
 
-    expect(html).toContain('1 scoped runs');
-    expect(html).toContain('Scoped reservations</dt><dd>125</dd>');
+    expect(html).toContain('At a glance');
+    expect(html).not.toContain('1 scoped runs');
+    expect(html).not.toContain('Scoped reservations');
     expect(html).not.toContain('900');
-    expect(html).toContain('Coordinator reported usage</dt><dd>Unavailable</dd>');
-    expect(html).toContain('Coordinator unavailable measurements</dt><dd>2</dd>');
+    expect(html).toContain('Cross-project catalog facts, not live activity.');
 
     const factoryHtml = renderToStaticMarkup(createElement(presentation.Factory, {
       state: { resources: { knownUsageTokens: 0, reportedUsageCount: 0, unavailableMeasurements: 0 } },

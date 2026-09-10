@@ -1,7 +1,10 @@
 import type {
   WorkManagementArtifactProjection,
+  WorkManagementDailySummary,
   WorkManagementPhase,
+  WorkManagementProgress,
   WorkManagementProjectProjection,
+  WorkManagementPullRequestProjection,
   WorkManagementRequest,
   WorkManagementState,
   WorkManagementSession,
@@ -13,6 +16,7 @@ type DetailNavigation = {
   openLoop: (id: string, productId: string) => void;
   openRequest: (id: string, productId: string) => void;
 };
+
 
 const formatDate = (value?: string): string => {
   if (!value) return 'Not observed';
@@ -72,10 +76,50 @@ function Phase({ phase, context, requests, navigation }: { phase: WorkManagement
   </li>;
 }
 
+function safeExternalUrl(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password ? url.href : undefined;
+  } catch { return undefined; }
+}
+
+function Progress({ progress }: { progress?: WorkManagementProgress }) {
+  if (!progress) return <section className="project-progress project-progress-unavailable"><h3>Qualified progress</h3><p>Unavailable — no explicit catalog ticket-status population was published.</p></section>;
+  const { tickets, evidence } = progress;
+  const pullRequests = progress.pullRequests;
+  const reviewQualification = pullRequests.independentReviewStatus === 'available'
+    ? `${pullRequests.independentReviewPassed}/${pullRequests.denominator} passed · ${pullRequests.independentReviewUnknown} unknown`
+    : 'Unavailable — no retained exact-head independent review gate evidence.';
+  return <section className={`project-progress project-progress-${progress.status}`}><div className="panel-heading"><div><h3>Qualified progress</h3><p>Catalog tickets with explicit status</p></div><span className={`state state-${progress.status}`}>{progress.status}</span></div><div className="metric-row"><Metric label="Explicitly accepted tickets" value={`${tickets.done}/${tickets.total}`} /><Metric label="In progress" value={String(tickets.inProgress)} /><Metric label="Remaining" value={String(tickets.remaining)} /><Metric label="Blocked" value={String(tickets.blocked)} /><Metric label="Unknown status" value={String(tickets.unknown)} /></div><p className="quiet">Owner-published evidence annotations, not verified delivery: local {evidence.local} · reviewed {evidence.reviewed} · merged {evidence.merged} · deployed {evidence.deployed} · product accepted {evidence.productAccepted}.</p><p className="quiet">Explicitly linked PRs: {pullRequests.status === 'available' ? `${pullRequests.merged}/${pullRequests.denominator} merged observations` : pullRequests.status}. Independent review gates: {reviewQualification}.</p></section>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
+
+function DailySummary({ summary }: { summary?: WorkManagementDailySummary }) {
+  if (!summary) return <section className="project-daily-summary"><h3>Daily summary</h3><p>No recorded changes today.</p></section>;
+  const activity = summary.activity;
+  const knownChanges = activity.managerReports + activity.decisionTransitions + activity.blockers + activity.ticketTransitions + activity.loopPhaseEvents + (activity.pullRequestChangeCoverage === 'available' ? activity.pullRequestChanges : 0);
+  const recorded = knownChanges === 0
+    ? activity.pullRequestChangeCoverage === 'unavailable' ? 'No recorded non-PR changes today; PR change history unavailable.' : 'No recorded changes today.'
+    : `Recorded today: ${activity.managerReports} Manager reports · ${activity.decisionTransitions} decision transitions · ${activity.blockers} blocker changes · ${activity.ticketTransitions} ticket transitions (${activity.ticketDoneTransitions} to done) · ${activity.loopPhaseEvents} loop phase events${activity.pullRequestChangeCoverage === 'available' ? ` · ${activity.pullRequestChanges} PR changes` : ''}.`;
+  return <section className="project-daily-summary"><div><h3>Daily summary</h3><p>{summary.date} · {summary.timezone} · Retained events for this local day</p></div><dl><dt>Current explicitly accepted</dt><dd>{summary.done}</dd><dt>Current in progress</dt><dd>{summary.inProgress}</dd><dt>Current remaining</dt><dd>{summary.remaining}</dd><dt>Current blocked</dt><dd>{summary.blocked}</dd></dl><p className="quiet">{recorded} These same-day observations do not change ticket acceptance.</p>{activity.pullRequestChangeCoverage === 'unavailable' && <p className="quiet">PR change history unavailable for today; the displayed zero is not a complete PR-history count.</p>}<small>Observed {formatDate(summary.observedAt)}</small></section>;
+}
+
+function PullRequests({ project, pullRequests }: { project: WorkManagementProjectProjection; pullRequests: WorkManagementPullRequestProjection[] }) {
+  const ticketIds = new Set(project.plans.flatMap((plan) => plan.phases.flatMap((phase) => phase.tickets.map((ticket) => ticket.id))));
+  const linked = pullRequests.filter((pullRequest) => ticketIds.has(pullRequest.ticketId));
+  if (linked.length === 0) return null;
+  return <section className="project-pull-requests"><div className="panel-heading"><div><h3>Linked pull requests</h3><p>Read-only observations. A merge does not accept a ticket or ship a product; GitHub review state is not an independent Faktori review gate.</p></div></div><ul>{linked.map((pullRequest) => { const url = safeExternalUrl(pullRequest.url); return <li key={`${pullRequest.repository}#${pullRequest.number}`}><div><strong>{url ? <a href={url} target="_blank" rel="noopener noreferrer">{pullRequest.repository} #{pullRequest.number}<span className="sr-only"> (opens in a new tab)</span></a> : `${pullRequest.repository} #${pullRequest.number}`}</strong><small>{pullRequest.ticketId} · observed {formatDate(pullRequest.observedAt)}</small></div><span className={`state state-${pullRequest.status}`}>{pullRequest.status}</span><span>Independent review gate: {pullRequest.review}</span><span>Merged: {pullRequest.merged}</span></li>; })}</ul></section>;
+}
+
 function Project({ project, requests, sessions, navigation }: { project: WorkManagementProjectProjection; requests: WorkManagementRequest[]; sessions: WorkManagementSession[]; navigation: DetailNavigation }) {
   const dependencyTitles = new Map(project.plans.flatMap((plan) => plan.phases.flatMap((phase) => phase.tickets.map((ticket) => [ticket.id, ticket.title]))));
   return <article className="project-card">
     <header className="project-heading"><div><span className="eyebrow">Project</span><h2>{project.title}</h2><p>{project.goal}</p></div><small>{project.productId}</small></header>
+    <Progress progress={project.progress} />
+    <DailySummary summary={project.dailySummaries?.at(-1)} />
+    <PullRequests project={project} pullRequests={project.pullRequests} />
     {project.artifacts.length > 0 && <section className="project-artifacts" aria-label={`${project.title} artifacts`}><h3>Artifacts</h3>{project.artifacts.map((artifact) => <Artifact key={artifact.id} artifact={artifact} />)}</section>}
     {project.plans.length === 0 ? <div className="empty"><strong>No plans published</strong><p>This project has no ordered plan in the current catalog.</p></div> : <div className="project-plans">{ordered(project.plans).map((plan) => <section className="work-plan" key={plan.id}><header><span className="plan-number">Plan {plan.order}</span><div><h3>{plan.title}</h3><p>{plan.goal}</p></div></header>{plan.phases.length === 0 ? <p className="quiet">No phases recorded for this plan.</p> : <ol className="work-phases">{ordered(plan.phases).map((phase) => <Phase key={phase.id} phase={phase} context={{ productId: project.productId, planId: plan.id, dependencyTitles, sessions }} requests={requests} navigation={navigation} />)}</ol>}<small className="work-id">Plan ID: {plan.id}</small></section>)}</div>}
   </article>;

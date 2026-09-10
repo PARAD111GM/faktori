@@ -12,9 +12,13 @@ describe('LEAN-06 Console surface', () => {
     expect(html).toContain('Latest GM review'); expect(html).toContain('proposal only'); expect(html).toContain('Repair &lt;provider&gt; route.'); expect(html).toContain('Expected benefit: Restore measured coverage.'); expect(html).toContain('Evidence: preflight:provider_executable'); expect(html).toContain('Next: Factory operator verifies the route.'); expect(html).not.toContain('Repair <provider> route.');
   });
 
-  it('keeps Overview activity compact and links to the expanded Work feed', () => {
+  it('keeps Overview limited to cross-project facts and leaves activity to Work', () => {
     const activity = Array.from({ length: 10 }, (_, index) => ({ id: String(index), at: `2026-09-09T00:00:${String(index).padStart(2, '0')}Z`, source: 'loop', summary: `event-${index}` }));
     const html = renderToStaticMarkup(createElement(Overview, { state: { activity, managerLoops: [] }, runs: [], selectRun() {} }));
-    expect((html.match(/<li><span class="activity-source/g) ?? []).length).toBe(5); expect(html).toContain('Open Work for the expanded activity feed');
+    expect(html).toContain('At a glance');
+    expect(html).toContain('Cross-project catalog facts, not live activity.');
+    expect(html).not.toContain('activity-source');
+    expect(html).not.toContain('event-9');
+    expect(html).not.toContain('Open Work for the expanded activity feed');
   });
 });

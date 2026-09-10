@@ -47,8 +47,14 @@ export async function readDeliveryRecord(path: string, limit = 65536): Promise<u
 function acceptance(state: unknown): { loopId?: string; digest?: string } {
   const input = data(state);
   const stages = Array.isArray(input.stages) ? input.stages : [];
-  const last = data([...stages].reverse().find((stage) => data(stage).kind === 'manager_accept'));
+  const last = data([...stages].reverse().find((stage) => ['manager_accept', 'deterministic_accept'].includes(String(data(stage).kind))));
   const digest = data(last.evidence).contentDigest;
+  if (last.kind === 'deterministic_accept') {
+    const response = data(last.response), receipt = data(response.receipt), actor = data(receipt.actor), evidence = data(receipt.evidence), candidate = data(evidence.candidate);
+    if (receipt.format !== 'faktori.lean-acceptance-receipt/v1' || receipt.accepted !== true || actor.kind !== 'deterministic' || actor.id !== 'faktori.lean.accept/v1'
+      || receipt.loopId !== input.loopId || receipt.stageId !== last.stageId || response.evidenceDigest !== digest || candidate.contentDigest !== digest
+      || !Array.isArray(evidence.reviewStageIds) || evidence.reviewStageIds.length < 1) return { ...(typeof input.loopId === 'string' ? { loopId: input.loopId } : {}) };
+  }
   return { ...(typeof input.loopId === 'string' ? { loopId: input.loopId } : {}), ...(typeof digest === 'string' && DIGEST.test(digest) ? { digest } : {}) };
 }
 
@@ -69,8 +75,9 @@ function publishedBinding(value: unknown, state: unknown): { digest: string; com
 export function projectLoopDelivery(state: unknown, publication?: unknown, delivery?: unknown, unreadable = false): LoopDeliverySummary {
   const input = data(state);
   const gates: LoopDeliverySummary['gates'] = GATES.map(([id, label]) => ({ id, label, status: 'unobserved' }));
-  gates[0]!.status = input.status === 'succeeded' ? 'passed' : ['failed', 'blocked', 'interrupted_uncertain'].includes(String(input.status)) ? 'failed' : input.status === 'running' ? 'pending' : 'unobserved';
-  if (input.status === 'succeeded') gates[1]!.status = 'pending';
+  const accepted = acceptance(state);
+  gates[0]!.status = input.status === 'succeeded' && accepted.digest ? 'passed' : ['failed', 'blocked', 'interrupted_uncertain'].includes(String(input.status)) ? 'failed' : input.status === 'running' ? 'pending' : 'unobserved';
+  if (input.status === 'succeeded' && accepted.digest) gates[1]!.status = 'pending';
   let issue = unreadable ? 'Delivery records need reconciliation; unreadable evidence was not accepted.' : undefined;
   const bound = publishedBinding(publication, state);
   const receipt = data(publication);

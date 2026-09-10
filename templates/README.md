@@ -10,6 +10,7 @@ approval needed to use it.
 | Template | What it runs | Requirements |
 | --- | --- | --- |
 | [Manager Loop](workflows/manager-loop/README.md) | AI Manager → fresh Implementer → verification → independent Reviewer → bounded repair → Manager acceptance, repeated by phase | Built Faktori, Node 24, authenticated Codex CLI, approved native test workspace |
+| [Lean Loop](workflows/lean-loop/README.md) | Approved brief or existing candidate → verification → independent review → deterministic acceptance | Built Faktori, Node 24, authenticated configured provider, explicit scope approval |
 
 Start with the template's README. Copy its configuration, replace placeholders,
 review the intended effects, and run its documented command. There is no generic

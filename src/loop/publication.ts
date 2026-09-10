@@ -257,14 +257,29 @@ function acceptedLoopReport(value: unknown, reportBody: Buffer): LoopPublication
   const stages = value.stages.filter(record);
   if (stages.length !== value.stages.length) throw new Error('publication_loop_report_stages_invalid');
   const acceptance = stages.at(-1);
-  if (acceptance?.kind !== 'manager_accept' || typeof acceptance.stageId !== 'string' || !record(acceptance.response) || acceptance.response.accepted !== true || !record(acceptance.evidence)) throw new Error('publication_requires_final_manager_acceptance');
+  if ((acceptance?.kind !== 'manager_accept' && acceptance?.kind !== 'deterministic_accept') || typeof acceptance.stageId !== 'string' || !record(acceptance.response) || acceptance.response.accepted !== true || !record(acceptance.evidence)) throw new Error('publication_requires_final_manager_acceptance');
   const acceptedEvidenceDigest = requiredString(acceptance.response.evidenceDigest, 'publication_accepted_evidence_digest');
   const acceptedBranch = requiredString(acceptance.evidence.branch, 'publication_accepted_branch');
   if (acceptance.evidence.contentDigest !== acceptedEvidenceDigest) throw new Error('publication_manager_acceptance_evidence_mismatch');
   const reviewStageId = requiredString(acceptance.response.reviewStageId, 'publication_review_stage_id');
-  const review = stages.find((stage) => stage.stageId === reviewStageId);
-  if (review?.kind !== 'review' || review.phaseId !== acceptance.phaseId || !record(review.response) || review.response.verdict !== 'pass' || review.response.evidenceDigest !== acceptedEvidenceDigest || !record(review.evidence) || review.evidence.contentDigest !== acceptedEvidenceDigest) throw new Error('publication_exact_review_evidence_missing');
-  if (!Array.isArray(review.verification) || review.verification.length === 0 || review.verification.some((item) => !record(item) || item.passed !== true)) throw new Error('publication_passing_verification_receipts_missing');
+  const reviewStageIds = acceptance.kind === 'deterministic_accept' ? acceptance.response.reviewStageIds : [reviewStageId];
+  if (!Array.isArray(reviewStageIds) || reviewStageIds.length < 1 || reviewStageIds.some((id) => typeof id !== 'string') || reviewStageIds.at(-1) !== reviewStageId) throw new Error('publication_exact_review_evidence_missing');
+  const reviews = reviewStageIds.map((id) => stages.find((stage) => stage.stageId === id));
+  if (reviews.some((review) => review?.kind !== 'review' || review.phaseId !== acceptance.phaseId || !record(review.response) || review.response.verdict !== 'pass' || review.response.evidenceDigest !== acceptedEvidenceDigest || !record(review.evidence) || review.evidence.contentDigest !== acceptedEvidenceDigest)) throw new Error('publication_exact_review_evidence_missing');
+  if (reviews.some((review) => !Array.isArray(review?.verification) || review.verification.length === 0 || review.verification.some((item) => !record(item) || item.passed !== true || (acceptance.kind === 'deterministic_accept' && item.evidenceDigest !== acceptedEvidenceDigest)))) throw new Error('publication_passing_verification_receipts_missing');
+  if (acceptance.kind === 'deterministic_accept') {
+    const receipt = acceptance.response.receipt;
+    if (!record(receipt)) throw new Error('publication_deterministic_acceptance_receipt_invalid');
+    const actor = receipt.actor;
+    const evidence = receipt.evidence;
+    if (!record(actor) || !record(evidence) || !record(evidence.candidate)) throw new Error('publication_deterministic_acceptance_receipt_invalid');
+    const candidate = evidence.candidate;
+    if (receipt.format !== 'faktori.lean-acceptance-receipt/v1' || receipt.accepted !== true || actor.kind !== 'deterministic' || actor.id !== 'faktori.lean.accept/v1'
+      || receipt.loopId !== value.loopId || receipt.stageId !== acceptance.stageId || candidate?.contentDigest !== acceptedEvidenceDigest || candidate.branch !== acceptedBranch
+      || !Array.isArray(evidence?.reviewStageIds) || canonical(evidence.reviewStageIds) !== canonical(reviewStageIds)
+      || typeof evidence?.requirementsDigest !== 'string' || typeof evidence?.acceptanceCriteriaDigest !== 'string' || typeof evidence?.verificationDigest !== 'string' || typeof evidence?.preflightDigest !== 'string'
+      || evidence.verificationDigest !== sha256(canonical(acceptance.verification)) || typeof receipt.reusable !== 'boolean') throw new Error('publication_deterministic_acceptance_receipt_invalid');
+  }
   return {
     loopId: value.loopId,
     reportDigest: sha256(reportBody),

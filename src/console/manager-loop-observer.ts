@@ -31,13 +31,14 @@ export type ManagerLoopStatus = 'running' | 'succeeded' | 'failed' | 'blocked' |
 
 export interface ManagerLoopStageSummary {
   phaseId: string;
-  kind: 'manager_brief' | 'implement' | 'repair' | 'review' | 'manager_accept';
+  kind: 'manager_brief' | 'implement' | 'repair' | 'review' | 'manager_accept' | 'deterministic_accept';
   round: number;
   outcome: string;
   completedAt: string;
   decision?: 'ready' | 'implemented' | 'blocked' | 'pass' | 'repair' | 'accepted' | 'rejected';
   verification?: 'passed' | 'failed';
   usage: { availability: 'reported' | 'partially_reported' | 'unavailable'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; reasoningTokens?: number };
+  actor: 'provider' | 'deterministic';
 }
 
 export interface ManagerLoopSummary {
@@ -71,7 +72,7 @@ const MAX_USAGE_EXPORT_BYTES = 1024 * 1024;
 const DEFAULT_POLL_INTERVAL_MS = 500;
 const DEFAULT_STALE_AFTER_MS = 5 * 60_000;
 const ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
-const STAGE_KINDS = new Set<ManagerLoopStageSummary['kind']>(['manager_brief', 'implement', 'repair', 'review', 'manager_accept']);
+const STAGE_KINDS = new Set<ManagerLoopStageSummary['kind']>(['manager_brief', 'implement', 'repair', 'review', 'manager_accept', 'deterministic_accept']);
 const STATUSES = new Set<Exclude<ManagerLoopStatus, 'unavailable'>>(['running', 'succeeded', 'failed', 'blocked', 'interrupted_uncertain']);
 const OUTCOMES = new Set(['completed', 'unchanged_verified', 'denied', 'authentication_required', 'quota_exhausted', 'failed', 'cancelled', 'interrupted_uncertain', 'unavailable']);
 const REASON_CODES = [
@@ -84,6 +85,9 @@ const REASON_CODES = [
   'configured_verification_failed', 'repair_blocked', 'review_evidence_mismatch',
   'invalid_review_verdict', 'repair_limit_exceeded', 'review_not_passed',
   'manager_acceptance_invalid',
+  'validation_repair_not_approved', 'verification_changed_candidate',
+  'deterministic_acceptance_evidence_mismatch', 'lean_preflight_failed',
+  'deterministic_acceptance_preflight_changed',
 ] as const;
 
 function record(value: unknown): RecordValue | undefined {
@@ -173,7 +177,7 @@ function stage(value: unknown): ManagerLoopStageSummary | undefined {
   if (kind === 'manager_brief' && (response?.status === 'ready' || response?.status === 'blocked')) decision = response.status;
   else if ((kind === 'implement' || kind === 'repair') && (response?.status === 'implemented' || response?.status === 'blocked')) decision = response.status;
   else if (kind === 'review' && (response?.verdict === 'pass' || response?.verdict === 'repair')) decision = response.verdict;
-  else if (kind === 'manager_accept' && typeof response?.accepted === 'boolean') decision = response.accepted ? 'accepted' : 'rejected';
+  else if ((kind === 'manager_accept' || kind === 'deterministic_accept') && typeof response?.accepted === 'boolean') decision = response.accepted ? 'accepted' : 'rejected';
   const verification = Array.isArray(input?.verification) && input.verification.length > 0
     && input.verification.every((item) => typeof record(item)?.passed === 'boolean')
     ? input.verification.every((item) => record(item)?.passed === true) ? 'passed' : 'failed'
@@ -187,6 +191,7 @@ function stage(value: unknown): ManagerLoopStageSummary | undefined {
     ...(decision === undefined ? {} : { decision }),
     ...(verification === undefined ? {} : { verification }),
     usage: usage(input?.usage),
+    actor: kind === 'deterministic_accept' ? 'deterministic' : 'provider',
   };
 }
 
@@ -194,6 +199,7 @@ function stageUsageRecords(source: ManagerLoopSource, rawStages: unknown[], curr
   const result: Record<string, unknown>[] = [];
   for (const raw of rawStages) {
     const input = record(raw);
+    if (input?.kind === 'deterministic_accept') continue;
     const stageId = identifier(input?.stageId);
     const phaseId = identifier(input?.phaseId);
     const completedAt = timestamp(input?.completedAt);
@@ -220,7 +226,7 @@ function stageUsageRecords(source: ManagerLoopSource, rawStages: unknown[], curr
   }
   const currentStageId = identifier(current?.stageId);
   const currentPhaseId = identifier(current?.phaseId);
-  if (currentStageId !== undefined && currentPhaseId !== undefined) {
+  if (currentStageId !== undefined && currentPhaseId !== undefined && current?.kind !== 'deterministic_accept') {
     // A current stage is a registered participating session with unknown
     // telemetry until it emits a terminal receipt. Counting it keeps coverage
     // truthful without inventing in-flight usage.

@@ -5,6 +5,12 @@ an explicit, owner-approved two-step handoff that freezes the accepted content,
 binds it to one immutable commit, and creates or reconciles one draft pull
 request. It never commits, merges, deploys, or marks external review complete.
 
+The opt-in [lean execution profile](lean-execution.md) replaces the provider
+manager-accept turn with an explicitly deterministic acceptance receipt. This
+handoff recognizes that receipt only when all exact-candidate verification and
+independent-review bindings validate. Console observation semantics are defined
+separately in [loop observation](loop-observation.md).
+
 ## 1. Freeze the accepted content
 
 Run this immediately after the loop succeeds, while the accepted workspace

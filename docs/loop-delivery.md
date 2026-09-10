@@ -8,6 +8,9 @@ they do not grant permissions or assign a person automatically.
 Use the approved [publication handoff](loop-publication.md) to freeze reviewed
 content and publish a matching commit. Its receipt links the PR to the loop.
 Publication is an explicit operation, not an automatic consequence of acceptance.
+Opt-in [lean execution](lean-execution.md) enters the same delivery gates after
+its deterministic receipt passes exact verification and review checks. See
+[loop observation](loop-observation.md) for the Console projection contract.
 
 For later gates, an authorized operator can record evidence from the existing
 delivery process:

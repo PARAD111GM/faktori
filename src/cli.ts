@@ -12,6 +12,7 @@ import {
   evaluateInstalledPreflightDocument,
   initializeRuntimeInstallation,
   runManagerLoop,
+  runLeanLoop,
   recordLoopDeliveryEvidence,
   prepareLoopPublicationHandoff,
   publishLoopPublication,
@@ -41,6 +42,7 @@ const HELP = `Usage:
   faktori runtime rebuild <journal.jsonl> <projection.sqlite>
   faktori run manifest <journal.jsonl> <run-id>
   faktori loop run <config.json>
+  faktori loop lean <config.json>
   faktori loop delivery record <request.json>
   faktori loop publication prepare <request.json>
   faktori loop publication publish <request.json>
@@ -203,6 +205,14 @@ async function run(argv: string[]): Promise<void> {
   if (group === 'loop' && action === 'run') {
     if (argv.length !== 3 || !source) throw new Error('loop run requires exactly one manager loop configuration path');
     print(await runManagerLoop(await json(source, 'manager loop configuration')));
+    return;
+  }
+
+  if (group === 'loop' && action === 'lean') {
+    if (argv.length !== 3 || !source) throw new Error('loop lean requires exactly one lean loop configuration path');
+    const result = await runLeanLoop(await json(source, 'lean loop configuration'));
+    print(result);
+    if (result.status !== 'succeeded') process.exitCode = 1;
     return;
   }
 

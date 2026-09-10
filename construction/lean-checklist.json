@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "project": {
     "name": "Faktori Lean Iteration",
-    "currentPhase": 2,
+    "currentPhase": 3,
     "source": "docs/lean-iteration.md",
     "phaseBudgets": {
       "1": 180000,
       "2": 220000,
       "3": 180000
     },
-    "progressSummary": "Phase 1 accepted with real hot registration, usage reconciliation and restart proof. Phase 2 admitted. Estimates are advisory; no native goal cap. Creator is unchanged."
+    "progressSummary": "Phases 1 and 2 accepted with installed live validation and implementation proofs. Two rejected review attempts remain counted. Phase 3 admitted; Creator unchanged."
   },
   "tickets": [
     {
@@ -44,13 +44,15 @@
       "id": "LEAN-03",
       "phase": 2,
       "title": "Lean execution and validation-only",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "LEAN-01",
         "LEAN-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Phase 2 orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
       "notes": [],
       "evidence": []
@@ -59,13 +61,15 @@
       "id": "LEAN-04",
       "phase": 2,
       "title": "Routing, compact packets and preflight",
-      "status": "in_progress",
+      "status": "complete",
       "dependencies": [
         "LEAN-01",
         "LEAN-02"
       ],
       "owner": {
-        "role": "unassigned"
+        "role": "Phase 2 orchestrator",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
       },
       "notes": [],
       "evidence": []
@@ -133,6 +137,22 @@
       "from": "not_started",
       "to": "in_progress",
       "reason": "Phase 1 accepted; routing and preflight implementation admitted"
+    },
+    {
+      "eventId": "status-1789004316583-ghdzpx",
+      "at": "2026-09-10T01:38:36.584Z",
+      "ticketId": "LEAN-03",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Installed validation-only and implementation proofs accepted; rejected attempts retained."
+    },
+    {
+      "eventId": "status-1789004316857-m3m384",
+      "at": "2026-09-10T01:38:36.858Z",
+      "ticketId": "LEAN-04",
+      "from": "in_progress",
+      "to": "complete",
+      "reason": "Routing, exact evidence and zero-launch preflight tested; installed Luna roles proven."
     }
   ]
 }

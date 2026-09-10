@@ -52,6 +52,24 @@ async function waitFor(read, predicate, timeoutMs = 2_000) {
 }
 
 describe('Manager Loop Console observer', () => {
+  it('shows deterministic acceptance without counting a fictional provider session or missing telemetry', async () => {
+    const { root, artifacts, coordinator } = await fixture();
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const review = { stageId: 'review-one', phaseId: 'work', kind: 'review', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:00:00Z', evidence: { contentDigest: digest }, usage: { availability: 'reported', inputTokens: 10, outputTokens: 5 }, response: { verdict: 'pass' } };
+    const receipt = { format: 'faktori.lean-acceptance-receipt/v1', accepted: true, actor: { kind: 'deterministic', id: 'faktori.lean.accept/v1' }, loopId: 'two-phase-math-proof', stageId: 'accepted', evidence: { candidate: { contentDigest: digest }, reviewStageIds: ['review-one'] } };
+    const acceptance = { stageId: 'accepted', phaseId: 'work', kind: 'deterministic_accept', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:01:00Z', evidence: { contentDigest: digest }, usage: { availability: 'unavailable', unavailableReason: 'deterministic_stage_has_no_provider_usage' }, response: { accepted: true, evidenceDigest: digest, receipt } };
+    await writeFile(join(artifacts, 'state.json'), JSON.stringify(loopState({ status: 'succeeded', currentStage: undefined, completedPhases: ['work'], stages: [review, acceptance] })));
+    const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: artifacts }] });
+    try {
+      await observer.poll();
+      const summary = observer.summaries()[0];
+      expect(summary.stages).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'deterministic_accept', actor: 'deterministic', decision: 'accepted' })]));
+      expect(summary.outcomes.coverage).toEqual({ registeredSessions: 1, usableSessions: 1, ratio: 1 });
+      expect(summary.usage.unknownMeasurements).toBe(0);
+      expect(summary.delivery.gates[0].status).toBe('passed');
+    } finally { observer.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
   it('projects reported and unavailable stage telemetry through shared lower-bound accounting and outcome cohorts', async () => {
     const { root, artifacts, coordinator } = await fixture();
     await writeFile(join(artifacts, 'state.json'), JSON.stringify(loopState({

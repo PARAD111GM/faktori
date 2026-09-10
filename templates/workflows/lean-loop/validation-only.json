@@ -1,0 +1,42 @@
+{
+  "format": "faktori.lean-loop/v1",
+  "loopId": "replace-validation-loop",
+  "profile": "validation_only",
+  "workspace": { "path": "/absolute/path/to/frozen-candidate", "nativeAccessApproved": true },
+  "artifactsDirectory": "/absolute/path/to/private-loop-records",
+  "approval": { "approved": false, "approvedBy": "replace-owner", "scopeRevision": "replace-scope-revision" },
+  "candidate": {
+    "baseRevision": "0000000000000000000000000000000000000000",
+    "dependencies": [],
+    "environmentInputs": [],
+    "inputCompleteness": "complete"
+  },
+  "provider": {
+    "kind": "codex",
+    "model": "replace-current-provider-model",
+    "reasoning": "medium",
+    "contextIsolation": "bounded",
+    "executable": "codex",
+    "knownQuota": "unknown"
+  },
+  "roleRoutes": {
+    "reviewer": [
+      { "id": "review-routine", "reasoning": "medium", "suitability": "routine", "availability": "unknown" }
+    ]
+  },
+  "requirements": [
+    { "id": "req-result", "text": "Replace with the exact approved requirement." }
+  ],
+  "acceptanceCriteria": [
+    { "id": "ac-result", "requirementIds": ["req-result"], "expectedOutcome": "Replace with an observable expected outcome." }
+  ],
+  "verification": [
+    { "command": "npm", "args": ["test", "--", "--maxWorkers=2", "--testTimeout=15000"] }
+  ],
+  "toolchain": [
+    { "command": "node", "args": ["--version"], "expectedOutput": "v24.20.0" },
+    { "command": "npm", "args": ["--version"], "expectedOutput": "12.0.2" }
+  ],
+  "review": { "sensitive": false, "requiredPasses": 1 },
+  "limits": { "maxRuntimeMinutes": 60, "maxTokens": 0, "maxRepairRounds": 1 }
+}

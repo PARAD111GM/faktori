@@ -81,11 +81,11 @@ is no automatic task discovery or wakeup.
 
 Work shows local catalog tickets even when no agent has run them and no tracker
 is configured. Its project filter includes catalog projects. Connected Jira
-issues appear in their own authoritative board; catalog tickets matched by issue
-key and project are not repeated locally. Unmatched local tickets remain visible.
+issues and local tickets appear in the same Work Kanban; catalog tickets matched by issue
+key and project are not repeated. Unmatched local tickets remain visible.
 An unavailable Jira source does not erase the local backlog. Status not recorded
-is its own column, not an invented To do state. Execution runs remain a separate
-view of agent activity, never a substitute for the ticket backlog.
+is its own column, not an invented To do state. Linked executions open from ticket
+cards; there is no second execution-state Kanban or separate local-ticket section.
 
 Local tickets are maintained through the owner-controlled catalog; the board does
 not silently create Jira issues or convert a local status into a tracker update.

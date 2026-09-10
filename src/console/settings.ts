@@ -19,6 +19,8 @@ export interface ConsoleSettings {
   factory: {
     id: string;
     name: string;
+    /** Whether the browser-safe settings summary came from a canonical factory catalog. */
+    catalogConfigured: boolean;
     defaults?: ConsoleSettingsScope;
   };
   providers: Array<{
@@ -116,6 +118,7 @@ export function createConsoleSettings(configuration: LocalConsoleConfiguration):
     factory: {
       id: configuration.factoryId,
       name: catalog?.factory.name ?? configuration.factoryId,
+      catalogConfigured: catalog !== undefined,
       ...(catalog === undefined ? {} : { defaults: scopeSummary(catalog.factory.defaults) }),
     },
     providers: PROVIDERS.map((id) => {

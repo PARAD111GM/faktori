@@ -17,6 +17,13 @@ type DetailNavigation = {
   openRequest: (id: string, productId: string) => void;
 };
 
+type ProjectNavigation = {
+  selectedProjectId?: string;
+  onSelectProject?: (productId: string) => void;
+  onBackToProjects?: () => void;
+  onRefresh?: () => void;
+};
+
 
 const formatDate = (value?: string): string => {
   if (!value) return 'Not observed';
@@ -113,9 +120,10 @@ function PullRequests({ project, pullRequests }: { project: WorkManagementProjec
   return <section className="project-pull-requests"><div className="panel-heading"><div><h3>Linked pull requests</h3><p>Read-only observations. A merge does not accept a ticket or ship a product; GitHub review state is not an independent Faktori review gate.</p></div></div><ul>{linked.map((pullRequest) => { const url = safeExternalUrl(pullRequest.url); return <li key={`${pullRequest.repository}#${pullRequest.number}`}><div><strong>{url ? <a href={url} target="_blank" rel="noopener noreferrer">{pullRequest.repository} #{pullRequest.number}<span className="sr-only"> (opens in a new tab)</span></a> : `${pullRequest.repository} #${pullRequest.number}`}</strong><small>{pullRequest.ticketId} · observed {formatDate(pullRequest.observedAt)}</small></div><span className={`state state-${pullRequest.status}`}>{pullRequest.status}</span><span>Independent review gate: {pullRequest.review}</span><span>Merged: {pullRequest.merged}</span></li>; })}</ul></section>;
 }
 
-function Project({ project, requests, sessions, navigation }: { project: WorkManagementProjectProjection; requests: WorkManagementRequest[]; sessions: WorkManagementSession[]; navigation: DetailNavigation }) {
+export function Project({ project, requests, sessions, navigation, onBackToProjects, onRefresh }: { project: WorkManagementProjectProjection; requests: WorkManagementRequest[]; sessions: WorkManagementSession[]; navigation: DetailNavigation; onBackToProjects?: () => void; onRefresh?: () => void }) {
   const dependencyTitles = new Map(project.plans.flatMap((plan) => plan.phases.flatMap((phase) => phase.tickets.map((ticket) => [ticket.id, ticket.title]))));
   return <article className="project-card">
+    <div className="project-detail-actions">{onBackToProjects ? <button type="button" onClick={onBackToProjects}>Back to projects</button> : <a href="#projects">Back to projects</a>}{onRefresh && <button type="button" onClick={onRefresh}>Refresh catalog</button>}</div>
     <header className="project-heading"><div><span className="eyebrow">Project</span><h2>{project.title}</h2><p>{project.goal}</p></div><small>{project.productId}</small></header>
     <Progress progress={project.progress} />
     <DailySummary summary={project.dailySummaries?.at(-1)} />
@@ -125,11 +133,31 @@ function Project({ project, requests, sessions, navigation }: { project: WorkMan
   </article>;
 }
 
-export function Projects({ workManagement, navigation }: { workManagement?: WorkManagementState; navigation: DetailNavigation }) {
+export function ProjectList({ projects, onSelectProject }: { projects: WorkManagementProjectProjection[]; onSelectProject?: (productId: string) => void }) {
+  return <ol className="project-list" aria-label="Projects">
+    {projects.map((project) => {
+      const progress = project.progress;
+      const action = <><span className="project-list-action">Open project</span><span aria-hidden="true">›</span></>;
+      return <li key={project.productId}>
+        {onSelectProject
+          ? <button className="project-list-item" type="button" onClick={() => onSelectProject(project.productId)}><span><strong>{project.title}</strong><small>{project.goal}</small></span><span className="project-list-facts"><span className={`state state-${progress.status}`}>{progress.status === 'available' ? `${progress.tickets.done}/${progress.tickets.total} accepted` : progress.status}</span>{action}</span></button>
+          : <a className="project-list-item" href={`#projects?project=${encodeURIComponent(project.productId)}`}><span><strong>{project.title}</strong><small>{project.goal}</small></span><span className="project-list-facts"><span className={`state state-${progress.status}`}>{progress.status === 'available' ? `${progress.tickets.done}/${progress.tickets.total} accepted` : progress.status}</span>{action}</span></a>}
+      </li>;
+    })}
+  </ol>;
+}
+
+export function Projects({ workManagement, navigation, selectedProjectId, onSelectProject, onBackToProjects, onRefresh }: { workManagement?: WorkManagementState; navigation: DetailNavigation } & ProjectNavigation) {
   if (!workManagement || workManagement.status === 'unavailable') return <section className="workspace projects-workspace"><div className="panel panel-primary"><div className="panel-heading"><div><h2>Projects</h2><p>Human-readable plans appear when an owner-maintained work catalog is configured.</p></div><span className="state state-unavailable">Unavailable</span></div><div className="empty"><strong>Work catalog unavailable</strong><p>{workManagement?.error ?? 'No catalog projection was published.'} Legacy Console configuration remains usable. Add an optional work catalog and restart the Console to publish Projects.</p></div></div></section>;
+  const usesProjectNavigation = selectedProjectId !== undefined || onSelectProject !== undefined || onBackToProjects !== undefined;
+  const selectedProject = selectedProjectId === undefined ? undefined : workManagement.projects.find((project) => project.productId === selectedProjectId);
   return <section className="workspace projects-workspace">
     <div className="panel panel-primary projects-header"><div><span className="eyebrow">Owner-maintained work catalog</span><h2>Projects</h2><p>Goals and ordered work are catalog facts. Manager reports are shown separately and never mark work accepted.</p></div><div className="projects-catalog-facts"><span className={`state state-${workManagement.status}`}>{workManagement.status}</span><small>Revision {workManagement.revision ?? 'not observed'}</small><small>Observed {formatDate(workManagement.observedAt)}</small></div></div>
     {workManagement.status === 'stale' && <p className="catalog-notice" role="status">The last valid catalog remains visible. {workManagement.error ?? 'The latest reload could not be confirmed.'}</p>}
-    {workManagement.projects.length === 0 ? <div className="panel panel-support"><div className="empty"><strong>No projects published</strong><p>The configured catalog did not publish a project projection.</p></div></div> : workManagement.projects.map((project) => <Project key={project.productId} project={project} requests={workManagement.requests} sessions={workManagement.sessions} navigation={navigation} />)}
+    {workManagement.projects.length === 0 ? <div className="panel panel-support"><div className="empty"><strong>No projects published</strong><p>The configured catalog did not publish a project projection.</p></div></div>
+      : !usesProjectNavigation ? workManagement.projects.map((project) => <Project key={project.productId} project={project} requests={workManagement.requests} sessions={workManagement.sessions} navigation={navigation} />)
+        : selectedProject ? <Project project={selectedProject} requests={workManagement.requests} sessions={workManagement.sessions} navigation={navigation} onBackToProjects={onBackToProjects} onRefresh={onRefresh} />
+          : selectedProjectId !== undefined ? <div className="panel panel-support project-not-found"><div className="empty"><strong>Project not available</strong><p>This catalog no longer publishes the requested project.</p>{onBackToProjects ? <button type="button" onClick={onBackToProjects}>Back to projects</button> : <a href="#projects">Back to projects</a>}</div></div>
+            : <ProjectList projects={workManagement.projects} onSelectProject={onSelectProject} />}
   </section>;
 }

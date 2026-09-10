@@ -63,8 +63,10 @@ Linux supports descriptor-anchored reads beneath an owner-configured
 closed for file reads and should use snapshots. An unavailable artifact is not
 an empty document. No insecure traversal fallback is used.
 
-Projects shows the hierarchy, artifact content, assignments, and reported
-accomplishments. Sessions shows configured task identities; configuration and
+Projects starts with a project list. Select a project to open its hierarchy,
+artifact content, assignments, and reported accomplishments. Project detail has
+a stable `#projects?project=product-id` link and a Back to projects control.
+Sessions shows configured task identities; configuration and
 contact timestamps do not prove that a worker is active. Work owns requests and
 activity. Activity links open the relevant retained record.
 
@@ -76,6 +78,25 @@ The active Manager still performs the documented private relay handoff. There
 is no automatic task discovery or wakeup.
 
 ## Publish work status deliberately
+
+Work shows local catalog tickets even when no agent has run them and no tracker
+is configured. Its project filter includes catalog projects. Connected Jira
+issues appear in their own authoritative board; catalog tickets matched by issue
+key and project are not repeated locally. Unmatched local tickets remain visible.
+An unavailable Jira source does not erase the local backlog. Status not recorded
+is its own column, not an invented To do state. Execution runs remain a separate
+view of agent activity, never a substitute for the ticket backlog.
+
+Local tickets are maintained through the owner-controlled catalog; the board does
+not silently create Jira issues or convert a local status into a tracker update.
+Configure the read-only source through [Jira setup](console-jira.md). Without a
+source and its approved authentication environment, a Jira sync is not possible.
+
+Settings editing additionally requires the private Console's inline
+`factoryConfiguration`; the work catalog alone is not a factory configuration.
+Bare observation-only Consoles show recovery instructions rather than a broken
+Edit action. Add the approved configuration for that installation, preserving its
+factory identity, rather than copying another product's settings or credentials.
 
 Each ticket may include `status`: `remaining`, `in_progress`, `blocked`, or
 `done`. Omitting it means unknown, not remaining or complete. These are

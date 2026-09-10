@@ -4,6 +4,17 @@ Faktori can observe owner-selected Jira projects as a read-only Console source. 
 
 This observer is optional. With no `jiraSources` entries, Faktori makes no Jira requests and the Console remains fully usable.
 
+Tracker selection is per product: configure a source only for products managed
+in Jira. Products without one use their local work-catalog tickets. Do not attach
+an unrelated Jira board simply to populate the Console.
+
+Authentication can be shared across projects on the same Jira site: use the same
+`authorizationEnv` reference for each allowlisted source. Set that credential once
+in the Console server environment, with access to the intended projects; it is
+not a separate login per project. The current integration accepts an existing
+server-side authorization header; it does not implement a browser OAuth login.
+This does not require combining independent factories or coding sessions.
+
 ## Configuration
 
 Add an allowlisted source to the local Console configuration:

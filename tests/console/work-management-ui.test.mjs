@@ -38,7 +38,7 @@ afterAll(async () => {
 describe('Console work-management UI', () => {
   it('renders goals, ordered plans and bounded artifacts with IDs kept secondary', async () => {
     const { Projects } = await server.ssrLoadModule('/console/src/projects.tsx');
-    const html = renderToStaticMarkup(createElement(Projects, { workManagement, navigation: { openRun() {}, openLoop() {}, openRequest() {} } }));
+    const html = renderToStaticMarkup(createElement(Projects, { workManagement, selectedProjectId: 'faktori', onBackToProjects() {}, navigation: { openRun() {}, openLoop() {}, openRequest() {} } }));
 
     expect(html).toContain('Faktori Console');
     expect(html).toContain('Make work understandable without pretending that reports are acceptance.');
@@ -87,7 +87,7 @@ describe('Console work-management UI', () => {
     const { Projects } = await server.ssrLoadModule('/console/src/projects.tsx');
     const quiet = structuredClone(workManagement);
     quiet.projects[0].dailySummaries[0].activity = { managerReports: 0, decisionTransitions: 0, blockers: 0, ticketTransitions: 0, ticketDoneTransitions: 0, loopPhaseEvents: 0, pullRequestChanges: 0, pullRequestChangeCoverage: 'unavailable' };
-    const html = renderToStaticMarkup(createElement(Projects, { workManagement: quiet, navigation: { openRun() {}, openLoop() {}, openRequest() {} } }));
+    const html = renderToStaticMarkup(createElement(Projects, { workManagement: quiet, selectedProjectId: 'faktori', onBackToProjects() {}, navigation: { openRun() {}, openLoop() {}, openRequest() {} } }));
 
     expect(html).toContain('No recorded non-PR changes today; PR change history unavailable.');
     expect(html).not.toContain('No recorded changes today.');

@@ -201,13 +201,32 @@ describe('Console presentation contract', () => {
     expect(missing).toContain('Settings unavailable');
   });
 
+  it('explains how to restore settings editing when the running Console has no factory catalog', async () => {
+    const { Settings } = await server.ssrLoadModule('/console/src/settings.tsx');
+    const html = renderToStaticMarkup(createElement(Settings, { settings: {
+      factory: { id: 'factory', name: 'Factory', catalogConfigured: false },
+      providers: [], products: [], environments: [],
+      resourceLimits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 1, maxTokens: 0, strictSpending: false, strictSpendingSupported: false },
+      recovery: { configured: false, routineActions: [] },
+      generalManager: { mode: 'not_configured', reviewRouteCount: 0 },
+    } }));
+    expect(html).toContain('Factory settings need a catalog');
+    expect(html).toContain('Restore factory settings');
+    expect(html).toContain('factoryConfiguration');
+    expect(html).toContain('factory.id');
+    expect(html).toContain('cannot select a file or import a catalog from the browser');
+    expect(html).not.toContain('Your factory, configured');
+  });
+
   it('offers persistent editing only when supported and identifies specific reviewed changes', async () => {
-    const { SettingsEditor, changes } = await server.ssrLoadModule('/console/src/settings-editor.tsx');
+    const { SettingsEditor, changes, settingsEditorError } = await server.ssrLoadModule('/console/src/settings-editor.tsx');
     const html = renderToStaticMarkup(createElement(SettingsEditor, { settings: {}, token: '', onSaved() {} }));
     expect(html).toContain('Edit settings');
     expect(html).toContain('Saved settings take effect after the Console is restarted');
     expect(changes({limits:{maxConcurrentRuns:1}}, {limits:{maxConcurrentRuns:2}})).toEqual(['limits.maxConcurrentRuns: 1 → 2']);
     expect(changes({limits:{maxTokens:0}}, {limits:{maxTokens:0}})).toEqual([]);
+    expect(settingsEditorError('settings_editing_requires_factory_configuration', 409)).toContain('started without its factory catalog');
+    expect(settingsEditorError('settings_editing_requires_factory_configuration', 409)).not.toContain('settings_editing_requires_factory_configuration');
   });
 
 });

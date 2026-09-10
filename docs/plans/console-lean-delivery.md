@@ -89,7 +89,7 @@ Keep industrial bento styling/4px spacing; human titles first, IDs secondary.
 ## Acceptance ledger
 
 - [x] Batch 1 implemented, reviewed and installed proof accepted.
-- [ ] Batch 2 implemented, reviewed and real decision proof accepted.
+- [x] Batch 2 implemented, reviewed and real decision proof accepted.
 - [ ] Batch 3 assembled gate, installed journey and documentation accepted.
 
 Manager maintains this ledger; agents return compact diffs, commands, evidence,
@@ -164,3 +164,17 @@ remaining concerns and usage gaps. No separate dashboards or progress services.
   scope, rejecting product-only assignments that the composer cannot use. Six
   focused work-management tests and typecheck passed after that correction; the
   499-test assembled gate above predates only this targeted correction and docs.
+- Owner chose “Collapsed by default” in the installed UI at
+  2026-09-10T05:39:47.507Z. After restarting only the isolated proof Console,
+  the same single decision retained that response at pending_manager_ack/revision 3.
+  Private acknowledgement advanced to revision 4, resolution to revision 5.
+  Browser verification showed zero pending items and one collapsed history item.
+  No provider/task dispatch or operational permission was created. Batch 2 accepted.
+
+### Batch 3 admission
+
+Qualified progress and page ownership remain the final batch. Advisory specialist
+estimate 250k (backend 110k, UI 90k, review/rework 50k), low confidence, with root
+coordination separately unmeasured. Reduce overhead by reusing existing metrics,
+one shared typed projection, deterministic summaries, and a single final installed
+journey. No native goal cap. Prior estimates were exceeded, not treated as stops.

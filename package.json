@@ -1,6 +1,6 @@
 {
   "name": "faktori",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "faktoriStateFormatVersion": 1,
   "private": false,
   "description": "A self-hosted, vendor-neutral software factory for small teams.",

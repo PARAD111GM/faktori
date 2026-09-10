@@ -14,6 +14,7 @@ import type { PreflightResult } from '../diagnostics/preflight.ts';
 import type { ConsoleSettings } from './settings.ts';
 import type { ConsoleSettingsEditor } from './settings-edit.ts';
 import type { ManagerLoopObserver } from './manager-loop-observer.ts';
+import type { ManagerLoopRegistry } from './manager-loop-registry.ts';
 import type { JiraObserver } from './jira-observer.ts';
 import { consoleActivity } from './activity.ts';
 import type { ManagerConnectedStore } from '../manager-connected/index.ts';
@@ -62,6 +63,8 @@ export interface ConsoleServiceOptions {
   settingsEditor?: ConsoleSettingsEditor;
   /** Server-owned observer for explicitly configured Manager Loop artifact directories. */
   managerLoopObserver?: ManagerLoopObserver;
+  /** Authenticated source registration; it grants observation only. */
+  managerLoopRegistry?: ManagerLoopRegistry;
   jiraObserver?: JiraObserver;
   managerConnected?: { store: ManagerConnectedStore; relayToken: string };
   assetsDirectory?: string;
@@ -423,6 +426,21 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());
+  app.post('/api/console/manager-loops/register', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (options.managerLoopRegistry === undefined || options.managerLoopObserver === undefined) return reply.code(409).send({ error: 'manager_loop_registration_unavailable' });
+    try {
+      const registered = await options.managerLoopRegistry.register(request.body);
+      const observed = await options.managerLoopObserver.register(registered.source);
+      events.emit('state');
+      return { registration: { id: registered.source.id, ...(registered.source.productId === undefined ? {} : { productId: registered.source.productId }), ...(registered.source.podId === undefined ? {} : { podId: registered.source.podId }) }, created: registered.created || observed, state: state() };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '';
+      if (detail === 'manager_loop_registration_conflict') return reply.code(409).send({ error: detail });
+      if (detail === 'manager_loop_registration_outside_allowlisted_roots') return reply.code(400).send({ error: detail });
+      return reply.code(400).send({ error: 'manager_loop_registration_rejected' });
+    }
+  });
   if (options.managerConnected) {
     const { store, relayToken } = options.managerConnected;
     registerManagerRelay(app, store, relayToken);

@@ -25,6 +25,7 @@ import type { PreflightResult } from '../diagnostics/preflight.ts';
 import { createConsoleSettings } from './settings.ts';
 import { FileConsoleSettingsEditor, type ConsoleSettingsEditor } from './settings-edit.ts';
 import { ManagerLoopObserver, type ManagerLoopSource } from './manager-loop-observer.ts';
+import { ManagerLoopRegistry } from './manager-loop-registry.ts';
 import { JiraObserver, parseJiraSources, type JiraSource } from './jira-observer.ts';
 import { ManagerConnectedStore, parseManagerConnectedConfig, type ManagerConnectedConfig } from '../manager-connected/index.ts';
 import { newManagerRelayToken, writeManagerRelayConnection } from './manager-relay.ts';
@@ -43,6 +44,8 @@ export interface LocalConsoleConfiguration {
   runtime?: LocalConsoleRuntimeConfiguration;
   /** Owner-allowlisted, server-only Manager Loop artifact directories. */
   managerLoops: ManagerLoopSource[];
+  /** Optional controller-owned persistence for hot, allowlisted loop sources. */
+  managerLoopRegistry?: { path: string; allowedArtifactRoots: string[] };
   /** Read-only tracker sources; credentials remain in server environment. */
   jiraSources?: JiraSource[];
   managerConnected?: ManagerConnectedConfig;
@@ -82,32 +85,54 @@ function absolutePath(value: unknown, field: string): string {
   return path;
 }
 
+function managerLoopSource(value: unknown, index: number, catalog?: ResolvedFactoryConfiguration): ManagerLoopSource {
+  const allowedKeys = new Set(['id', 'artifactsDirectory', 'productId', 'podId', 'usageExportPath', 'references']);
+  const loopIdPattern = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+  const scopeIdPattern = /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{0,126}[a-zA-Z0-9])?$/;
+  const input = object(value);
+  if (input === undefined || Object.keys(input).some((key) => !allowedKeys.has(key))) throw new Error(`managerLoops[${index}] has unsupported fields`);
+  const id = requiredText(input.id, `managerLoops[${index}].id`);
+  if (!loopIdPattern.test(id)) throw new Error(`managerLoops[${index}].id must match the Manager Loop lowercase slug format`);
+  const productId = input.productId === undefined ? undefined : requiredText(input.productId, `managerLoops[${index}].productId`);
+  const podId = input.podId === undefined ? undefined : requiredText(input.podId, `managerLoops[${index}].podId`);
+  if (productId !== undefined && !scopeIdPattern.test(productId)) throw new Error(`managerLoops[${index}].productId must be a bounded identifier`);
+  if (podId !== undefined && !scopeIdPattern.test(podId)) throw new Error(`managerLoops[${index}].podId must be a bounded identifier`);
+  if (podId !== undefined && productId === undefined) throw new Error(`managerLoops[${index}].podId requires productId so the loop remains visible under product filters`);
+  if (catalog !== undefined && productId !== undefined && !catalog.products.some((product) => product.id === productId)) throw new Error(`managerLoops[${index}].productId must reference a configured product`);
+  if (catalog !== undefined && podId !== undefined) {
+    const pod = catalog.pods.find((candidate) => candidate.id === podId);
+    if (pod === undefined || (productId !== undefined && pod.productId !== productId)) throw new Error(`managerLoops[${index}].podId must reference a configured pod in the selected product`);
+  }
+  const references = object(input.references);
+  const referenceKeys = new Set(['ticket', 'feature', 'candidate', 'pullRequest', 'pullRequestMerged', 'deploymentAccepted', 'shared', 'workInProgress']);
+  if (references !== undefined && Object.keys(references).some((key) => !referenceKeys.has(key))) throw new Error(`managerLoops[${index}].references has unsupported fields`);
+  const safeReferences = references === undefined ? undefined : Object.fromEntries(Object.entries(references).filter(([key, item]) => (
+    ['ticket', 'feature', 'candidate', 'pullRequest'].includes(key) ? typeof item === 'string' && scopeIdPattern.test(item) : typeof item === 'boolean'
+  )));
+  return {
+    id, artifactsDirectory: absolutePath(input.artifactsDirectory, `managerLoops[${index}].artifactsDirectory`),
+    ...(productId === undefined ? {} : { productId }), ...(podId === undefined ? {} : { podId }),
+    ...(input.usageExportPath === undefined ? {} : { usageExportPath: absolutePath(input.usageExportPath, `managerLoops[${index}].usageExportPath`) }),
+    ...(safeReferences === undefined || Object.keys(safeReferences).length === 0 ? {} : { references: safeReferences }),
+  };
+}
+
 function managerLoopSources(value: unknown, catalog?: ResolvedFactoryConfiguration): ManagerLoopSource[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 100) throw new Error('managerLoops must be an array of at most 100 configured loops');
-  const allowedKeys = new Set(['id', 'artifactsDirectory', 'productId', 'podId']);
-  const loopIdPattern = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
-  const scopeIdPattern = /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{0,126}[a-zA-Z0-9])?$/;
-  const sources = value.map((item, index): ManagerLoopSource => {
-    const input = object(item);
-    if (input === undefined || Object.keys(input).some((key) => !allowedKeys.has(key))) throw new Error(`managerLoops[${index}] must contain only id, artifactsDirectory, productId, and podId`);
-    const id = requiredText(input.id, `managerLoops[${index}].id`);
-    if (!loopIdPattern.test(id)) throw new Error(`managerLoops[${index}].id must match the Manager Loop lowercase slug format`);
-    const productId = input.productId === undefined ? undefined : requiredText(input.productId, `managerLoops[${index}].productId`);
-    const podId = input.podId === undefined ? undefined : requiredText(input.podId, `managerLoops[${index}].podId`);
-    if (productId !== undefined && !scopeIdPattern.test(productId)) throw new Error(`managerLoops[${index}].productId must be a bounded identifier`);
-    if (podId !== undefined && !scopeIdPattern.test(podId)) throw new Error(`managerLoops[${index}].podId must be a bounded identifier`);
-    if (podId !== undefined && productId === undefined) throw new Error(`managerLoops[${index}].podId requires productId so the loop remains visible under product filters`);
-    if (catalog !== undefined && productId !== undefined && !catalog.products.some((product) => product.id === productId)) throw new Error(`managerLoops[${index}].productId must reference a configured product`);
-    if (catalog !== undefined && podId !== undefined) {
-      const pod = catalog.pods.find((candidate) => candidate.id === podId);
-      if (pod === undefined || (productId !== undefined && pod.productId !== productId)) throw new Error(`managerLoops[${index}].podId must reference a configured pod in the selected product`);
-    }
-    return { id, artifactsDirectory: absolutePath(input.artifactsDirectory, `managerLoops[${index}].artifactsDirectory`), ...(productId === undefined ? {} : { productId }), ...(podId === undefined ? {} : { podId }) };
-  });
+  const sources = value.map((item, index) => managerLoopSource(item, index, catalog));
   if (new Set(sources.map((source) => source.id)).size !== sources.length) throw new Error('managerLoops ids must be unique');
   if (new Set(sources.map((source) => source.artifactsDirectory)).size !== sources.length) throw new Error('managerLoops artifact directories must be unique');
   return sources;
+}
+
+function managerLoopRegistry(value: unknown): LocalConsoleConfiguration['managerLoopRegistry'] {
+  if (value === undefined) return undefined;
+  const input = object(value);
+  if (input === undefined || Object.keys(input).some((key) => key !== 'path' && key !== 'allowedArtifactRoots') || !Array.isArray(input.allowedArtifactRoots) || input.allowedArtifactRoots.length === 0) throw new Error('managerLoopRegistry must contain path and non-empty allowedArtifactRoots only');
+  const roots = input.allowedArtifactRoots.map((root, index) => absolutePath(root, `managerLoopRegistry.allowedArtifactRoots[${index}]`));
+  if (new Set(roots).size !== roots.length) throw new Error('managerLoopRegistry.allowedArtifactRoots must be unique');
+  return { path: absolutePath(input.path, 'managerLoopRegistry.path'), allowedArtifactRoots: roots };
 }
 
 function limits(value: unknown): AdmissionLimits {
@@ -313,13 +338,14 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   if (preflight !== undefined && preflight.scope.factoryId !== 'unresolved' && preflight.scope.factoryId !== factoryId) throw new Error('preflightRequest must target the Console factoryId');
   const configuredRuntime = runtime(input.runtime, factoryId);
   const managerLoops = managerLoopSources(input.managerLoops, factoryConfiguration);
+  const registry = managerLoopRegistry(input.managerLoopRegistry);
   const jiraSources = parseJiraSources(input.jiraSources, factoryConfiguration);
   const managerConnected = input.managerConnected === undefined ? undefined : parseManagerConnectedConfig(input.managerConnected);
   if (managerConnected && factoryConfiguration) for (const session of managerConnected.sessions) {
     if (!factoryConfiguration.products.some((product) => product.id === session.productId)) throw new Error('managerConnected session must reference a configured product');
     if (session.podId && !factoryConfiguration.pods.some((pod) => pod.id === session.podId && pod.productId === session.productId)) throw new Error('managerConnected session pod must belong to its product');
   }
-  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), managerLoops, jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: limits(input.limits), managerLoops, ...(registry === undefined ? {} : { managerLoopRegistry: registry }), jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -662,6 +688,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   let app: ReturnType<typeof createConsoleService> | undefined;
   let pollInterval: ReturnType<typeof setInterval> | undefined;
   let managerStore: ManagerConnectedStore | undefined;
+  let managerLoopRegistry: ManagerLoopRegistry | undefined;
   let removeRelayConnection: (() => Promise<void>) | undefined;
   try {
     // Reconstruct and quarantine unresolved work before any configured runtime
@@ -671,12 +698,20 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     configured = configuration.runtime === undefined ? undefined : configuredRuntime(coordinator, configuration.runtime, dependencies, configuration.factoryConfiguration);
     gm = configuration.runtime?.gm === undefined ? undefined : new FactoryGM({ factoryId: configuration.factoryId, instructions: configuration.runtime.gm.instructions, store: new CoordinatorGMStore(coordinator), ...(configured?.diagnosis === undefined ? {} : { diagnosis: configured.diagnosis }), configuredRoutineActions: configuration.runtime.gm.configuredRoutineActions });
     observer = gm === undefined ? undefined : new CoordinatorGMHealthObserver({ coordinator, gm, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
-    const managerLoopObserver = new ManagerLoopObserver({ sources: configuration.managerLoops });
+    managerLoopRegistry = configuration.managerLoopRegistry === undefined ? undefined : await ManagerLoopRegistry.open({
+      ...configuration.managerLoopRegistry,
+      reservedSources: configuration.managerLoops,
+      validate: (source) => managerLoopSource(source, 0, configuration.factoryConfiguration),
+    });
+    const registeredLoops = managerLoopRegistry?.sources() ?? [];
+    const allLoopSources = [...configuration.managerLoops, ...registeredLoops];
+    if (new Set(allLoopSources.map((source) => source.id)).size !== allLoopSources.length || new Set(allLoopSources.map((source) => source.artifactsDirectory)).size !== allLoopSources.length) throw new Error('persisted manager loop registration conflicts with configured source');
+    const managerLoopObserver = new ManagerLoopObserver({ sources: allLoopSources });
     await managerLoopObserver.poll();
     const jiraObserver = new JiraObserver(configuration.jiraSources ?? []);
     managerStore = configuration.managerConnected ? await ManagerConnectedStore.open(configuration.managerConnected) : undefined;
     const relayToken = newManagerRelayToken();
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, jiraObserver, ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}) });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}) });
     const listeningApp = app;
     pollInterval = observer === undefined ? undefined : setInterval(() => { void observer?.poll(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();

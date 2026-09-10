@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'vitest';
+import { expect, test } from 'vitest';
+import { summarizeOutcomeCohorts } from '../src/runtime/usage-accounting.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const usage = join(root, 'scripts', 'build-usage.mjs');
@@ -135,7 +136,35 @@ test('accounts categories without treating cached or reasoning subsets as extra 
   const result = await run(input, output);
   assert.equal(result.status, 0, result.stderr);
   const summary = JSON.parse(await readFile(output, 'utf8'));
-  assert.deepEqual(summary.actual, { input: 60, output: 40, cached: 20, reasoning: 10, total: 100, excludedChildCount: 0 });
+  assert.deepEqual(summary.actual, { input: 60, uncachedInput: 40, output: 40, cached: 20, reasoning: 10, total: 100, excludedChildCount: 0 });
+});
+
+test('keeps uncached input unknown for mixed cached coverage and deduplicates additive response identities', async () => {
+  const { input, output } = await fixture([
+    { phase: 1, ticket: 'LEAN-01', agentId: 'stage-a', sessionId: 'a', source: 'loop:a', responseId: 'reply-1', at: '2026-09-09T00:00:00Z', cumulative: false, counters: { input: 50, cached: 10, output: 10, total: 60 } },
+    { phase: 1, ticket: 'LEAN-01', agentId: 'stage-a', sessionId: 'a', source: 'loop:a', responseId: 'reply-1', at: '2026-09-09T00:00:01Z', cumulative: false, counters: { input: 50, cached: 10, output: 10, total: 60 } },
+    { phase: 1, ticket: 'LEAN-01', agentId: 'stage-b', sessionId: 'b', source: 'loop:b', at: '2026-09-09T00:00:02Z', cumulative: false, counters: { input: 20, output: 5, total: 25 } },
+  ]);
+  const result = await run(input, output);
+  assert.equal(result.status, 0, result.stderr);
+  const summary = JSON.parse(await readFile(output, 'utf8'));
+  assert.equal(summary.actual.total, 85);
+  assert.equal(summary.actual.uncachedInput, null);
+  assert.equal(summary.records.duplicates, 1);
+});
+
+test('keeps failed/review work in a selected merged PR and accepted feature cohort without adding the views together', () => {
+  const records = [
+    { source: 'loop', agentId: 'implement', sessionId: 's1', registeredSessionId: 's1', at: '2026-09-09T00:00:00Z', cumulative: false, attemptOutcome: 'failed', counters: { total: 30 }, references: { ticket: 'LEAN-01', pullRequest: 'pr-1', feature: 'feature-1' } },
+    { source: 'loop', agentId: 'review', sessionId: 's2', registeredSessionId: 's2', at: '2026-09-09T00:01:00Z', cumulative: false, attemptOutcome: 'completed', counters: { total: 20 }, references: { pullRequest: 'pr-1', feature: 'feature-1', pullRequestMerged: true, deploymentAccepted: true } },
+    { source: 'loop', agentId: 'shared', sessionId: 's3', registeredSessionId: 's3', at: '2026-09-09T00:02:00Z', cumulative: false, counters: { total: 10 }, references: { shared: true } },
+  ];
+  const summary = summarizeOutcomeCohorts(records);
+  expect(summary.mergedPullRequests).toMatchObject({ count: 1, usage: { total: 50 }, tokensPerPullRequest: 50 });
+  expect(summary.deploymentAcceptedFeatures).toMatchObject({ count: 1, usage: { total: 50 }, tokensPerFeature: 50 });
+  expect(summary.failedAttempts.usage.total).toBe(30);
+  expect(summary.sharedOverhead.usage.total).toBe(10);
+  expect(summary.coverage).toEqual({ registeredSessions: 3, usableSessions: 3, ratio: 1 });
 });
 
 test('makes absent telemetry explicitly unknown and keeps estimates distinct', async () => {

@@ -10,7 +10,7 @@ import type { NativeIdentityProbe as NativeIdentityProbeContract } from '../exec
 import { CodexAdapter } from '../providers/codex.ts';
 import { providerContextPayloadDigest, type ProviderCurrentContext, type ProviderRunResult, type ProviderSessionBinding, type ProviderTurnAdapter } from '../providers/contracts.ts';
 import type { Authority, FactoryRoleAssignment } from '../config/index.ts';
-import type { RunIntent, WorkerIdentity } from '../runtime/contracts.ts';
+import type { RunIntent, UsageTelemetry, WorkerIdentity } from '../runtime/contracts.ts';
 
 const execFileAsync = promisify(execFile);
 const ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
@@ -78,6 +78,8 @@ export interface ManagerLoopStageReceipt {
   outcome: string;
   sessionId?: string;
   response?: RecordValue;
+  /** Exact provider-reported terminal telemetry; unavailable remains unavailable. */
+  usage: UsageTelemetry;
   evidence: ManagerLoopWorkspaceEvidence;
   verification?: ManagerLoopVerificationReceipt[];
   completedAt: string;
@@ -440,17 +442,33 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
       const binding: ProviderSessionBinding = { sessionId: stored.sessionId, sourceRunId: stored.sourceRunId, sourceContext: { packetRevision: stored.sourceContext.packetRevision, digest: stored.sourceContext.digest }, sourceScope: { factoryId: intent.target.factoryId, productId: intent.target.productId, repository: intent.target.repository, workspaceId: intent.execution.workspaceId, workspacePath: intent.execution.workspacePath, providerId: 'codex' } };
       providerResult = await adapter.resume(intent, binding, context, lifecycle);
     } else providerResult = await adapter.start(intent, context, lifecycle);
+    const after = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
+    const receipt = (response?: RecordValue): ManagerLoopStageReceipt => ({
+      stageId: id, phaseId: phase.id, kind, round, outcome: providerResult.final.outcome,
+      ...(providerResult.sessionId === undefined ? {} : { sessionId: providerResult.sessionId }),
+      ...(response === undefined ? {} : { response }), usage: providerResult.final.usage,
+      evidence: after, ...(verification.length === 0 ? {} : { verification }), completedAt: now().toISOString(),
+    });
+    const persist = async (value: ManagerLoopStageReceipt): Promise<void> => {
+      state.stages.push(value); state.currentStage = undefined;
+      await atomicJson(join(reportsDirectory, `${id}.json`), value);
+      await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: value.completedAt, kind: 'stage.receipt', stageId: id, outcome: value.outcome, evidence: value.evidence });
+      await save();
+    };
     let response: RecordValue;
     try { response = validatedStageResponse(kind, providerResult); } catch (error) {
       const reason = error instanceof Error ? error.message : 'provider_response_invalid';
+      await persist(receipt());
       return fail(providerResult.final.outcome === 'interrupted_uncertain' ? 'interrupted_uncertain' : 'failed', `${id}:${reason}`);
     }
-    const after = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
-    if ((kind === 'manager_brief' || kind === 'review' || kind === 'manager_accept') && after.contentDigest !== before.contentDigest) return fail('failed', `${id}:read_only_role_changed_workspace`);
-    const receipt: ManagerLoopStageReceipt = { stageId: id, phaseId: phase.id, kind, round, outcome: providerResult.final.outcome, ...(providerResult.sessionId === undefined ? {} : { sessionId: providerResult.sessionId }), response, evidence: after, ...(verification.length === 0 ? {} : { verification }), completedAt: now().toISOString() };
+    if ((kind === 'manager_brief' || kind === 'review' || kind === 'manager_accept') && after.contentDigest !== before.contentDigest) {
+      await persist(receipt(response));
+      return fail('failed', `${id}:read_only_role_changed_workspace`);
+    }
+    const completed = receipt(response);
     if (kind === 'implement' && providerResult.sessionId) state.implementerSessions[phase.id] = { sessionId: providerResult.sessionId, sourceRunId: id, sourceContext: context };
-    state.stages.push(receipt); state.currentStage = undefined; await atomicJson(join(reportsDirectory, `${id}.json`), receipt); await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: receipt.completedAt, kind: 'stage.receipt', stageId: id, outcome: receipt.outcome, evidence: receipt.evidence }); await save();
-    return receipt;
+    await persist(completed);
+    return completed;
   };
     await save();
     for (const phase of config.phases) {

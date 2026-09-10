@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { parseLeanLoopConfiguration, runLeanLoop } from '../../src/loop/index.ts';
 import { prepareLoopPublicationHandoff } from '../../src/loop/publication.ts';
 import { projectLoopDelivery } from '../../src/loop/delivery.ts';
+import { CodexAdapter } from '../../src/providers/codex.ts';
 
 function repository(path) {
   execFileSync('git', ['init', '-q', path]);
@@ -42,6 +43,35 @@ function evidenceFrom(prompt) {
 }
 
 describe('opt-in lean manager loop', () => {
+  it('launches lean independent review with Codex native read-only sandbox while retaining the exact digest guard', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-lean-native-review-'));
+    const workspace = join(root, 'workspace'); const artifacts = join(root, 'records');
+    await mkdir(workspace); const base = repository(workspace);
+    const launches = [];
+    const runner = {
+      async run(request) {
+        launches.push(request);
+        await request.lifecycle?.onStarted({ kind: 'native', pid: 701, processStartedAt: '2026-09-09T12:00:00.000Z', processGroupId: 701, runNonce: 'lean-review' });
+        const evidenceDigest = evidenceFrom(request.args.at(-1));
+        return {
+          exitCode: 0,
+          stdout: `${JSON.stringify({ type: 'thread.started', thread_id: 'lean-review-session' })}\n${JSON.stringify({ type: 'turn.completed', last_agent_message: JSON.stringify({ verdict: 'pass', summary: 'exact candidate passed', findings: [], evidenceDigest }) })}\n`,
+        };
+      },
+    };
+    try {
+      const completed = await runLeanLoop(config(workspace, artifacts, base), {
+        adapterFactory: () => new CodexAdapter({ runner, limits: { maxRuntimeMinutes: 1, maxTokens: 0, maxRetries: 1 }, environment: { PATH: process.env.PATH }, compatibleModels: ['gpt-luna'], contextIsolation: 'bounded' }),
+        environment: { PATH: process.env.PATH },
+      });
+      expect(completed.status).toBe('succeeded');
+      expect(launches).toHaveLength(1);
+      expect(launches[0].args).toEqual(expect.arrayContaining(['-c', 'sandbox_mode="read-only"']));
+      expect(launches[0].args).not.toContain('sandbox_mode="workspace-write"');
+      expect(launches[0].args.at(-1)).toMatch(/Act as an independent read-only reviewer/);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('validates an existing candidate with no implementer or AI manager and emits an explicit deterministic receipt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-lean-validation-'));
     const workspace = join(root, 'workspace'); const artifacts = join(root, 'records');

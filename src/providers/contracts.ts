@@ -9,6 +9,11 @@ export interface ProviderCurrentContext {
   packetRevision: string;
   digest: string;
   prompt: string;
+  /**
+   * A capability bound to this exact authorized turn. Omission preserves the
+   * configured provider default; read-only is a narrowing request only.
+   */
+  nativeSandbox?: 'read-only';
 }
 
 /**
@@ -19,6 +24,7 @@ export interface ProviderCurrentContext {
 export function providerContextPayloadDigest(context: ProviderCurrentContext): string {
   const payload = JSON.stringify({
     digest: context.digest,
+    nativeSandbox: context.nativeSandbox,
     packetRevision: context.packetRevision,
     prompt: context.prompt,
   });

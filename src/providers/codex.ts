@@ -318,11 +318,16 @@ function timeoutMs(intent: RunIntent): number {
   return intent.budget.maxRuntimeMinutes * 60_000;
 }
 
-function baseArgs(model: string, reasoning: RunIntent['execution']['reasoning'], contextIsolation: 'host' | 'bounded'): string[] {
+function baseArgs(model: string, reasoning: RunIntent['execution']['reasoning'], contextIsolation: 'host' | 'bounded', nativeSandbox?: 'read-only'): string[] {
   // Bounded mode suppresses ambient context and escalation and requests the
-  // unmodified CLI's workspace-write policy. It is not a claim of native
-  // filesystem read isolation. No mode widens approval or adds directories.
+  // unmodified CLI's workspace-write policy unless this exact authorized turn
+  // narrows it to read-only. Neither setting is a claim of filesystem
+  // enforcement. No mode widens approval or adds directories.
   return [
+    // `codex exec resume --help` does not expose --sandbox, while -c is
+    // supported by both start and resume. Keep this turn capability valid for
+    // either command and for host-isolated routes.
+    ...(nativeSandbox === 'read-only' ? ['-c', 'sandbox_mode="read-only"'] : []),
     ...(contextIsolation === 'bounded' ? [
       '--ignore-user-config',
       '--ignore-rules',
@@ -333,7 +338,7 @@ function baseArgs(model: string, reasoning: RunIntent['execution']['reasoning'],
       '--disable', 'multi_agent_v2',
       '--strict-config',
       '-c', 'approval_policy="never"',
-      '-c', 'sandbox_mode="workspace-write"',
+      ...(nativeSandbox === undefined ? ['-c', 'sandbox_mode="workspace-write"'] : []),
     ] : []),
     '--json', '--model', model,
     ...(reasoning === undefined ? [] : ['-c', `model_reasoning_effort="${reasoning}"`]),
@@ -442,10 +447,11 @@ export class CodexAdapter {
     const invalid = validateIntent(intent, this.#limits, this.#compatibleModels)
       ?? (validEnvironment(this.#environment) ? undefined : 'a nonempty controlled execution environment is required')
       ?? (contextMatchesIntent(intent, currentContext) ? undefined : 'current context reference does not match the run intent')
+      ?? (currentContext.nativeSandbox === undefined || currentContext.nativeSandbox === 'read-only' ? undefined : 'current context requests an unsupported native sandbox')
       ?? (prompt ? undefined : 'current context packet and prompt are required')
       ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('start', invalid);
-    return this.#execute('start', intent, ['exec', ...baseArgs(intent.execution.model, intent.execution.reasoning, this.#contextIsolation), prompt as string], lifecycle);
+    return this.#execute('start', intent, ['exec', ...baseArgs(intent.execution.model, intent.execution.reasoning, this.#contextIsolation, currentContext.nativeSandbox), prompt as string], lifecycle);
   }
 
   async resume(intent: RunIntent, sessionBinding: CodexSessionBinding, currentContext: CodexCurrentContext, lifecycle?: CodexProcessLifecycle): Promise<CodexRunResult> {
@@ -454,10 +460,11 @@ export class CodexAdapter {
       ?? (validEnvironment(this.#environment) ? undefined : 'a nonempty controlled execution environment is required')
       ?? (contextMatchesIntent(intent, currentContext) ? undefined : 'current context reference does not match the run intent')
       ?? (validSessionBinding(intent, sessionBinding) ? undefined : 'an explicit coordinator-recorded session binding is required for resume; --last is forbidden')
+      ?? (currentContext.nativeSandbox === undefined || currentContext.nativeSandbox === 'read-only' ? undefined : 'current context requests an unsupported native sandbox')
       ?? (prompt ? undefined : 'current context packet and prompt are required')
       ?? (providerContextIsAuthorized(intent, currentContext) ? undefined : 'current context prompt payload is not authorized by the run intent');
     if (invalid) return this.#unavailable('resume', invalid);
-    return this.#execute('resume', intent, ['exec', 'resume', ...baseArgs(intent.execution.model, intent.execution.reasoning, this.#contextIsolation), sessionBinding.sessionId, prompt as string], lifecycle);
+    return this.#execute('resume', intent, ['exec', 'resume', ...baseArgs(intent.execution.model, intent.execution.reasoning, this.#contextIsolation, currentContext.nativeSandbox), sessionBinding.sessionId, prompt as string], lifecycle);
   }
 
   async cancel(intent: RunIntent, lifecycle?: CodexProcessLifecycle): Promise<ProviderFinalResult> {

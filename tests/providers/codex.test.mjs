@@ -144,6 +144,23 @@ describe('bounded Codex exec adapter', () => {
     expect(runner.calls[0].args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
   });
 
+  it('binds an explicitly read-only turn to the native Codex sandbox instead of the bounded write default', async () => {
+    const runner = fakeRunner({ exitCode: 0, stdout: jsonl({ type: 'turn.completed' }) });
+    const review = context({ nativeSandbox: 'read-only' });
+    const target = intent({ execution: { approvedInputDigests: [providerContextPayloadDigest(review)] } });
+
+    expect((await adapter(runner, {}, { contextIsolation: 'bounded' }).start(target, review)).final.outcome).toBe('completed');
+    expect(runner.calls[0].args).toEqual(expect.arrayContaining(['-c', 'sandbox_mode="read-only"']));
+    expect(runner.calls[0].args).not.toContain('sandbox_mode="workspace-write"');
+
+    const hostRunner = fakeRunner({ exitCode: 0, stdout: jsonl({ type: 'turn.completed' }) });
+    expect((await adapter(hostRunner).start(target, review)).final.outcome).toBe('completed');
+    expect(hostRunner.calls[0].args).toEqual(expect.arrayContaining(['-c', 'sandbox_mode="read-only"']));
+
+    expect((await adapter(runner, {}, { contextIsolation: 'bounded' }).start(target, { ...review, nativeSandbox: undefined })).final.outcome).toBe('unavailable');
+    expect(runner.calls).toHaveLength(1);
+  });
+
   it('executes the exact authorized prompt bytes and rejects substituted content', async () => {
     const runner = fakeRunner({ exitCode: 0, stdout: jsonl({ type: 'thread.started', thread_id: 'thread-exact' }, { type: 'turn.completed' }) });
     const exact = context({ prompt: '  exact Codex prompt\n' });

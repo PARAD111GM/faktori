@@ -745,8 +745,13 @@ function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase:
   return `${common}\nIndependent review receipt: ${JSON.stringify(prior?.response ?? {})}. Configured verification receipts: ${JSON.stringify(verification)}. Act as build manager. During this acceptance turn, do not edit files; this restriction applies only to this manager turn. Accept only if the review passed against this exact evidence. Return only strict JSON: {"accepted":true|false,"summary":"...","evidenceDigest":"${evidence.contentDigest}","reviewStageId":"${prior?.stageId ?? ''}"}.`;
 }
 
-function contextFor(stageId: string, prompt: string, evidence: ManagerLoopWorkspaceEvidence): ProviderCurrentContext {
-  return { packetRevision: `${stageId}@1`, digest: digest(canonical({ stageId, evidence })), prompt };
+function contextFor(stageId: string, prompt: string, evidence: ManagerLoopWorkspaceEvidence, kind: StageKind): ProviderCurrentContext {
+  return {
+    packetRevision: `${stageId}@1`,
+    digest: digest(canonical({ stageId, evidence })),
+    prompt,
+    ...(kind === 'review' ? { nativeSandbox: 'read-only' as const } : {}),
+  };
 }
 
 function intentFor(config: ExecutableLoopConfiguration, phase: ManagerLoopPhase, stage: { stageId: string; kind: StageKind; round: number }, context: ProviderCurrentContext, evidence: ManagerLoopWorkspaceEvidence, now: string, route?: LeanRouteDecision): RunIntent {
@@ -862,7 +867,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
     const id = stageId(config.loopId, phase.id, kind, round);
     const before = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
     const prompt = rolePrompt(config, kind, phase, before, verification, previous);
-    const context = contextFor(id, prompt, before);
+    const context = contextFor(id, prompt, before, kind);
     const intendedAt = now().toISOString();
     state.currentStage = { stageId: id, phaseId: phase.id, kind, round, intendedAt };
     await save();

@@ -68,8 +68,8 @@ supervisors before using recovery. Never mix old and new coordinators against
 the same records during an update. A remaining guard means an ownership
 operation is active or was interrupted. Investigate it
 before retrying; the command never automatically removes an unresolved guard.
-This command is a post-v0.2.0 source addition; the original v0.2.0 tarball does
-not contain it.
+These commands are included in v0.2.1 and later; the original v0.2.0 tarball
+does not contain them.
 
 ### Backup, restore, reconcile
 

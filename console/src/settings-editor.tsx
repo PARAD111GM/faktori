@@ -10,7 +10,12 @@ const errors: Record<string,string> = {
   settings_operation_failed: 'The configuration file could not be accessed or saved. Check the local service and file permissions, then reopen the editor.',
   console_authentication_required: 'Your Console session is no longer authorized. Reload the page or update the local command token.',
   settings_editing_unavailable: 'This service does not support persistent settings editing. Restart it from an owner-controlled configuration file.',
+  settings_editing_requires_factory_configuration: 'This Console was started without its factory catalog, so there are no factory settings to edit. Add the approved factory configuration to the local Console file and restart the Console.',
 };
+
+export function settingsEditorError(error: unknown, status?: number): string {
+  return typeof error === 'string' ? (errors[error] ?? (status === undefined ? error : `Settings request failed (${status})`)) : 'Settings request failed.';
+}
 
 function ScopeControls({scope, update, settings, label}: {scope: ConsoleSettingsScope; update: (next: ConsoleSettingsScope) => void; settings: ConsoleSettings; label: string}) {
   return <>
@@ -39,7 +44,7 @@ export function SettingsEditor({settings, token, onSaved}: {settings: ConsoleSet
     if (!token) throw new Error('Enter your local command token in Console connection before editing.');
     const response = await fetch(`/api/console/settings/${operation}`, {method:'POST', headers:{'Content-Type':'application/json','X-Faktori-Console-Token':token}, body:JSON.stringify(payload)});
     const body = await response.json();
-    if (!response.ok) throw new Error(errors[body.error] ?? body.error ?? `Settings request failed (${response.status})`);
+    if (!response.ok) throw new Error(settingsEditorError(body.error, response.status));
     return body as T;
   }
   async function perform(action: () => Promise<void>) {

@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -271,7 +271,9 @@ describe('execution profiles', () => {
       expect(plan.args.join('\n')).not.toContain('unselected.json');
       expect(plan.credentialFileBoundaries).toHaveLength(1);
       expect(isValidatedDockerExecutionPlan(plan)).toBe(true);
-      await rm(join(staged.credential, 'auth.json'));
+      // Retain the old inode so Linux cannot immediately recycle it for the
+      // replacement; this case specifically proves file-identity replacement.
+      await rename(join(staged.credential, 'auth.json'), join(staged.credential, 'auth.previous.json'));
       await writeFile(join(staged.credential, 'auth.json'), '{}\n', { mode: 0o600 });
       expect(isValidatedDockerExecutionPlan(plan)).toBe(false);
     },

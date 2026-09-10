@@ -81,41 +81,36 @@ describe('Console work visibility', () => {
     expect(empty).toContain('No activity published');
   });
 
-  it('keeps a compact link to completed Manager Loop work when no coordinator run exists', () => {
+  it('keeps Overview to at-a-glance catalog facts instead of duplicating loop history', () => {
     const completedLoop = {
       id: 'two-phase-math-proof', productId: 'product-a', podId: 'pod-a', status: 'succeeded', stale: false,
       updatedAt: '2026-09-09T12:02:00Z', completedPhases: ['prove-addition', 'prove-subtraction'], currentStage: undefined,
       stages: [{ phaseId: 'prove-subtraction', kind: 'review', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:02:00Z', decision: 'accept', verification: 'passed' }],
     };
     const html = renderToStaticMarkup(createElement(Overview, {
-      state: { managerLoops: [completedLoop], blockers: [] }, runs: [], filter: { productId: 'product-a', podId: 'pod-a' }, selectRun() {},
+      state: { managerLoops: [completedLoop], blockers: [], workManagement: { status: 'available', projects: [{ productId: 'product-a', title: 'Product A', goal: 'A goal', artifacts: [], plans: [], progress: { status: 'available', populationBasis: 'catalog_tickets_explicit_status', tickets: { total: 2, done: 1, inProgress: 0, remaining: 1, blocked: 0, unknown: 0 }, evidence: { local: 1, reviewed: 1, merged: 1, deployed: 0, productAccepted: 0 } } }], sessions: [], requests: [] } }, runs: [], selectRun() {},
     }));
-    expect(html).toContain('Current and recent work');
-    expect(html).toContain('1 recorded Manager Loop available in <a href="#work">Work</a>');
-    expect(html).not.toContain('Last step: prove-subtraction / review');
-    expect(html).toContain('Coordinator runs</span><strong>0');
-    expect(html).toContain('Manager loops</span><strong>1');
-    expect(html).toContain('Recorded active loops</span><strong>0');
-    expect(html).toContain('Accepted loop phases</span><strong>2');
-    expect(html).toContain('Active coordinator runs</span><strong>0');
-    expect(html).toContain('Open Work for the expanded activity feed');
+    expect(html).toContain('At a glance');
+    expect(html).toContain('Product A');
+    expect(html).toContain('1/2 explicitly accepted');
+    expect(html).not.toContain('Current and recent work');
+    expect(html).not.toContain('two-phase-math-proof');
+    expect(html).not.toContain('Running activity');
   });
 
-  it('does not present stale recorded loop state as live and applies the overview scope', () => {
+  it('does not put stale loop state or activity feeds on Overview', () => {
     const loops = [
       { id: 'stale-loop', productId: 'product-a', podId: 'pod-a', status: 'running', stale: true, updatedAt: '2026-09-09T10:00:00Z', completedPhases: ['foundation'], currentStage: { phaseId: 'feature', kind: 'implementation', round: 1 }, stages: [] },
       { id: 'other-loop', productId: 'product-b', podId: 'pod-b', status: 'succeeded', stale: false, updatedAt: '2026-09-09T12:00:00Z', completedPhases: ['one', 'two', 'three'], stages: [] },
     ];
     const html = renderToStaticMarkup(createElement(Overview, {
-      state: { managerLoops: loops, blockers: [] }, runs: [], filter: { productId: 'product-a', podId: 'pod-a' }, selectRun() {},
+      state: { managerLoops: loops, blockers: [], workManagement: { status: 'stale', projects: [], sessions: [], requests: [] } }, runs: [], selectRun() {},
     }));
-    expect(html).toContain('stale-loop');
+    expect(html).toContain('At a glance');
+    expect(html).toContain('Catalog state');
+    expect(html).not.toContain('stale-loop');
     expect(html).not.toContain('other-loop');
-    expect(html).toContain('Recorded state stale');
-    expect(html).toContain('Manager loops</span><strong>1');
-    expect(html).toContain('Recorded active loops</span><strong>1');
-    expect(html).toContain('Accepted loop phases</span><strong>1');
-    expect(html).toContain('Active coordinator runs</span><strong>0');
+    expect(html).not.toContain('Running activity');
   });
 
   it('distinguishes local acceptance from unobserved publication and delivery gates', () => {

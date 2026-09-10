@@ -10,7 +10,11 @@ export interface GitHubCommandResult {
   stderr: string;
 }
 
-export type GitHubCommand = (argv: readonly string[], input?: string) => Promise<GitHubCommandResult>;
+export interface GitHubCommandOptions {
+  /** A read-only caller may bound this subprocess; omitted preserves legacy behavior. */
+  timeoutMs?: number;
+}
+export type GitHubCommand = (argv: readonly string[], input?: string, options?: GitHubCommandOptions) => Promise<GitHubCommandResult>;
 /** A deliberately separate command boundary for the controller-owned Git clone. */
 export type GitCommand = (argv: readonly string[]) => Promise<GitHubCommandResult>;
 
@@ -57,6 +61,13 @@ export interface GitHubRepositoryRegistration {
 }
 
 export interface GitHubCheckObservation { name: string; state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'SKIPPING'; link?: string; }
+export interface GitHubPullRequestObservation {
+  repository: string;
+  number: number;
+  url: string;
+  merged: boolean;
+  reviewObserved: boolean;
+}
 
 /** Read-only gh operations needed before a controller can admit publication. */
 export class GitHubRepositoryObserver {
@@ -99,6 +110,26 @@ export class GitHubRepositoryObserver {
     if (commit !== undefined && typeof commit !== 'string') throw new Error('gh_merge_observation_invalid_shape');
     return { merged, ...(typeof commit === 'string' ? { mergeCommit: commit } : {}) };
   }
+
+  /**
+   * Read-only observation for a preconfigured owner/repository and PR number.
+   * It cannot follow a browser URL or an arbitrary endpoint, and does not
+   * create, approve, merge, or otherwise mutate the pull request.
+   */
+  async observePullRequest(repository: string, number: number, options?: GitHubCommandOptions): Promise<GitHubPullRequestObservation> {
+    const result = await this.command(['pr', 'view', String(number), '--repo', repository, '--json', 'url,state,mergedAt,reviewDecision'], undefined, options);
+    if (result.exitCode !== 0) throw new Error(bounded(`gh_pull_request_observation_failed:${result.stderr || result.stdout}`));
+    const value = parseObject(result.stdout, 'gh_pull_request_observation_invalid_json');
+    if (typeof value.url !== 'string' || !safePullRequestUrl(value.url, repository, number) || (value.state !== 'OPEN' && value.state !== 'CLOSED' && value.state !== 'MERGED') || (value.mergedAt !== null && value.mergedAt !== undefined && typeof value.mergedAt !== 'string') || (value.reviewDecision !== null && value.reviewDecision !== undefined && typeof value.reviewDecision !== 'string')) throw new Error('gh_pull_request_observation_invalid_shape');
+    return { repository, number, url: value.url, merged: value.state === 'MERGED' && typeof value.mergedAt === 'string', reviewObserved: typeof value.reviewDecision === 'string' && value.reviewDecision.length > 0 };
+  }
+}
+
+function safePullRequestUrl(value: string, repository: string, number: number): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'github.com' && !url.username && !url.password && !url.search && !url.hash && url.pathname === `/${repository}/pull/${number}`;
+  } catch { return false; }
 }
 
 export interface GitHubIssueTarget { repository: string; title: string; body: string; }
@@ -265,26 +296,37 @@ export function createSpawnGh(configuration: GitHubControllerEnvironment): GitHu
     ...(configuration.configDirectory === undefined ? {} : { GH_CONFIG_DIR: configuration.configDirectory }),
     GH_PROMPT_DISABLED: '1',
   });
-  return (argv, input) => spawnGhWithEnvironment(argv, input, environment);
+  return (argv, input, options) => spawnGhWithEnvironment(argv, input, environment, options);
 }
 
-export async function spawnGh(argv: readonly string[], input?: string): Promise<GitHubCommandResult> {
+export async function spawnGh(argv: readonly string[], input?: string, options?: GitHubCommandOptions): Promise<GitHubCommandResult> {
   const command = createSpawnGh({
     path: process.env.PATH ?? '',
     ...(process.env.HOME === undefined ? {} : { home: process.env.HOME }),
     ...(process.env.GH_CONFIG_DIR === undefined ? {} : { configDirectory: process.env.GH_CONFIG_DIR }),
   });
-  return command(argv, input);
+  return command(argv, input, options);
 }
 
-async function spawnGhWithEnvironment(argv: readonly string[], input: string | undefined, environment: Readonly<Record<string, string>>): Promise<GitHubCommandResult> {
+async function spawnGhWithEnvironment(argv: readonly string[], input: string | undefined, environment: Readonly<Record<string, string>>, options?: GitHubCommandOptions): Promise<GitHubCommandResult> {
+  if (options?.timeoutMs !== undefined && (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1_000 || options.timeoutMs > 300_000)) throw new Error('github_command_timeout_must_be_between_one_second_and_five_minutes');
   return new Promise((resolve, reject) => {
     const child = spawn('gh', [...argv], { stdio: ['pipe', 'pipe', 'pipe'], env: environment });
     let stdout = ''; let stderr = '';
+    let timedOut = false;
+    const timeout = options?.timeoutMs === undefined ? undefined : setTimeout(() => {
+      timedOut = true;
+      // This is deliberately process termination, not a Promise race: a
+      // stalled read-only observation must not accumulate gh children.
+      child.kill('SIGTERM');
+      const force = setTimeout(() => child.kill('SIGKILL'), 1_000);
+      force.unref();
+    }, options.timeoutMs);
+    timeout?.unref();
     child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
     child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-    child.once('error', reject);
-    child.once('close', (exitCode) => resolve({ exitCode: exitCode ?? 1, stdout, stderr }));
+    child.once('error', (error) => { if (timeout) clearTimeout(timeout); reject(error); });
+    child.once('close', (exitCode) => { if (timeout) clearTimeout(timeout); resolve(timedOut ? { exitCode: 124, stdout, stderr: 'gh_command_timed_out' } : { exitCode: exitCode ?? 1, stdout, stderr }); });
     child.stdin.end(input);
   });
 }

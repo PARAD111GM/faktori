@@ -13,8 +13,13 @@ function Fields({ values }: { values: object }) {
 
 export function Settings({ settings, connectionSettings, token = '', onSaved = () => {} }: { settings?: ConsoleSettings; connectionSettings?: ReactNode; token?: string; onSaved?: () => void }) {
   if (!settings) return <section className="workspace"><section className="panel"><h2>Settings unavailable</h2><p>This Console service has not published its configuration. Update and restart the local service to display provider and factory settings.</p>{connectionSettings}</section></section>;
+  if (settings.factory.catalogConfigured === false) return <section className="workspace settings-page">
+    <section className="panel" role="status"><h2>Factory settings need a catalog</h2><p>This Console has no factory defaults, providers, products, or pods available to edit.</p></section>
+    <section className="panel panel-support"><h2>Restore factory settings</h2><p>Stop the Console, add the approved factory configuration as <code>factoryConfiguration</code> in the same local Console JSON file, then restart the Console from that file.</p><details id="settings-configuration-help" open><summary>What the configuration must contain</summary><p>Use the existing approved factory catalog. Its <code>factory.id</code> must match this Console’s factory ID, and it must include the factory defaults, providers, environments, products, and pods. Do not enter provider credentials, tokens, or runtime routes here.</p><p>This Console cannot select a file or import a catalog from the browser. That keeps local paths and owner-controlled configuration out of the browser.</p></details></section>
+    <section className="panel"><h2>Console connection</h2><p>Local command authorization for this browser session.</p>{connectionSettings}</section>
+  </section>;
   return <section className="workspace settings-page">
-    <section className="panel settings-intro"><div><h2>Your factory, configured</h2><p>{settings.factory.name} · Factory-wide settings, independent of the Work filters.</p></div><span className="settings-badge">Currently running</span></section>
+    <p className="quiet">Currently running configuration. Saved changes apply after restart.</p>
     {settings.persistence?.restartRequired && <section className="panel settings-restart" role="status"><strong>Saved changes are waiting for restart</strong><p>The values below are still the loaded configuration. Reopen the editor to see saved changes.</p></section>}
     {settings.persistence?.editable ? <SettingsEditor settings={settings} token={token} onSaved={onSaved} /> : <section className="panel"><p>Editing is unavailable for this service. Start the Console from an owner-controlled configuration file to enable persistent settings.</p></section>}
     <section className="settings-providers" aria-label="Providers">{settings.providers.map((provider) => <article className="panel provider-card" key={provider.id}>

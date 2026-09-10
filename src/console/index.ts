@@ -9,3 +9,4 @@ export * from './manager-loop-observer.ts';
 export * from './manager-loop-registry.ts';
 export * from './jira-observer.ts';
 export * from './activity.ts';
+export * from './work-management.ts';

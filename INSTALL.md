@@ -145,6 +145,12 @@ before retrying. Do not delete records or blindly rerun under a new identity.
   registering global skills; never overwrite personal agent instructions.
 - Use each selected provider's own supported login flow. Let the owner complete
   interactive authentication. Never request, print, copy, or commit tokens.
+- Create and review an integration inventory before admitting work. For every
+  provider, runtime route, Jira mapping, and GM schedule, mark exactly one:
+  **enabled and verified** (with a bounded observed exercise), **pending auth or
+  observation**, or **deliberately deferred** with the owner's recorded reason.
+  A provider listed in the catalog is not a configured route or authenticated
+  provider. A configured GM is not evidence that its scheduler has run.
 - Separate authentication status from observed execution. After approval, run a
   small bounded exercise in a disposable workspace and record the actual result.
   Do not activate paid routes or broaden permissions to make a check pass.
@@ -169,6 +175,20 @@ read-only installed SQLite inspector can establish projection readiness. Follow
 the [operational clarity guide](docs/operational-clarity.md) for the request
 shape, stable checks, and remediation semantics.
 
+```sh
+faktori readiness report /absolute/path/local-console.json
+```
+
+This command reads the local Console configuration and process-environment
+**presence** only. It
+does not contact a provider or Jira, invoke Claude, run the GM, start a worker,
+or reveal credential values. Treat a missing GM/Jira item as unavailable unless
+the owner separately records a deliberate deferral. The report still records
+the missing item as unavailable; a deferred item remains unverified. Use the
+report to prevent silent omissions,
+then perform a separately approved, bounded exercise for anything called
+enabled and verified.
+
 ## 6. Demonstrate and hand off
 
 Use one small approved work item with explicit acceptance criteria and approved
@@ -182,7 +202,8 @@ Report separately:
 - **Factory:** approved configuration revision, paths, observed provisioning,
   pending or unsupported effects, and recovery records.
 - **Agents:** selected providers, observed authentication/execution results,
-  capability gaps, and unknown usage—not inferred success.
+  capability gaps, integration inventory state, and unknown usage—not inferred
+  success.
 - **Operations:** Console URL and stop/restart procedure for the process actually
   started, backup guidance, owner decisions, and next eligible work item.
 

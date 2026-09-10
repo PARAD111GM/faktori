@@ -1,0 +1,27 @@
+name: Verify
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.20.0'
+          cache: npm
+      - run: npm install --global npm@12.0.2 --ignore-scripts
+      - run: npm ci --ignore-scripts
+      - run: npm rebuild better-sqlite3
+      - name: Prepare offline update dependency cache
+        run: |
+          candidate_cache_dir=$(mktemp -d)
+          cp package.json "$candidate_cache_dir/package.json"
+          npm install --prefix "$candidate_cache_dir" --omit=dev --ignore-scripts --package-lock=false --no-audit --no-fund
+      - run: npm run check
+      - run: npm run skills:verify

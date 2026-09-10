@@ -29,6 +29,9 @@ import { ManagerLoopRegistry } from './manager-loop-registry.ts';
 import { JiraObserver, parseJiraSources, type JiraSource } from './jira-observer.ts';
 import { ManagerConnectedStore, parseManagerConnectedConfig, type ManagerConnectedConfig } from '../manager-connected/index.ts';
 import { newManagerRelayToken, writeManagerRelayConnection } from './manager-relay.ts';
+import { WorkCatalogObserver, type WorkCatalogConfiguration } from './work-management.ts';
+import { GitHubWorkObserver } from './github-observer.ts';
+import { spawnGh } from '../integrations/github.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -49,6 +52,8 @@ export interface LocalConsoleConfiguration {
   /** Read-only tracker sources; credentials remain in server environment. */
   jiraSources?: JiraSource[];
   managerConnected?: ManagerConnectedConfig;
+  /** Optional owner-maintained JSON catalog; its path is never sent to the browser. */
+  workCatalog?: WorkCatalogConfiguration;
 }
 
 export type LocalProviderRoute =
@@ -139,6 +144,16 @@ function managerLoopRegistry(value: unknown): LocalConsoleConfiguration['manager
   const roots = input.allowedArtifactRoots.map((root, index) => absolutePath(root, `managerLoopRegistry.allowedArtifactRoots[${index}]`));
   if (new Set(roots).size !== roots.length) throw new Error('managerLoopRegistry.allowedArtifactRoots must be unique');
   return { path: absolutePath(input.path, 'managerLoopRegistry.path'), allowedArtifactRoots: roots };
+}
+
+function workCatalogConfiguration(value: unknown): WorkCatalogConfiguration | undefined {
+  if (value === undefined) return undefined;
+  const input = object(value);
+  if (input === undefined || Object.keys(input).some((key) => key !== 'path' && key !== 'observeLinkedPullRequests' && key !== 'timezone')) throw new Error('workCatalog must contain its absolute path, optional explicit PR observation opt-in, and optional timezone only');
+  if (input.observeLinkedPullRequests !== undefined && input.observeLinkedPullRequests !== true) throw new Error('workCatalog.observeLinkedPullRequests must be true when configured');
+  const timezone = input.timezone === undefined ? undefined : requiredText(input.timezone, 'workCatalog.timezone');
+  if (timezone !== undefined) try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }); } catch { throw new Error('workCatalog.timezone must be an IANA timezone'); }
+  return { path: absolutePath(input.path, 'workCatalog.path'), ...(input.observeLinkedPullRequests === true ? { observeLinkedPullRequests: true as const } : {}), ...(timezone === undefined ? {} : { timezone }) };
 }
 
 function limits(value: unknown): AdmissionLimits {
@@ -389,12 +404,13 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   const managerLoops = managerLoopSources(input.managerLoops, factoryConfiguration);
   const registry = managerLoopRegistry(input.managerLoopRegistry);
   const jiraSources = parseJiraSources(input.jiraSources, factoryConfiguration);
+  const workCatalog = workCatalogConfiguration(input.workCatalog);
   const managerConnected = input.managerConnected === undefined ? undefined : parseManagerConnectedConfig(input.managerConnected);
   if (managerConnected && factoryConfiguration) for (const session of managerConnected.sessions) {
     if (!factoryConfiguration.products.some((product) => product.id === session.productId)) throw new Error('managerConnected session must reference a configured product');
     if (session.podId && !factoryConfiguration.pods.some((pod) => pod.id === session.podId && pod.productId === session.productId)) throw new Error('managerConnected session pod must belong to its product');
   }
-  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: configuredLimits, managerLoops, ...(registry === undefined ? {} : { managerLoopRegistry: registry }), jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: configuredLimits, managerLoops, ...(registry === undefined ? {} : { managerLoopRegistry: registry }), jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(workCatalog ? { workCatalog } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -758,6 +774,8 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   let app: ReturnType<typeof createConsoleService> | undefined;
   let pollInterval: ReturnType<typeof setInterval> | undefined;
   let managerStore: ManagerConnectedStore | undefined;
+  let workCatalogObserver: WorkCatalogObserver | undefined;
+  let githubWorkObserver: GitHubWorkObserver | undefined;
   let managerLoopRegistry: ManagerLoopRegistry | undefined;
   let removeRelayConnection: (() => Promise<void>) | undefined;
   try {
@@ -779,6 +797,29 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     const managerLoopObserver = new ManagerLoopObserver({ sources: allLoopSources });
     await managerLoopObserver.poll();
     const jiraObserver = new JiraObserver(configuration.jiraSources ?? []);
+    // Parse the configured catalog before opening its independent request store.
+    // A bad denominator must never leave an otherwise-live owner queue behind.
+    workCatalogObserver = configuration.workCatalog === undefined ? undefined : await WorkCatalogObserver.open(
+      configuration.workCatalog,
+      new Map((configuration.factoryConfiguration?.products ?? []).map((product) => [product.id, product.name])),
+    );
+    if (workCatalogObserver) {
+      const catalog = workCatalogObserver.catalog()!;
+      if (configuration.factoryConfiguration) for (const project of catalog.projects) {
+        if (!configuration.factoryConfiguration.products.some((product) => product.id === project.productId)) throw new Error(`workCatalog project ${project.productId} must reference a configured product`);
+      }
+      for (const session of configuration.managerConnected?.sessions ?? []) {
+        if (session.planId === undefined && session.phaseId === undefined && session.ticketId === undefined) continue;
+        if (session.planId === undefined || session.phaseId === undefined) throw new Error(`managerConnected session ${session.id} catalog scope requires planId and phaseId together`);
+        const project = catalog.projects.find((candidate) => candidate.productId === session.productId);
+        const plan = project?.plans.find((candidate) => candidate.id === session.planId);
+        const phase = plan?.phases.find((candidate) => candidate.id === session.phaseId);
+        if (!phase || (session.ticketId !== undefined && !phase.tickets.some((candidate) => candidate.id === session.ticketId))) throw new Error(`managerConnected session ${session.id} must reference a matching workCatalog scope`);
+      }
+      if (configuration.workCatalog?.observeLinkedPullRequests) {
+        githubWorkObserver = new GitHubWorkObserver({ links: catalog.projects.flatMap((project) => project.linkedPullRequests ?? []), command: spawnGh });
+      }
+    }
     managerStore = configuration.managerConnected ? await ManagerConnectedStore.open(configuration.managerConnected) : undefined;
     let factoryObservation = observeFactoryDeterministically({ factoryId: configuration.factoryId, coordinator, loops: managerLoopObserver.efficiencySnapshot(), ...(managerStore ? { managerConnected: managerStore.snapshot() } : {}), deliveryDeadlineHours: configuration.runtime?.gm?.deliveryDeadlineHours, coordinationAttentionShare: configuration.runtime?.gm?.coordinationAttentionShare, excludedWorkItemIds: configured?.diagnosisWorkItemIds });
     const refreshFactoryObservation = async () => {
@@ -791,7 +832,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     const nightlyConfig = configuration.runtime?.gm?.mode === 'nightly' ? configuration.runtime.gm : undefined;
     nightlyGM = nightlyConfig?.schedule && configured?.nightlyReview ? new NightlyGM({ schedule: nightlyConfig.schedule, instructions: nightlyConfig.instructions, store: new CoordinatorGMNightlyStore(coordinator), review: configured.nightlyReview, ownerDecisions: nightlyConfig.ownerDecisions, snapshot: refreshFactoryObservation }) : undefined;
     const relayToken = newManagerRelayToken();
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(workCatalogObserver ? { workCatalogObserver } : {}), ...(githubWorkObserver ? { githubWorkObserver } : {}), ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
     const listeningApp = app;
     pollInterval = setInterval(() => { void observer?.poll(); void refreshFactoryObservation(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();

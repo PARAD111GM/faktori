@@ -354,7 +354,7 @@ async function installCandidateRelease(candidate: CandidateKit, staging: string)
   if (installedPackage.digest !== candidate.digest) fail('clean installed package differs from the approved candidate digest');
   const entrypoint = join(consumer, 'node_modules', '.bin', 'faktori');
   const help = spawnSync(entrypoint, ['--help'], { cwd: consumer, encoding: 'utf8', env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}` } });
-  if (help.status !== 0 || !help.stdout.includes('faktori backup create') || !help.stdout.includes('faktori update preview')) fail(`clean installed candidate entrypoint failed: ${help.stderr || help.stdout}`);
+  if (help.status !== 0 || !help.stdout.includes('faktori backup create') || !help.stdout.includes('faktori update preview') || !help.stdout.includes('faktori readiness report')) fail(`clean installed candidate entrypoint failed: ${help.stderr || help.stdout}`);
   const imported = spawnSync(process.execPath, ['--input-type=module', '-e', "const m=await import('faktori/maintenance');if(typeof m.createFactoryBackup!=='function'||typeof m.applyRuntimeUpdate!=='function')process.exit(2)"], { cwd: consumer, encoding: 'utf8' });
   if (imported.status !== 0) fail(`clean installed maintenance export failed: ${imported.stderr || imported.stdout}`);
   await verifyRunnableRuntime(entrypoint, consumer);

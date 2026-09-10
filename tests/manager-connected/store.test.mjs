@@ -174,6 +174,48 @@ describe('manager-connected durable requests', () => {
 });
 
 describe('manager-connected recovery and authority', () => {
+  it('keeps harmless authority prose visible while redacting decision credentials and paths', async () => {
+    // Product failure prevented: an honest explanation of non-authority becomes
+    // unreadable, or private credentials/local paths reach the browser.
+    const store = await opened(config(await root()));
+    const result = await store.operate({
+      type: 'decision_create', id: '019c89ea-34b1-7f65-8c96-0f496bb5c100',
+      scope: { productId: 'faktori', planId: 'console-plan', phaseId: 'batch-two' },
+      problem: 'Inspect /Users/nathan/private evidence.', cause: { basis: 'reported', summary: 'A credential secret needs a private check.' }, evidence: [{ label: 'Private evidence path' }],
+      accountableOwner: 'owner', recommendedNextAction: 'Do not send the credential to the browser.', impact: 'This grants no provider, publication, merge, deployment, or spending authority.',
+      capability: 'supported', action: { kind: 'record_owner_response', label: 'Record response for Manager observation' }, options: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }],
+    });
+    expect(result.decision).toMatchObject({ problem: '[redacted]', cause: { summary: '[redacted]' }, recommendedNextAction: '[redacted]', impact: 'This grants no provider, publication, merge, deployment, or spending authority.' });
+  });
+
+  it('preserves a scoped owner choice through response, Manager acknowledgement, resolution, replay, and restart', async () => {
+    // Product failure prevented: an interrupted owner response could be resent as
+    // a different choice or silently turned into an approval after restart.
+    const directory = await root();
+    const store = await opened(config(directory));
+    const decision = {
+      type: 'decision_create', id: '019c89ea-34b1-7f65-8c96-0f496bb5c101',
+      scope: { productId: 'faktori', planId: 'console-plan', phaseId: 'batch-two', ticketId: 'CWM-008' },
+      problem: 'Choose the default display for resolved decisions.',
+      cause: { basis: 'observed', summary: 'The inbox needs one owner-controlled default.' }, evidence: [{ label: 'Console Batch 2 plan' }],
+      accountableOwner: 'owner', recommendedNextAction: 'Record one display preference for Manager observation.', impact: 'Only the default display changes; no work is dispatched.',
+      capability: 'supported', action: { kind: 'record_owner_response', label: 'Record response for Manager observation' },
+      options: [{ id: 'collapsed', label: 'Collapsed' }, { id: 'expanded', label: 'Expanded' }],
+    };
+    expect((await store.operate(decision)).decision).toMatchObject({ state: 'open', revision: 1, scope: decision.scope });
+    const response = { type: 'record_owner_response', id: decision.id, responseId: 'collapsed', idempotencyKey: '019c89ea-34b1-7f65-8c96-0f496bb5c102', expectedRevision: 1 };
+    expect((await store.operate(response)).decision).toMatchObject({ state: 'pending_manager_ack', revision: 3, ownerResponse: { optionId: 'collapsed' } });
+    expect((await store.operate(response)).duplicate).toBe(true);
+    await expect(store.operate({ ...response, responseId: 'expanded' })).rejects.toMatchObject(expectCode('decision_idempotency_conflict'));
+    await expect(store.operate({ ...response, idempotencyKey: '019c89ea-34b1-7f65-8c96-0f496bb5c103' })).rejects.toMatchObject(expectCode('decision_response_already_recorded'));
+    await store.close();
+
+    const recovered = await opened(config(directory));
+    expect(recovered.snapshot().decisions).toEqual([expect.objectContaining({ id: decision.id, state: 'pending_manager_ack', ownerResponse: expect.objectContaining({ optionId: 'collapsed' }) })]);
+    expect((await recovered.operate({ type: 'decision_acknowledge', id: decision.id, expectedRevision: 3 })).decision).toMatchObject({ state: 'manager_acknowledged', revision: 4 });
+    expect((await recovered.operate({ type: 'decision_resolve', id: decision.id, expectedRevision: 4 })).decision).toMatchObject({ state: 'resolved', revision: 5 });
+  });
+
   it('replays durable state and turns restart in-flight work uncertain without retrying it', async () => {
     const directory = await root();
     const first = await opened(config(directory));

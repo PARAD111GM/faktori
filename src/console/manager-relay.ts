@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ManagerConnectedStore } from '../manager-connected/index.ts';
 
 /** Private transport for an active Manager, not a desktop API or agent launcher. */
-export function registerManagerRelay(app: FastifyInstance, store: ManagerConnectedStore, token: string): void {
+export function registerManagerRelay(app: FastifyInstance, store: ManagerConnectedStore, token: string, options: { validateDecisionScope?: (scope: unknown, action: unknown) => void } = {}): void {
   app.post('/api/manager-connected/relay', async (request, reply) => {
     // Browsers use the owner channel. Never accept its token on the relay channel.
     if (request.headers.origin !== undefined || !/^127\.0\.0\.1:\d+$/.test(request.headers.host ?? '')) return reply.code(403).send({ error: 'relay_origin_rejected' });
@@ -15,8 +15,14 @@ export function registerManagerRelay(app: FastifyInstance, store: ManagerConnect
     const action = request.body as { type?: unknown } | null;
     if (!action || typeof action !== 'object') return reply.code(400).send({ error: 'invalid_relay_action' });
     if (action.type === 'state') return { snapshot: store.snapshot() };
-    if (!['heartbeat', 'claim', 'submitted', 'complete'].includes(String(action.type))) return reply.code(400).send({ error: 'unsupported_relay_action' });
-    try { return await store.operate(action); }
+    if (!['heartbeat', 'claim', 'submitted', 'complete', 'decision_create', 'decision_acknowledge', 'decision_resolve', 'decision_uncertain'].includes(String(action.type))) return reply.code(400).send({ error: 'unsupported_relay_action' });
+    try {
+      if (action.type === 'decision_create') {
+        if (!options.validateDecisionScope) return reply.code(409).send({ error: 'work_catalog_unavailable' });
+        options.validateDecisionScope((action as { scope?: unknown }).scope, action);
+      }
+      return await store.operate(action);
+    }
     catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : 'relay_operation_failed' }); }
   });
 }

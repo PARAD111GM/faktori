@@ -87,6 +87,13 @@ kit-relative reference with the known canonical skill path. Do not copy only
 the repo-scoped Codex wrapper: its relative link requires the full kit layout.
 Explicitly reading the canonical skill works in every supported provider.
 
+For a v0.2 installation or update, the agent must also produce the integration
+inventory described in [the agent update guide](agent-update-guide.md): each
+provider route, Jira mapping, and GM schedule is enabled-and-verified,
+pending-auth/observation, or explicitly owner-deferred. A provider's appearance
+in the catalog does not establish a route, authentication, or successful run.
+The update skill does not silently enable an omitted integration.
+
 Provider references: [Claude commands](https://code.claude.com/docs/en/slash-commands),
 [Cursor commands](https://docs.cursor.com/en/agent/chat/commands), and
 [Codex skills](https://learn.chatgpt.com/docs/build-skills).

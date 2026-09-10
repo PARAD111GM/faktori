@@ -1,15 +1,21 @@
 import type { RunEvent, RunSnapshot } from '../runtime/contracts.ts';
 import type { ManagerLoopSummary } from './manager-loop-observer.ts';
+import type { ManagerConnectedDecisionSnapshot, ManagerConnectedRequestSnapshot } from '../manager-connected/index.ts';
 
 export interface ConsoleActivity {
   id: string;
   at: string;
-  source: 'run' | 'loop' | 'jira';
+  source: 'run' | 'loop' | 'jira' | 'request' | 'decision';
   summary: string;
   productId?: string;
   podId?: string;
   runId?: string;
   loopId?: string;
+  requestId?: string;
+  decisionId?: string;
+  planId?: string;
+  phaseId?: string;
+  ticketId?: string;
   issueKey?: string;
   url?: string;
 }
@@ -38,7 +44,7 @@ function record(value: unknown): Record<string, unknown> { return value !== null
 function identifier(value: string): string | undefined { return /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}$/.test(value) ? value : undefined; }
 
 /** A bounded, rebuildable feed of recorded milestones, not a live thought stream. */
-export function consoleActivity(events: readonly RunEvent[], runs: readonly RunSnapshot[], loops: readonly ManagerLoopSummary[], jira: readonly ConsoleActivity[] = []): ConsoleActivity[] {
+export function consoleActivity(events: readonly RunEvent[], runs: readonly RunSnapshot[], loops: readonly ManagerLoopSummary[], jira: readonly ConsoleActivity[] = [], requests: readonly ManagerConnectedRequestSnapshot[] = [], decisions: readonly ManagerConnectedDecisionSnapshot[] = []): ConsoleActivity[] {
   const snapshots = new Map(runs.map((run) => [run.intent.runId, run]));
   const entries: ConsoleActivity[] = [];
   for (const event of events) {
@@ -66,6 +72,25 @@ export function consoleActivity(events: readonly RunEvent[], runs: readonly RunS
     } else if (loop.updatedAt && ['failed', 'blocked', 'interrupted_uncertain'].includes(loop.status)) {
       entries.push({ id: `loop:${loop.id}:status:${loop.updatedAt}`, at: loop.updatedAt, source: 'loop', ...scope, summary: `${loop.id}: ${loop.status.replaceAll('_', ' ')}${loop.reason ? ` · ${loop.reason.replaceAll('_', ' ')}` : ''}` });
     }
+  }
+  for (const request of requests) {
+    const scope = request.scope;
+    const details = { requestId: request.id, productId: scope?.productId ?? request.assignment.productId, ...(scope?.planId === undefined ? {} : { planId: scope.planId }), ...(scope?.phaseId === undefined ? {} : { phaseId: scope.phaseId }), ...(scope?.ticketId === undefined ? {} : { ticketId: scope.ticketId }) };
+    const title = request.title === '[redacted]' ? 'Manager-connected request' : request.title;
+    entries.push({ id: `request:${request.id}:queued`, at: request.createdAt, source: 'request', ...details, summary: `${title}: queued for Manager-mediated delivery` });
+    if (request.claimedAt) entries.push({ id: `request:${request.id}:claimed`, at: request.claimedAt, source: 'request', ...details, summary: `${title}: Manager claim recorded` });
+    if (request.submittedAt) entries.push({ id: `request:${request.id}:submitted`, at: request.submittedAt, source: 'request', ...details, summary: `${title}: submission to the assigned task recorded` });
+    if (request.completedAt) entries.push({ id: `request:${request.id}:reported`, at: request.completedAt, source: 'request', ...details, summary: `${title}: Manager-reported result observed; acceptance not evaluated` });
+    if (request.uncertainAt) entries.push({ id: `request:${request.id}:uncertain`, at: request.uncertainAt, source: 'request', ...details, summary: `${title}: delivery requires reconciliation` });
+    if (request.cancelledAt) entries.push({ id: `request:${request.id}:cancelled`, at: request.cancelledAt, source: 'request', ...details, summary: `${title}: queued request cancelled` });
+  }
+  for (const decision of decisions) {
+    const scope = { decisionId: decision.id, productId: decision.scope.productId, planId: decision.scope.planId, phaseId: decision.scope.phaseId, ...(decision.scope.ticketId === undefined ? {} : { ticketId: decision.scope.ticketId }) };
+    entries.push({ id: `decision:${decision.id}:created`, at: decision.createdAt, source: 'decision', ...scope, summary: `Decision opened: ${decision.problem === '[redacted]' ? 'details redacted' : decision.problem}` });
+    if (decision.ownerResponse) entries.push({ id: `decision:${decision.id}:response`, at: decision.ownerResponse.recordedAt, source: 'decision', ...scope, summary: 'Owner response recorded for Manager observation' });
+    if (decision.managerAcknowledgedAt) entries.push({ id: `decision:${decision.id}:acknowledged`, at: decision.managerAcknowledgedAt, source: 'decision', ...scope, summary: 'Manager acknowledgement recorded' });
+    if (decision.resolvedAt) entries.push({ id: `decision:${decision.id}:resolved`, at: decision.resolvedAt, source: 'decision', ...scope, summary: 'Decision resolved; this is not delivery or product acceptance' });
+    if (decision.uncertainAt) entries.push({ id: `decision:${decision.id}:uncertain`, at: decision.uncertainAt, source: 'decision', ...scope, summary: 'Decision observation requires reconciliation' });
   }
   entries.push(...jira);
   const counts = new Map<string, number>();

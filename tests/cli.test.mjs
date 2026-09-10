@@ -221,6 +221,24 @@ describe('public CLI', () => {
     expect(run('preflight', join(root, 'examples/diagnostics/preflight-projection.json'), 'unexpected').status).toBe(1);
   });
 
+  it('reports offline setup gaps from a local Console configuration without probing providers or integrations', () => {
+    const result = run('readiness', 'report', join(root, 'examples/config/nightly-gm.json'));
+    expect(result.status).toBe(0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    expect(report).toMatchObject({
+      format: 'faktori.setup-readiness-result/v1',
+      complete: false,
+      status: 'blocked',
+      summary: { verified: 0 },
+    });
+    expect(report.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'gm.scheduling', status: 'configured' }),
+      expect.objectContaining({ id: 'jira.sources', status: 'unavailable' }),
+      expect.objectContaining({ id: 'providers.catalog', status: 'unavailable' }),
+    ]));
+    expect(run('readiness', 'report', join(root, 'examples/config/nightly-gm.json'), 'unexpected').status).toBe(1);
+  });
+
   it('inspects the installed projection read-only and gives specific missing-projection remediation', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'faktori-cli-preflight-'));
     const projectionPath = join(directory, 'projection.sqlite');

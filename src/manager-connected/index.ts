@@ -3,6 +3,8 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 
+import type { ScopedWorkAssignment } from '../console/work-management.ts';
+
 export interface ManagerConnectedManager {
   threadId: string;
   title: string;
@@ -34,13 +36,54 @@ export type ManagerConnectedRequestStatus =
   | 'uncertain'
   | 'cancelled';
 
+export type ManagerConnectedDecisionState = 'open' | 'response_recorded' | 'pending_manager_ack' | 'manager_acknowledged' | 'resolved' | 'uncertain' | 'withdrawn';
+export type ManagerConnectedDecisionCapability = 'supported' | 'unavailable' | 'stale';
+export type ManagerConnectedDecisionActionKind = 'record_owner_response' | 'answer_provider_request' | 'enqueue_agent_task' | 'open_external_record';
+
+export interface ManagerConnectedDecisionOption { id: string; label: string; }
+export interface ManagerConnectedDecisionCause { basis: 'observed' | 'reported' | 'unknown'; summary: string; }
+export interface ManagerConnectedDecisionEvidence { label: string; summary?: string; }
+export type ManagerConnectedDecisionActionTarget =
+  | { runId: string; requestId: string }
+  | { sessionId: string }
+  | { url: string };
+export interface ManagerConnectedDecisionActionDescriptor { kind: ManagerConnectedDecisionActionKind; label: string; target?: ManagerConnectedDecisionActionTarget; }
+export interface ManagerConnectedDecisionResponse { optionId: string; label: string; recordedAt: string; }
+export interface ManagerConnectedDecisionSnapshot {
+  id: string;
+  scope: ScopedWorkAssignment;
+  problem: string;
+  cause: ManagerConnectedDecisionCause;
+  evidence: ManagerConnectedDecisionEvidence[];
+  accountableOwner: string;
+  recommendedNextAction: string;
+  impact: string;
+  capability: ManagerConnectedDecisionCapability;
+  action: ManagerConnectedDecisionActionDescriptor;
+  options: ManagerConnectedDecisionOption[];
+  state: ManagerConnectedDecisionState;
+  revision: number;
+  createdAt: string;
+  observedAt: string;
+  ownerResponse?: ManagerConnectedDecisionResponse;
+  managerAcknowledgedAt?: string;
+  resolvedAt?: string;
+  uncertainAt?: string;
+  uncertaintyReason?: string;
+}
+
 export type ManagerConnectedAction =
-  | { type: 'enqueue'; id: string; sessionId: string; title: string; instruction: string }
+  | { type: 'enqueue'; id: string; sessionId: string; title: string; instruction: string; catalogRevision?: string; scope?: ScopedWorkAssignment }
   | { type: 'claim'; id: string }
   | { type: 'submitted'; id: string }
   | { type: 'complete'; id: string; threadId: string; summary: string }
   | { type: 'heartbeat' }
-  | { type: 'cancel'; id: string };
+  | { type: 'cancel'; id: string }
+  | { type: 'decision_create'; id: string; scope: ScopedWorkAssignment; problem: string; cause: ManagerConnectedDecisionCause; evidence: ManagerConnectedDecisionEvidence[]; accountableOwner: string; recommendedNextAction: string; impact: string; capability: ManagerConnectedDecisionCapability; action: ManagerConnectedDecisionActionDescriptor; options: ManagerConnectedDecisionOption[] }
+  | { type: 'record_owner_response'; id: string; responseId: string; idempotencyKey: string; expectedRevision: number }
+  | { type: 'decision_acknowledge'; id: string; expectedRevision: number }
+  | { type: 'decision_resolve'; id: string; expectedRevision: number }
+  | { type: 'decision_uncertain'; id: string; expectedRevision: number; reason: string };
 
 export interface ManagerConnectedCompletionReport {
   sourceThreadId: string;
@@ -67,6 +110,9 @@ export interface ManagerConnectedRequestSnapshot {
   uncertainAt?: string;
   uncertaintyReason?: 'restart_requires_reconciliation';
   report?: ManagerConnectedCompletionReport;
+  /** Immutable owner-visible catalog binding when the optional catalog is enabled. */
+  catalogRevision?: string;
+  scope?: ScopedWorkAssignment;
   /** The exact instruction is intentionally available only from a successful claim. */
   instructionAvailable: true;
 }
@@ -76,6 +122,7 @@ export interface ManagerConnectedSnapshot {
   manager: ManagerConnectedManager;
   sessions: ManagerConnectedSessionAssignment[];
   requests: ManagerConnectedRequestSnapshot[];
+  decisions: ManagerConnectedDecisionSnapshot[];
   lastHeartbeatAt?: string;
 }
 
@@ -98,7 +145,9 @@ export type ManagerConnectedOperationResult =
   | { type: 'enqueue'; duplicate: boolean; request: ManagerConnectedRequestSnapshot }
   | { type: 'claim'; claim: ManagerConnectedClaim }
   | { type: 'submitted' | 'complete' | 'cancel'; request: ManagerConnectedRequestSnapshot }
-  | { type: 'heartbeat'; snapshot: ManagerConnectedSnapshot };
+  | { type: 'heartbeat'; snapshot: ManagerConnectedSnapshot }
+  | { type: 'decision_create'; duplicate: boolean; decision: ManagerConnectedDecisionSnapshot }
+  | { type: 'record_owner_response' | 'decision_acknowledge' | 'decision_resolve' | 'decision_uncertain'; duplicate?: boolean; decision: ManagerConnectedDecisionSnapshot };
 
 export class ManagerConnectedError extends Error {
   readonly code: string;
@@ -128,10 +177,19 @@ interface DurableRequest {
   uncertainAt?: string;
   uncertaintyReason?: 'restart_requires_reconciliation';
   report?: ManagerConnectedCompletionReport;
+  catalogRevision?: string;
+  scope?: ScopedWorkAssignment;
+}
+
+interface DurableDecision extends Omit<ManagerConnectedDecisionSnapshot, 'scope'> {
+  scope: ScopedWorkAssignment;
+  responseIdempotencyKey?: string;
 }
 
 type EventType = 'queued' | 'claimed' | 'submission_observed' | 'response_observed'
-  | 'cancelled' | 'restart_requires_reconciliation' | 'heartbeat';
+  | 'cancelled' | 'restart_requires_reconciliation' | 'heartbeat'
+  | 'decision_created' | 'owner_response_recorded' | 'manager_ack_pending'
+  | 'manager_acknowledged' | 'decision_resolved' | 'decision_uncertain';
 
 interface ManagerConnectedEvent {
   format: 'faktori.manager-connected-event/v1';
@@ -139,17 +197,19 @@ interface ManagerConnectedEvent {
   at: string;
   type: EventType;
   request?: DurableRequest;
+  decision?: DurableDecision;
 }
 
 type Listener = () => void;
 
 const SLUG = /^[a-z0-9](?:[a-z0-9._-]{0,78}[a-z0-9])?$/;
+const TICKET_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,78}[A-Za-z0-9])?$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_STATUSES = new Set<ManagerConnectedRequestStatus>(['queued', 'claimed', 'submitted', 'completed', 'uncertain', 'cancelled']);
-const EVENT_TYPES = new Set<EventType>(['queued', 'claimed', 'submission_observed', 'response_observed', 'cancelled', 'restart_requires_reconciliation', 'heartbeat']);
+const EVENT_TYPES = new Set<EventType>(['queued', 'claimed', 'submission_observed', 'response_observed', 'cancelled', 'restart_requires_reconciliation', 'heartbeat', 'decision_created', 'owner_response_recorded', 'manager_ack_pending', 'manager_acknowledged', 'decision_resolved', 'decision_uncertain']);
 const SAFE_TEXT_LIMIT = 16_000;
 // Keep the Console-facing projection aligned with the runtime's existing public-evidence filters.
-const PRIVATE_OR_SECRET = /(?:^|[^a-z0-9_])(session(?:[_ -]?id)?|credential|secret|api[_ -]?key|bearer|authorization|private[_ -]?(?:reasoning|path)|authority)(?:$|[^a-z0-9_])|(^|[\\/])(Users|home)([\\/])|\.codex|\.claude/i;
+const PRIVATE_OR_SECRET = /(?:^|[^a-z0-9_])(session(?:[_ -]?id)?|credential|secret|api[_ -]?key|bearer|authorization|private[_ -]?(?:reasoning|path))(?:$|[^a-z0-9_])|(^|[\\/])(Users|home)([\\/])|\.codex|\.claude/i;
 const CREDENTIAL_SIGNATURE = /(?:\bsk-(?:(?:proj|live|test)-)?[A-Za-z0-9_-]{8,}|\b(?:[rs]k_(?:live|test)|whsec)_[A-Za-z0-9]{8,}|\b(?:gh[opusr]_[A-Za-z0-9]{12,}|github_pat_[A-Za-z0-9_]{12,})|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|\bxox[aboprs]-[A-Za-z0-9-]{10,}|\bnpm_[A-Za-z0-9]{12,}|\bpypi-[A-Za-z0-9_-]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/i;
 const ABSOLUTE_PATH = /(?:^|[\s=:"'(])(?:\/(?!\/)(?:\S*)|[A-Za-z]:\\\S*|\\\\[^\s\\]+\\\S*)/;
 const FILE_URI = /\bfile:\/\//i;
@@ -185,6 +245,12 @@ function slug(value: unknown, path: string): string {
   return parsed;
 }
 
+function ticketId(value: unknown, path: string): string {
+  const parsed = boundedText(value, path, 80);
+  if (!TICKET_ID.test(parsed)) return fail('invalid_input', `${path} must be a safe stable ticket identifier`);
+  return parsed;
+}
+
 function uuid(value: unknown, path: string): string {
   const parsed = boundedText(value, path, 36);
   if (!UUID.test(parsed)) return fail('invalid_input', `${path} must be a UUID`);
@@ -204,8 +270,12 @@ function timestamp(value: unknown, path: string): string {
   return new Date(value).toISOString();
 }
 
-function optionalSlug(input: InputRecord, key: 'podId' | 'planId' | 'phaseId' | 'ticketId', path: string): string | undefined {
+function optionalSlug(input: InputRecord, key: 'podId' | 'planId' | 'phaseId', path: string): string | undefined {
   return input[key] === undefined ? undefined : slug(input[key], `${path}.${key}`);
+}
+
+function optionalTicketId(input: InputRecord, path: string): string | undefined {
+  return input.ticketId === undefined ? undefined : ticketId(input.ticketId, `${path}.ticketId`);
 }
 
 function parseManager(value: unknown, path: string): ManagerConnectedManager {
@@ -229,8 +299,87 @@ function parseSession(value: unknown, path: string): ManagerConnectedSessionAssi
     ...(optionalSlug(input, 'podId', path) === undefined ? {} : { podId: optionalSlug(input, 'podId', path) }),
     ...(optionalSlug(input, 'planId', path) === undefined ? {} : { planId: optionalSlug(input, 'planId', path) }),
     ...(optionalSlug(input, 'phaseId', path) === undefined ? {} : { phaseId: optionalSlug(input, 'phaseId', path) }),
-    ...(optionalSlug(input, 'ticketId', path) === undefined ? {} : { ticketId: optionalSlug(input, 'ticketId', path) }),
+    ...(optionalTicketId(input, path) === undefined ? {} : { ticketId: optionalTicketId(input, path) }),
   };
+}
+
+function parseScopedWorkAssignment(value: unknown, path: string): ScopedWorkAssignment {
+  const input = record(value, path);
+  exactKeys(input, ['productId', 'planId', 'phaseId', 'ticketId'], path);
+  return {
+    productId: slug(input.productId, `${path}.productId`),
+    planId: slug(input.planId, `${path}.planId`),
+    phaseId: slug(input.phaseId, `${path}.phaseId`),
+    ...(input.ticketId === undefined ? {} : { ticketId: ticketId(input.ticketId, `${path}.ticketId`) }),
+  };
+}
+
+function positiveRevision(value: unknown, path: string): number {
+  if (!Number.isInteger(value) || Number(value) < 1 || Number(value) > Number.MAX_SAFE_INTEGER) return fail('invalid_input', `${path} must be a positive revision`);
+  return Number(value);
+}
+
+function parseDecisionCause(value: unknown, path: string): ManagerConnectedDecisionCause {
+  const input = record(value, path);
+  exactKeys(input, ['basis', 'summary'], path);
+  if (input.basis !== 'observed' && input.basis !== 'reported' && input.basis !== 'unknown') fail('invalid_input', `${path}.basis is unsupported`);
+  return { basis: input.basis, summary: boundedText(input.summary, `${path}.summary`, 1_000) };
+}
+
+function parseDecisionEvidence(value: unknown, path: string): ManagerConnectedDecisionEvidence[] {
+  if (!Array.isArray(value) || value.length > 32) fail('invalid_input', `${path} must be a bounded array`);
+  return value.map((entry, index) => {
+    const input = record(entry, `${path}[${index}]`);
+    exactKeys(input, ['label', 'summary'], `${path}[${index}]`);
+    return { label: boundedText(input.label, `${path}[${index}].label`, 256), ...(input.summary === undefined ? {} : { summary: boundedText(input.summary, `${path}[${index}].summary`, 1_000) }) };
+  });
+}
+
+function parseDecisionActionDescriptor(value: unknown, capability: ManagerConnectedDecisionCapability, path: string): ManagerConnectedDecisionActionDescriptor {
+  const input = record(value, path);
+  exactKeys(input, ['kind', 'label', 'target'], path);
+  if (input.kind !== 'record_owner_response' && input.kind !== 'answer_provider_request' && input.kind !== 'enqueue_agent_task' && input.kind !== 'open_external_record') fail('invalid_input', `${path}.kind is unsupported`);
+  const label = boundedText(input.label, `${path}.label`, 256);
+  if (input.kind === 'record_owner_response') {
+    if (input.target !== undefined) fail('invalid_input', `${path}.target is not supported for owner response recording`);
+    return { kind: input.kind, label };
+  }
+  if (input.target === undefined) {
+    if (capability === 'supported') fail('invalid_input', `${path}.target is required for a supported action`);
+    return { kind: input.kind, label };
+  }
+  const target = record(input.target, `${path}.target`);
+  if (input.kind === 'answer_provider_request') {
+    exactKeys(target, ['runId', 'requestId'], `${path}.target`);
+    return { kind: input.kind, label, target: { runId: requestIdentity(target.runId, `${path}.target.runId`), requestId: requestIdentity(target.requestId, `${path}.target.requestId`) } };
+  }
+  if (input.kind === 'enqueue_agent_task') {
+    exactKeys(target, ['sessionId'], `${path}.target`);
+    return { kind: input.kind, label, target: { sessionId: slug(target.sessionId, `${path}.target.sessionId`) } };
+  }
+  exactKeys(target, ['url'], `${path}.target`);
+  const rawUrl = boundedText(target.url, `${path}.target.url`, 2_048);
+  let url: URL;
+  try { url = new URL(rawUrl); } catch { return fail('invalid_input', `${path}.target.url must be an HTTPS URL`); }
+  if (url.protocol !== 'https:' || url.username !== '' || url.password !== '' || url.hash !== '' || url.toString() !== rawUrl) fail('invalid_input', `${path}.target.url must be a credential-free HTTPS URL`);
+  return { kind: input.kind, label, target: { url: rawUrl } };
+}
+
+function parseDecisionOptions(value: unknown, path: string): ManagerConnectedDecisionOption[] {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 12) fail('invalid_input', `${path} must contain 2-12 bounded choices`);
+  const options = value.map((entry, index) => {
+    const input = record(entry, `${path}[${index}]`);
+    exactKeys(input, ['id', 'label'], `${path}[${index}]`);
+    return { id: slug(input.id, `${path}[${index}].id`), label: boundedText(input.label, `${path}[${index}].label`, 256) };
+  });
+  if (new Set(options.map((option) => option.id)).size !== options.length) fail('invalid_input', `${path} repeats an option id`);
+  return options;
+}
+
+function parseDecisionOwner(value: unknown, path: string): string {
+  const owner = boundedText(value, path, 80);
+  if (owner !== 'owner' && !SLUG.test(owner)) fail('invalid_input', `${path} must be owner or a configured session alias`);
+  return owner;
 }
 
 export function parseManagerConnectedConfig(value: unknown): ManagerConnectedConfig {
@@ -260,8 +409,11 @@ function parseAction(value: unknown): ManagerConnectedAction {
   const input = record(value, 'action');
   const type = input.type;
   if (type === 'enqueue') {
-    exactKeys(input, ['type', 'id', 'sessionId', 'title', 'instruction'], 'action');
-    return { type, id: requestIdentity(input.id, 'action.id'), sessionId: slug(input.sessionId, 'action.sessionId'), title: boundedText(input.title, 'action.title', 256), instruction: boundedText(input.instruction, 'action.instruction', SAFE_TEXT_LIMIT) };
+    exactKeys(input, ['type', 'id', 'sessionId', 'title', 'instruction', 'catalogRevision', 'scope'], 'action');
+    const catalogRevision = input.catalogRevision === undefined ? undefined : boundedText(input.catalogRevision, 'action.catalogRevision', 128);
+    const scope = input.scope === undefined ? undefined : parseScopedWorkAssignment(input.scope, 'action.scope');
+    if ((catalogRevision === undefined) !== (scope === undefined)) fail('invalid_input', 'action.catalogRevision and action.scope must be supplied together');
+    return { type, id: requestIdentity(input.id, 'action.id'), sessionId: slug(input.sessionId, 'action.sessionId'), title: boundedText(input.title, 'action.title', 256), instruction: boundedText(input.instruction, 'action.instruction', SAFE_TEXT_LIMIT), ...(catalogRevision === undefined ? {} : { catalogRevision }), ...(scope === undefined ? {} : { scope }) };
   }
   if (type === 'claim' || type === 'submitted' || type === 'cancel') {
     exactKeys(input, ['type', 'id'], 'action');
@@ -274,6 +426,29 @@ function parseAction(value: unknown): ManagerConnectedAction {
   if (type === 'heartbeat') {
     exactKeys(input, ['type'], 'action');
     return { type };
+  }
+  if (type === 'decision_create') {
+    exactKeys(input, ['type', 'id', 'scope', 'problem', 'cause', 'evidence', 'accountableOwner', 'recommendedNextAction', 'impact', 'capability', 'action', 'options'], 'action');
+    if (input.capability !== 'supported' && input.capability !== 'unavailable' && input.capability !== 'stale') fail('invalid_input', 'action.capability is unsupported');
+    const capability = input.capability;
+    return {
+      type, id: requestIdentity(input.id, 'action.id'), scope: parseScopedWorkAssignment(input.scope, 'action.scope'),
+      problem: boundedText(input.problem, 'action.problem', 2_000), cause: parseDecisionCause(input.cause, 'action.cause'), evidence: parseDecisionEvidence(input.evidence, 'action.evidence'),
+      accountableOwner: parseDecisionOwner(input.accountableOwner, 'action.accountableOwner'), recommendedNextAction: boundedText(input.recommendedNextAction, 'action.recommendedNextAction', 1_000), impact: boundedText(input.impact, 'action.impact', 1_000),
+      capability, action: parseDecisionActionDescriptor(input.action, capability, 'action.action'), options: parseDecisionOptions(input.options, 'action.options'),
+    };
+  }
+  if (type === 'record_owner_response') {
+    exactKeys(input, ['type', 'id', 'responseId', 'idempotencyKey', 'expectedRevision'], 'action');
+    return { type, id: requestIdentity(input.id, 'action.id'), responseId: slug(input.responseId, 'action.responseId'), idempotencyKey: uuid(input.idempotencyKey, 'action.idempotencyKey'), expectedRevision: positiveRevision(input.expectedRevision, 'action.expectedRevision') };
+  }
+  if (type === 'decision_acknowledge' || type === 'decision_resolve') {
+    exactKeys(input, ['type', 'id', 'expectedRevision'], 'action');
+    return { type, id: requestIdentity(input.id, 'action.id'), expectedRevision: positiveRevision(input.expectedRevision, 'action.expectedRevision') };
+  }
+  if (type === 'decision_uncertain') {
+    exactKeys(input, ['type', 'id', 'expectedRevision', 'reason'], 'action');
+    return { type, id: requestIdentity(input.id, 'action.id'), expectedRevision: positiveRevision(input.expectedRevision, 'action.expectedRevision'), reason: boundedText(input.reason, 'action.reason', 1_000) };
   }
   return fail('invalid_input', 'action.type is unsupported');
 }
@@ -321,8 +496,54 @@ function publicRequest(request: DurableRequest): ManagerConnectedRequestSnapshot
     ...(request.uncertainAt === undefined ? {} : { uncertainAt: request.uncertainAt }),
     ...(request.uncertaintyReason === undefined ? {} : { uncertaintyReason: request.uncertaintyReason }),
     ...(request.report === undefined ? {} : { report: { ...request.report, summary: safeProjectionText(request.report.summary) } }),
+    ...(request.catalogRevision === undefined ? {} : { catalogRevision: request.catalogRevision }),
+    ...(request.scope === undefined ? {} : { scope: structuredClone(request.scope) }),
     instructionAvailable: true,
   };
+}
+
+function safeDecisionText(value: string): string { return safeProjectionText(value); }
+
+function publicDecision(decision: DurableDecision): ManagerConnectedDecisionSnapshot {
+  return {
+    id: decision.id, scope: structuredClone(decision.scope), problem: safeDecisionText(decision.problem),
+    cause: { basis: decision.cause.basis, summary: safeDecisionText(decision.cause.summary) },
+    evidence: decision.evidence.map((item) => ({ label: safeDecisionText(item.label), ...(item.summary === undefined ? {} : { summary: safeDecisionText(item.summary) }) })),
+    accountableOwner: safeDecisionText(decision.accountableOwner), recommendedNextAction: safeDecisionText(decision.recommendedNextAction), impact: safeDecisionText(decision.impact),
+    capability: decision.capability, action: { kind: decision.action.kind, label: safeDecisionText(decision.action.label), ...(decision.action.target === undefined ? {} : { target: structuredClone(decision.action.target) }) }, options: decision.options.map((option) => ({ id: option.id, label: safeDecisionText(option.label) })),
+    state: decision.state, revision: decision.revision, createdAt: decision.createdAt, observedAt: decision.observedAt,
+    ...(decision.ownerResponse === undefined ? {} : { ownerResponse: { ...decision.ownerResponse, label: safeDecisionText(decision.ownerResponse.label) } }),
+    ...(decision.managerAcknowledgedAt === undefined ? {} : { managerAcknowledgedAt: decision.managerAcknowledgedAt }),
+    ...(decision.resolvedAt === undefined ? {} : { resolvedAt: decision.resolvedAt }),
+    ...(decision.uncertainAt === undefined ? {} : { uncertainAt: decision.uncertainAt }),
+    ...(decision.uncertaintyReason === undefined ? {} : { uncertaintyReason: safeDecisionText(decision.uncertaintyReason) }),
+  };
+}
+
+function parseDurableDecision(value: unknown, path: string): DurableDecision {
+  const input = record(value, path);
+  exactKeys(input, ['id', 'scope', 'problem', 'cause', 'evidence', 'accountableOwner', 'recommendedNextAction', 'impact', 'capability', 'action', 'options', 'state', 'revision', 'createdAt', 'observedAt', 'ownerResponse', 'responseIdempotencyKey', 'managerAcknowledgedAt', 'resolvedAt', 'uncertainAt', 'uncertaintyReason'], path);
+  if (input.capability !== 'supported' && input.capability !== 'unavailable' && input.capability !== 'stale') fail('journal_corrupt', `${path}.capability is invalid`);
+  if (typeof input.state !== 'string' || !['open', 'response_recorded', 'pending_manager_ack', 'manager_acknowledged', 'resolved', 'uncertain', 'withdrawn'].includes(input.state)) fail('journal_corrupt', `${path}.state is invalid`);
+  const state = input.state as ManagerConnectedDecisionState;
+  const ownerResponse = input.ownerResponse === undefined ? undefined : (() => {
+    const response = record(input.ownerResponse, `${path}.ownerResponse`); exactKeys(response, ['optionId', 'label', 'recordedAt'], `${path}.ownerResponse`);
+    return { optionId: slug(response.optionId, `${path}.ownerResponse.optionId`), label: boundedText(response.label, `${path}.ownerResponse.label`, 256), recordedAt: timestamp(response.recordedAt, `${path}.ownerResponse.recordedAt`) };
+  })();
+  const responseIdempotencyKey = input.responseIdempotencyKey === undefined ? undefined : uuid(input.responseIdempotencyKey, `${path}.responseIdempotencyKey`);
+  const decision: DurableDecision = {
+    id: requestIdentity(input.id, `${path}.id`), scope: parseScopedWorkAssignment(input.scope, `${path}.scope`), problem: boundedText(input.problem, `${path}.problem`, 2_000), cause: parseDecisionCause(input.cause, `${path}.cause`), evidence: parseDecisionEvidence(input.evidence, `${path}.evidence`), accountableOwner: parseDecisionOwner(input.accountableOwner, `${path}.accountableOwner`), recommendedNextAction: boundedText(input.recommendedNextAction, `${path}.recommendedNextAction`, 1_000), impact: boundedText(input.impact, `${path}.impact`, 1_000),
+    capability: input.capability, action: parseDecisionActionDescriptor(input.action, input.capability, `${path}.action`), options: parseDecisionOptions(input.options, `${path}.options`), state, revision: positiveRevision(input.revision, `${path}.revision`), createdAt: timestamp(input.createdAt, `${path}.createdAt`), observedAt: timestamp(input.observedAt, `${path}.observedAt`),
+    ...(ownerResponse === undefined ? {} : { ownerResponse }), ...(responseIdempotencyKey === undefined ? {} : { responseIdempotencyKey }),
+    ...(input.managerAcknowledgedAt === undefined ? {} : { managerAcknowledgedAt: timestamp(input.managerAcknowledgedAt, `${path}.managerAcknowledgedAt`) }), ...(input.resolvedAt === undefined ? {} : { resolvedAt: timestamp(input.resolvedAt, `${path}.resolvedAt`) }), ...(input.uncertainAt === undefined ? {} : { uncertainAt: timestamp(input.uncertainAt, `${path}.uncertainAt`) }), ...(input.uncertaintyReason === undefined ? {} : { uncertaintyReason: boundedText(input.uncertaintyReason, `${path}.uncertaintyReason`, 1_000) }),
+  };
+  if (decision.accountableOwner !== 'owner' && !decision.options.some(() => true)) fail('journal_corrupt', `${path} has no options`);
+  if ((state === 'response_recorded' || state === 'pending_manager_ack' || state === 'manager_acknowledged' || state === 'resolved') && (decision.ownerResponse === undefined || decision.responseIdempotencyKey === undefined)) fail('journal_corrupt', `${path} requires a durable owner response`);
+  if (decision.ownerResponse !== undefined && !decision.options.some((option) => option.id === decision.ownerResponse?.optionId && option.label === decision.ownerResponse.label)) fail('journal_corrupt', `${path}.ownerResponse must name a configured option`);
+  if ((state === 'manager_acknowledged' || state === 'resolved') && decision.managerAcknowledgedAt === undefined) fail('journal_corrupt', `${path}.managerAcknowledgedAt is required`);
+  if (state === 'resolved' && decision.resolvedAt === undefined) fail('journal_corrupt', `${path}.resolvedAt is required`);
+  if (state === 'uncertain' && (decision.uncertainAt === undefined || decision.uncertaintyReason === undefined)) fail('journal_corrupt', `${path}.uncertainty is required`);
+  return decision;
 }
 
 function parseReport(value: unknown, path: string): ManagerConnectedCompletionReport {
@@ -341,7 +562,7 @@ function parseReport(value: unknown, path: string): ManagerConnectedCompletionRe
 
 function parseDurableRequest(value: unknown, path: string): DurableRequest {
   const input = record(value, path);
-  exactKeys(input, ['id', 'sessionId', 'title', 'instruction', 'status', 'assignment', 'callbackManager', 'createdAt', 'claimedAt', 'submittedAt', 'completedAt', 'cancelledAt', 'uncertainAt', 'uncertaintyReason', 'report'], path);
+  exactKeys(input, ['id', 'sessionId', 'title', 'instruction', 'status', 'assignment', 'callbackManager', 'createdAt', 'claimedAt', 'submittedAt', 'completedAt', 'cancelledAt', 'uncertainAt', 'uncertaintyReason', 'report', 'catalogRevision', 'scope'], path);
   if (typeof input.status !== 'string' || !REQUEST_STATUSES.has(input.status as ManagerConnectedRequestStatus)) fail('journal_corrupt', `${path}.status is invalid`);
   const status = input.status as ManagerConnectedRequestStatus;
   const optionalTimestamp = (key: 'claimedAt' | 'submittedAt' | 'completedAt' | 'cancelledAt' | 'uncertainAt'): string | undefined => input[key] === undefined ? undefined : timestamp(input[key], `${path}.${key}`);
@@ -361,7 +582,10 @@ function parseDurableRequest(value: unknown, path: string): DurableRequest {
     ...(optionalTimestamp('uncertainAt') === undefined ? {} : { uncertainAt: optionalTimestamp('uncertainAt') }),
     ...(input.uncertaintyReason === undefined ? {} : { uncertaintyReason: input.uncertaintyReason === 'restart_requires_reconciliation' ? input.uncertaintyReason : fail('journal_corrupt', `${path}.uncertaintyReason is invalid`) }),
     ...(input.report === undefined ? {} : { report: parseReport(input.report, `${path}.report`) }),
+    ...(input.catalogRevision === undefined ? {} : { catalogRevision: boundedText(input.catalogRevision, `${path}.catalogRevision`, 128) }),
+    ...(input.scope === undefined ? {} : { scope: parseScopedWorkAssignment(input.scope, `${path}.scope`) }),
   };
+  if ((request.catalogRevision === undefined) !== (request.scope === undefined)) fail('journal_corrupt', `${path}.catalogRevision and scope must occur together`);
   if (request.sessionId !== request.assignment.id) fail('journal_corrupt', `${path} session assignment identity changed`);
   const required: Partial<Record<ManagerConnectedRequestStatus, keyof DurableRequest>> = { claimed: 'claimedAt', submitted: 'submittedAt', completed: 'completedAt', cancelled: 'cancelledAt', uncertain: 'uncertainAt' };
   const requiredField = required[status];
@@ -379,7 +603,7 @@ function parseDurableRequest(value: unknown, path: string): DurableRequest {
 function parseEvent(value: unknown, expectedSequence: number): ManagerConnectedEvent {
   try {
     const input = record(value, `journal event ${expectedSequence}`);
-    exactKeys(input, ['format', 'sequence', 'at', 'type', 'request'], `journal event ${expectedSequence}`);
+    exactKeys(input, ['format', 'sequence', 'at', 'type', 'request', 'decision'], `journal event ${expectedSequence}`);
     if (input.format !== 'faktori.manager-connected-event/v1' || input.sequence !== expectedSequence || typeof input.type !== 'string' || !EVENT_TYPES.has(input.type as EventType)) {
       fail('journal_corrupt', `journal event ${expectedSequence} has an invalid envelope`);
     }
@@ -390,8 +614,10 @@ function parseEvent(value: unknown, expectedSequence: number): ManagerConnectedE
       at: timestamp(input.at, `journal event ${expectedSequence}.at`),
       type,
       ...(input.request === undefined ? {} : { request: parseDurableRequest(input.request, `journal event ${expectedSequence}.request`) }),
+      ...(input.decision === undefined ? {} : { decision: parseDurableDecision(input.decision, `journal event ${expectedSequence}.decision`) }),
     };
-    if ((type === 'heartbeat') !== (event.request === undefined)) fail('journal_corrupt', `journal event ${expectedSequence} has an invalid request payload`);
+    const decisionEvent = type.startsWith('decision_') || type === 'owner_response_recorded' || type === 'manager_ack_pending' || type === 'manager_acknowledged';
+    if (type === 'heartbeat' ? event.request !== undefined || event.decision !== undefined : decisionEvent ? event.request !== undefined || event.decision === undefined : event.request === undefined || event.decision !== undefined) fail('journal_corrupt', `journal event ${expectedSequence} has an invalid payload`);
     return event;
   } catch (error) {
     if (error instanceof ManagerConnectedError && error.code !== 'journal_corrupt') {
@@ -409,12 +635,15 @@ function immutableRequest(request: DurableRequest): unknown {
     instruction: request.instruction,
     assignment: request.assignment,
     callbackManager: request.callbackManager,
+    ...(request.catalogRevision === undefined ? {} : { catalogRevision: request.catalogRevision }),
+    ...(request.scope === undefined ? {} : { scope: request.scope }),
     createdAt: request.createdAt,
   };
 }
 
 function applyEvent(requests: Map<string, DurableRequest>, event: ManagerConnectedEvent): void {
   if (event.type === 'heartbeat') return;
+  if (event.decision !== undefined) return;
   const next = event.request as DurableRequest;
   const previous = requests.get(next.id);
   if (event.type === 'queued') {
@@ -433,6 +662,39 @@ function applyEvent(requests: Map<string, DurableRequest>, event: ManagerConnect
             : false;
   if (!valid) fail('journal_corrupt', `request ${next.id} has an invalid ${event.type} transition`);
   requests.set(next.id, structuredClone(next));
+}
+
+function immutableDecision(decision: DurableDecision): unknown {
+  return { id: decision.id, scope: decision.scope, problem: decision.problem, cause: decision.cause, evidence: decision.evidence, accountableOwner: decision.accountableOwner, recommendedNextAction: decision.recommendedNextAction, impact: decision.impact, capability: decision.capability, action: decision.action, options: decision.options, createdAt: decision.createdAt };
+}
+
+function decisionInputIdentity(decision: DurableDecision): unknown {
+  const { createdAt: _createdAt, state: _state, revision: _revision, observedAt: _observedAt, ownerResponse: _ownerResponse, responseIdempotencyKey: _responseIdempotencyKey, managerAcknowledgedAt: _managerAcknowledgedAt, resolvedAt: _resolvedAt, uncertainAt: _uncertainAt, uncertaintyReason: _uncertaintyReason, ...identity } = decision;
+  return identity;
+}
+
+function applyDecisionEvent(decisions: Map<string, DurableDecision>, event: ManagerConnectedEvent): void {
+  if (event.decision === undefined) return;
+  const next = event.decision;
+  const previous = decisions.get(next.id);
+  if (event.type === 'decision_created') {
+    if (previous !== undefined || next.state !== 'open' || next.revision !== 1 || next.ownerResponse !== undefined || next.observedAt !== next.createdAt) fail('journal_corrupt', `decision ${next.id} has an invalid creation event`);
+    decisions.set(next.id, structuredClone(next)); return;
+  }
+  if (previous === undefined || !same(immutableDecision(previous), immutableDecision(next)) || next.revision !== previous.revision + 1) fail('journal_corrupt', `decision ${next.id} changed immutable identity or revision`);
+  const valid = event.type === 'owner_response_recorded'
+    ? previous.state === 'open' && next.state === 'response_recorded' && next.ownerResponse !== undefined && next.responseIdempotencyKey !== undefined
+    : event.type === 'manager_ack_pending'
+      ? previous.state === 'response_recorded' && next.state === 'pending_manager_ack'
+      : event.type === 'manager_acknowledged'
+        ? ['response_recorded', 'pending_manager_ack'].includes(previous.state) && next.state === 'manager_acknowledged' && next.managerAcknowledgedAt !== undefined
+        : event.type === 'decision_resolved'
+          ? previous.state === 'manager_acknowledged' && next.state === 'resolved' && next.resolvedAt !== undefined
+          : event.type === 'decision_uncertain'
+            ? ['response_recorded', 'pending_manager_ack', 'manager_acknowledged'].includes(previous.state) && next.state === 'uncertain' && next.uncertainAt !== undefined
+            : false;
+  if (!valid) fail('journal_corrupt', `decision ${next.id} has an invalid ${event.type} transition`);
+  decisions.set(next.id, structuredClone(next));
 }
 
 async function fullWrite(handle: Awaited<ReturnType<typeof open>>, bytes: Uint8Array): Promise<void> {
@@ -467,6 +729,7 @@ export class ManagerConnectedStore {
   readonly #lockIdentity: string;
   readonly #journalPath: string;
   readonly #requests = new Map<string, DurableRequest>();
+  readonly #decisions = new Map<string, DurableDecision>();
   readonly #listeners = new Set<Listener>();
   #lockHandle?: Awaited<ReturnType<typeof open>>;
   #journalHandle?: Awaited<ReturnType<typeof open>>;
@@ -514,6 +777,7 @@ export class ManagerConnectedStore {
       manager: safeManager(this.#config.manager),
       sessions: this.#config.sessions.map(safeAssignment),
       requests: [...this.#requests.values()].map(publicRequest),
+      decisions: [...this.#decisions.values()].map(publicDecision),
       ...(this.#lastHeartbeatAt === undefined ? {} : { lastHeartbeatAt: this.#lastHeartbeatAt }),
     };
   }
@@ -595,13 +859,14 @@ export class ManagerConnectedStore {
       try { parsed = JSON.parse(line) as unknown; } catch { fail('journal_corrupt', `malformed committed journal event ${expected}`); }
       const event = parseEvent(parsed, expected);
       applyEvent(this.#requests, event);
+      applyDecisionEvent(this.#decisions, event);
       if (event.type === 'heartbeat') this.#lastHeartbeatAt = event.at;
       expected += 1;
     }
     this.#sequence = expected - 1;
   }
 
-  private async append(type: EventType, request?: DurableRequest): Promise<void> {
+  private async append(type: EventType, request?: DurableRequest, decision?: DurableDecision): Promise<void> {
     const at = new Date().toISOString();
     const event: ManagerConnectedEvent = {
       format: 'faktori.manager-connected-event/v1',
@@ -609,6 +874,7 @@ export class ManagerConnectedStore {
       at,
       type,
       ...(request === undefined ? {} : { request: structuredClone(request) }),
+      ...(decision === undefined ? {} : { decision: structuredClone(decision) }),
     };
     try {
       await fullWrite(this.#journalHandle as Awaited<ReturnType<typeof open>>, Buffer.from(`${stable(event)}\n`));
@@ -620,6 +886,7 @@ export class ManagerConnectedStore {
       fail('journal_uncertain', 'manager-connected journal append was not durably confirmed; restart and reconcile before further mutations');
     }
     applyEvent(this.#requests, event);
+    applyDecisionEvent(this.#decisions, event);
     this.#sequence = event.sequence;
     if (type === 'heartbeat') this.#lastHeartbeatAt = at;
     for (const listener of this.#listeners) {
@@ -631,6 +898,16 @@ export class ManagerConnectedStore {
     const request = this.#requests.get(id);
     if (request === undefined) return fail('request_not_found', `manager-connected request ${id} was not found`);
     return request;
+  }
+
+  private currentDecision(id: string): DurableDecision {
+    const decision = this.#decisions.get(id);
+    if (decision === undefined) fail('decision_not_found', `manager-connected decision ${id} was not found`);
+    return decision;
+  }
+
+  private ensureDecisionScope(scope: ScopedWorkAssignment): void {
+    if (scope.productId.length === 0 || scope.planId.length === 0 || scope.phaseId.length === 0) fail('decision_scope_invalid', 'decision scope must name one product, plan, and phase');
   }
 
   private currentAssignment(request: DurableRequest): ManagerConnectedSessionAssignment {
@@ -657,16 +934,90 @@ export class ManagerConnectedStore {
         instruction: action.instruction,
         assignment,
         callbackManager: this.#config.manager,
+        ...(action.catalogRevision === undefined ? {} : { catalogRevision: action.catalogRevision }),
+        ...(action.scope === undefined ? {} : { scope: action.scope }),
       };
       const existing = this.#requests.get(action.id);
       if (existing !== undefined) {
-        const bound = { id: existing.id, sessionId: existing.sessionId, title: existing.title, instruction: existing.instruction, assignment: existing.assignment, callbackManager: existing.callbackManager };
+        const bound = { id: existing.id, sessionId: existing.sessionId, title: existing.title, instruction: existing.instruction, assignment: existing.assignment, callbackManager: existing.callbackManager, ...(existing.catalogRevision === undefined ? {} : { catalogRevision: existing.catalogRevision }), ...(existing.scope === undefined ? {} : { scope: existing.scope }) };
         if (!same(candidate, bound)) fail('request_identity_conflict', `request identity ${action.id} already binds different content or assignments`);
         return { type: 'enqueue', duplicate: true, request: publicRequest(existing) };
       }
       const request: DurableRequest = { ...candidate, status: 'queued', createdAt: new Date().toISOString() };
       await this.append('queued', request);
       return { type: 'enqueue', duplicate: false, request: publicRequest(request) };
+    }
+    if (action.type === 'decision_create') {
+      this.ensureDecisionScope(action.scope);
+      if (action.accountableOwner !== 'owner' && !this.#config.sessions.some((session) => session.id === action.accountableOwner)) fail('decision_owner_unavailable', `decision owner ${action.accountableOwner} is not configured`);
+      const existing = this.#decisions.get(action.id);
+      const candidate = { id: action.id, scope: action.scope, problem: action.problem, cause: action.cause, evidence: action.evidence, accountableOwner: action.accountableOwner, recommendedNextAction: action.recommendedNextAction, impact: action.impact, capability: action.capability, action: action.action, options: action.options };
+      if (existing !== undefined) {
+        if (!same(candidate, decisionInputIdentity(existing))) fail('decision_identity_conflict', `decision identity ${action.id} already binds different content or scope`);
+        return { type: 'decision_create', duplicate: true, decision: publicDecision(existing) };
+      }
+      const at = new Date().toISOString();
+      const decision: DurableDecision = { ...candidate, state: 'open', revision: 1, createdAt: at, observedAt: at };
+      await this.append('decision_created', undefined, decision);
+      return { type: 'decision_create', duplicate: false, decision: publicDecision(decision) };
+    }
+    if (action.type === 'record_owner_response') {
+      const decision = this.currentDecision(action.id);
+      if (decision.responseIdempotencyKey === action.idempotencyKey) {
+        if (decision.ownerResponse?.optionId !== action.responseId) fail('decision_idempotency_conflict', `decision ${decision.id} idempotency key already binds a different response`);
+        if (decision.state === 'response_recorded') {
+          const pending: DurableDecision = { ...decision, state: 'pending_manager_ack', revision: decision.revision + 1, observedAt: new Date().toISOString() };
+          await this.append('manager_ack_pending', undefined, pending);
+          return { type: 'record_owner_response', duplicate: true, decision: publicDecision(pending) };
+        }
+        return { type: 'record_owner_response', duplicate: true, decision: publicDecision(decision) };
+      }
+      if (decision.state !== 'open' || decision.ownerResponse !== undefined) fail('decision_response_already_recorded', `decision ${decision.id} already has an owner response`);
+      if (decision.revision !== action.expectedRevision) fail('decision_revision_conflict', `decision ${decision.id} has changed; refresh before recording a response`);
+      if (decision.capability !== 'supported' || decision.action.kind !== 'record_owner_response') fail('decision_action_unavailable', `decision ${decision.id} does not support owner response recording`);
+      const option = decision.options.find((candidate) => candidate.id === action.responseId);
+      if (!option) fail('decision_response_invalid', `decision ${decision.id} does not offer response ${action.responseId}`);
+      const at = new Date().toISOString();
+      const recorded: DurableDecision = { ...decision, state: 'response_recorded', revision: decision.revision + 1, observedAt: at, ownerResponse: { optionId: option.id, label: option.label, recordedAt: at }, responseIdempotencyKey: action.idempotencyKey };
+      await this.append('owner_response_recorded', undefined, recorded);
+      const pending: DurableDecision = { ...recorded, state: 'pending_manager_ack', revision: recorded.revision + 1, observedAt: new Date().toISOString() };
+      await this.append('manager_ack_pending', undefined, pending);
+      return { type: 'record_owner_response', duplicate: false, decision: publicDecision(pending) };
+    }
+    if (action.type === 'decision_acknowledge') {
+      const decision = this.currentDecision(action.id);
+      if (decision.state === 'manager_acknowledged') return { type: action.type, duplicate: true, decision: publicDecision(decision) };
+      if (!['response_recorded', 'pending_manager_ack'].includes(decision.state)) fail('decision_ack_not_available', `decision ${decision.id} is ${decision.state}; acknowledgement is unavailable`);
+      if (decision.revision !== action.expectedRevision) fail('decision_revision_conflict', `decision ${decision.id} has changed; refresh before acknowledgement`);
+      let pending = decision;
+      if (pending.state === 'response_recorded') {
+        pending = { ...pending, state: 'pending_manager_ack', revision: pending.revision + 1, observedAt: new Date().toISOString() };
+        await this.append('manager_ack_pending', undefined, pending);
+      }
+      const at = new Date().toISOString();
+      const acknowledged: DurableDecision = { ...pending, state: 'manager_acknowledged', revision: pending.revision + 1, observedAt: at, managerAcknowledgedAt: at };
+      await this.append('manager_acknowledged', undefined, acknowledged);
+      return { type: action.type, decision: publicDecision(acknowledged) };
+    }
+    if (action.type === 'decision_resolve') {
+      const decision = this.currentDecision(action.id);
+      if (decision.state === 'resolved') return { type: action.type, duplicate: true, decision: publicDecision(decision) };
+      if (decision.state !== 'manager_acknowledged') fail('decision_resolution_not_available', `decision ${decision.id} is ${decision.state}; resolution requires Manager acknowledgement`);
+      if (decision.revision !== action.expectedRevision) fail('decision_revision_conflict', `decision ${decision.id} has changed; refresh before resolution`);
+      const at = new Date().toISOString();
+      const resolved: DurableDecision = { ...decision, state: 'resolved', revision: decision.revision + 1, observedAt: at, resolvedAt: at };
+      await this.append('decision_resolved', undefined, resolved);
+      return { type: action.type, decision: publicDecision(resolved) };
+    }
+    if (action.type === 'decision_uncertain') {
+      const decision = this.currentDecision(action.id);
+      if (decision.state === 'uncertain') return { type: action.type, duplicate: true, decision: publicDecision(decision) };
+      if (!['response_recorded', 'pending_manager_ack', 'manager_acknowledged'].includes(decision.state)) fail('decision_uncertainty_not_available', `decision ${decision.id} is ${decision.state}; uncertainty is unavailable`);
+      if (decision.revision !== action.expectedRevision) fail('decision_revision_conflict', `decision ${decision.id} has changed; refresh before recording uncertainty`);
+      const at = new Date().toISOString();
+      const uncertain: DurableDecision = { ...decision, state: 'uncertain', revision: decision.revision + 1, observedAt: at, uncertainAt: at, uncertaintyReason: action.reason };
+      await this.append('decision_uncertain', undefined, uncertain);
+      return { type: action.type, decision: publicDecision(uncertain) };
     }
     const request = this.currentRequest(action.id);
     if (action.type === 'claim') {

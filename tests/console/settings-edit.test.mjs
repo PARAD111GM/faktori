@@ -14,6 +14,32 @@ function identityProbe() {
 }
 
 describe('editable Console settings', () => {
+  it('keeps editing unavailable when a Console has no factory catalog instead of synthesizing one', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-settings-no-catalog-'));
+    const configPath = join(root, 'console.json');
+    const source = {
+      factoryId: 'catalog-required',
+      journalPath: join(root, 'operations.jsonl'),
+      projectionPath: join(root, 'projection.sqlite'),
+      port: 0,
+      commandToken: 'settings-test-token',
+      allowedOrigins: ['http://127.0.0.1:4173'],
+      limits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 45, maxTokens: 30_000, strictSpending: false, strictSpendingSupported: false },
+    };
+    await writeFile(configPath, `${JSON.stringify(source, null, 2)}\n`);
+    let started;
+    try {
+      started = await startLocalConsoleFromFile(configPath, { coordinatorIdentityProbe: identityProbe() });
+      const response = await started.app.inject({ method: 'POST', url: '/api/console/settings/edit', headers: { origin: 'http://127.0.0.1:4173', 'x-faktori-console-token': source.commandToken } });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({ error: 'settings_editing_requires_factory_configuration' });
+      expect(await readFile(configPath, 'utf8')).toBe(`${JSON.stringify(source, null, 2)}\n`);
+    } finally {
+      await started?.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('previews and atomically saves only validated revision-bound settings while retaining private configuration', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-settings-edit-'));
     const configPath = join(root, 'console.json');

@@ -47,7 +47,9 @@ describe('Console presentation contract', () => {
     expect(scoped).not.toContain('quality-loop');
     expect(scoped).toContain('No connected loops in this scope');
     const overview = renderToStaticMarkup(createElement(presentation.Overview, { state: { managerLoops: loops }, runs: [], selectRun() {} }));
-    expect(overview).toContain('quality-loop');
+    expect(overview).toContain('At a glance');
+    expect(overview).not.toContain('quality-loop');
+    expect(overview).not.toContain('Running activity');
   });
   it('offers flexible role assignments without implying merge authority', async () => {
     const { RoleAssignments } = await server.ssrLoadModule('/console/src/role-assignments.tsx');
@@ -94,11 +96,11 @@ describe('Console presentation contract', () => {
 
     const html = renderToStaticMarkup(createElement(presentation.Overview, { state, runs: visibleRuns, selectRun() {} }));
 
-    expect(html).toContain('1 scoped runs');
-    expect(html).toContain('Scoped reservations</dt><dd>125</dd>');
+    expect(html).toContain('At a glance');
+    expect(html).not.toContain('1 scoped runs');
+    expect(html).not.toContain('Scoped reservations');
     expect(html).not.toContain('900');
-    expect(html).toContain('Coordinator reported usage</dt><dd>Unavailable</dd>');
-    expect(html).toContain('Coordinator unavailable measurements</dt><dd>2</dd>');
+    expect(html).toContain('Cross-project catalog facts, not live activity.');
 
     const factoryHtml = renderToStaticMarkup(createElement(presentation.Factory, {
       state: { resources: { knownUsageTokens: 0, reportedUsageCount: 0, unavailableMeasurements: 0 } },
@@ -110,7 +112,7 @@ describe('Console presentation contract', () => {
     expect(factoryHtml).toContain('Unavailable measurements</dt><dd>0</dd>');
   });
 
-  it('keeps product and pod filters labeled and preserves every primary view in the shell', async () => {
+  it('keeps legacy scope controls labeled while placing project selection inside Work', async () => {
     const filterHtml = renderToStaticMarkup(createElement(presentation.ScopeFilters, {
       hierarchy: { filters: { products: [{ id: 'product-a', name: 'Product A' }], pods: [{ id: 'pod-a', productId: 'product-a' }] } },
       filter: { productId: '', podId: '' },
@@ -122,7 +124,9 @@ describe('Console presentation contract', () => {
     expect(filterHtml).toContain('<span>Pod</span>');
     expect(filterHtml).toContain('All products');
     expect(filterHtml).toContain('All pods');
-    expect(source).toContain("const views = ['overview', 'work', 'run', 'factory', 'settings'] as const;");
+    expect(source).toContain("const primaryViews = ['overview', 'projects', 'decisions', 'work', 'sessions', 'factory', 'settings'] as const;");
+    expect(source).toContain('>Project<select');
+    expect(source).not.toContain("{view !== 'settings' && <ScopeFilters");
     expect(source).toContain('className="session-key"');
     expect(source).toContain('className="header-controls"');
   });
@@ -197,13 +201,32 @@ describe('Console presentation contract', () => {
     expect(missing).toContain('Settings unavailable');
   });
 
+  it('explains how to restore settings editing when the running Console has no factory catalog', async () => {
+    const { Settings } = await server.ssrLoadModule('/console/src/settings.tsx');
+    const html = renderToStaticMarkup(createElement(Settings, { settings: {
+      factory: { id: 'factory', name: 'Factory', catalogConfigured: false },
+      providers: [], products: [], environments: [],
+      resourceLimits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 1, maxTokens: 0, strictSpending: false, strictSpendingSupported: false },
+      recovery: { configured: false, routineActions: [] },
+      generalManager: { mode: 'not_configured', reviewRouteCount: 0 },
+    } }));
+    expect(html).toContain('Factory settings need a catalog');
+    expect(html).toContain('Restore factory settings');
+    expect(html).toContain('factoryConfiguration');
+    expect(html).toContain('factory.id');
+    expect(html).toContain('cannot select a file or import a catalog from the browser');
+    expect(html).not.toContain('Your factory, configured');
+  });
+
   it('offers persistent editing only when supported and identifies specific reviewed changes', async () => {
-    const { SettingsEditor, changes } = await server.ssrLoadModule('/console/src/settings-editor.tsx');
+    const { SettingsEditor, changes, settingsEditorError } = await server.ssrLoadModule('/console/src/settings-editor.tsx');
     const html = renderToStaticMarkup(createElement(SettingsEditor, { settings: {}, token: '', onSaved() {} }));
     expect(html).toContain('Edit settings');
     expect(html).toContain('Saved settings take effect after the Console is restarted');
     expect(changes({limits:{maxConcurrentRuns:1}}, {limits:{maxConcurrentRuns:2}})).toEqual(['limits.maxConcurrentRuns: 1 → 2']);
     expect(changes({limits:{maxTokens:0}}, {limits:{maxTokens:0}})).toEqual([]);
+    expect(settingsEditorError('settings_editing_requires_factory_configuration', 409)).toContain('started without its factory catalog');
+    expect(settingsEditorError('settings_editing_requires_factory_configuration', 409)).not.toContain('settings_editing_requires_factory_configuration');
   });
 
 });

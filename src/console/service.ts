@@ -20,6 +20,8 @@ import type { JiraObserver } from './jira-observer.ts';
 import { consoleActivity } from './activity.ts';
 import type { ManagerConnectedStore } from '../manager-connected/index.ts';
 import { registerManagerRelay } from './manager-relay.ts';
+import { validateWorkScope, type WorkCatalogObserver, type WorkManagementDailyEvent } from './work-management.ts';
+import type { GitHubWorkObserver } from './github-observer.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -68,6 +70,8 @@ export interface ConsoleServiceOptions {
   managerLoopRegistry?: ManagerLoopRegistry;
   jiraObserver?: JiraObserver;
   managerConnected?: { store: ManagerConnectedStore; relayToken: string };
+  workCatalogObserver?: WorkCatalogObserver;
+  githubWorkObserver?: GitHubWorkObserver;
   factoryGM?: () => ReturnType<typeof coordinatorGMState> & { nightly?: GMNightlyState; efficiency: FactoryEfficiencyMetrics };
   requestGMReview?: (requestId: string) => Promise<GMNightlyAttempt>;
   runScheduledGMReview?: () => Promise<GMNightlyAttempt>;
@@ -93,6 +97,25 @@ const MIME: Record<string, string> = {
   '.map': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
 };
 const UNSAFE_TEXT = /(?:bearer\s+|authorization|api[_ -]?key|credential|secret|session[_ -]?id|\/Users\/|\\Users\\|\.codex|\.claude)/i;
+
+function retainedWorkManagementDailyEvents(events: readonly import('../runtime/contracts.ts').RunEvent[], snapshots: readonly RunSnapshot[], manager?: { requests: import('../manager-connected/index.ts').ManagerConnectedRequestSnapshot[]; decisions: import('../manager-connected/index.ts').ManagerConnectedDecisionSnapshot[] }, loops: readonly import('./manager-loop-observer.ts').ManagerLoopSummary[] = []): WorkManagementDailyEvent[] {
+  const productByRun = new Map(snapshots.map((snapshot) => [snapshot.intent.runId, snapshot.intent.target.productId]));
+  const result: WorkManagementDailyEvent[] = [];
+  for (const event of events) if (event.kind === 'provider.event' && event.data.type === 'delegation.blocked' && productByRun.get(event.runId) !== undefined) {
+    result.push({ at: event.occurredAt, productId: productByRun.get(event.runId), kind: 'blocker' });
+  }
+  for (const request of manager?.requests ?? []) if (request.report !== undefined) {
+    result.push({ at: request.report.observedAt, productId: request.scope?.productId ?? request.assignment.productId, kind: 'manager_report' });
+  }
+  for (const decision of manager?.decisions ?? []) {
+    const timestamps = [decision.createdAt, decision.ownerResponse?.recordedAt, decision.managerAcknowledgedAt, decision.resolvedAt, decision.uncertainAt];
+    for (const at of timestamps) if (at !== undefined) result.push({ at, productId: decision.scope.productId, kind: 'decision_transition' });
+  }
+  for (const loop of loops) if (loop.productId !== undefined) for (const stage of loop.stages) {
+    result.push({ at: stage.completedAt, productId: loop.productId, kind: 'loop_phase' });
+  }
+  return result.filter((event) => Number.isFinite(Date.parse(event.at)));
+}
 
 function installedAssetsDirectory(): string {
   // Works in source and in the packed dist/ tree: both resolve to package-root console/dist.
@@ -301,6 +324,8 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   journalPoll.unref();
   const unsubscribeManagerLoops = options.managerLoopObserver?.onChange(() => events.emit('state'));
   const unsubscribeManagerConnected = options.managerConnected?.store.onChange(() => events.emit('state'));
+  const unsubscribeWorkCatalog = options.workCatalogObserver?.onChange(() => events.emit('state'));
+  const unsubscribeGitHubWork = options.githubWorkObserver?.onChange(() => events.emit('state'));
   options.managerLoopObserver?.start();
   let closed = false;
   let jiraRefreshing = false;
@@ -317,6 +342,28 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   const jiraPoll = options.jiraObserver ? setInterval(() => { void refreshJira(); }, 1_000) : undefined;
   jiraPoll?.unref();
   void refreshJira();
+  let catalogRefreshing = false;
+  const refreshCatalog = async (): Promise<void> => {
+    if (closed || catalogRefreshing || !options.workCatalogObserver) return;
+    catalogRefreshing = true;
+    try {
+      await options.workCatalogObserver.refresh();
+      options.githubWorkObserver?.setLinks(options.workCatalogObserver.catalog()?.projects.flatMap((project) => project.linkedPullRequests ?? []) ?? []);
+    } finally { catalogRefreshing = false; }
+  };
+  const catalogPoll = options.workCatalogObserver ? setInterval(() => { void refreshCatalog(); }, 1_000) : undefined;
+  catalogPoll?.unref();
+  let githubWorkRefreshing = false;
+  const refreshGitHubWork = async (): Promise<void> => {
+    if (closed || githubWorkRefreshing || !options.githubWorkObserver) return;
+    githubWorkRefreshing = true;
+    try { await options.githubWorkObserver.refresh(); } finally { githubWorkRefreshing = false; }
+  };
+  // The observer owns its 30s→5m success/failure backoff. This light tick
+  // cannot queue a second poll while one is active.
+  const githubWorkPoll = options.githubWorkObserver ? setInterval(() => { void refreshGitHubWork(); }, 1_000) : undefined;
+  githubWorkPoll?.unref();
+  void refreshGitHubWork();
 
   function records(): RecordedCommand[] {
     return options.coordinator.journal.events().map(commandRecord).filter((value): value is RecordedCommand => value !== undefined);
@@ -332,14 +379,19 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     const waiting = snapshots.filter((snapshot) => snapshot.state === 'blocked' || snapshot.state === 'reconciling');
     const managerLoops = options.managerLoopObserver?.summaries() ?? [];
     const jiraBoards = options.jiraObserver?.snapshot() ?? [];
+    const managerConnected = options.managerConnected?.store.snapshot();
+    const dailyEvents = retainedWorkManagementDailyEvents(options.coordinator.journal.events(), snapshots, managerConnected, managerLoops);
     return {
       format: 'faktori.console-state/v1', observedAt: now().toISOString(), stale: false,
       admissionPaused: currentPause(records()),
       runs: snapshots.map((snapshot) => publicRun(options.coordinator, snapshot)),
       managerLoops,
-      ...(options.managerConnected ? { managerConnected: options.managerConnected.store.snapshot() } : {}),
+      ...(managerConnected ? { managerConnected } : {}),
+      workManagement: options.workCatalogObserver
+        ? options.workCatalogObserver.snapshot(managerConnected, options.githubWorkObserver?.snapshot(), dailyEvents)
+        : { status: 'unavailable' as const, error: 'work_catalog_not_configured', projects: [], sessions: (managerConnected?.sessions ?? []).map((session) => ({ ...session, liveness: 'unknown' as const })), requests: managerConnected?.requests ?? [], decisions: managerConnected?.decisions ?? [] },
       jiraBoards,
-      activity: consoleActivity(options.coordinator.journal.events(), snapshots, managerLoops, jiraBoards.flatMap((board) => board.changes.map((change) => ({ ...change, source: 'jira' as const, ...(board.productId === undefined ? {} : { productId: board.productId }), ...(board.podId === undefined ? {} : { podId: board.podId }), ...(change.issueKey === undefined ? {} : { url: board.issues.find((issue) => issue.key === change.issueKey)?.url }) })))),
+      activity: consoleActivity(options.coordinator.journal.events(), snapshots, managerLoops, jiraBoards.flatMap((board) => board.changes.map((change) => ({ ...change, source: 'jira' as const, ...(board.productId === undefined ? {} : { productId: board.productId }), ...(board.podId === undefined ? {} : { podId: board.podId }), ...(change.issueKey === undefined ? {} : { url: board.issues.find((issue) => issue.key === change.issueKey)?.url }) }))), managerConnected?.requests, managerConnected?.decisions),
       blockers: [...structuredBlockersFromEvents(options.coordinator.journal.events()), ...(options.blockers?.() ?? []).map(projectStructuredBlocker).filter((blocker): blocker is StructuredBlocker => blocker !== undefined)]
         .filter((blocker, index, values) => values.findIndex((candidate) => candidate.blockerId === blocker.blockerId) === index),
       ...(options.preflight === undefined ? {} : { preflight: options.preflight }),
@@ -428,10 +480,14 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   app.addHook('onClose', async () => {
     closed = true;
     if (jiraPoll) clearInterval(jiraPoll);
+    if (catalogPoll) clearInterval(catalogPoll);
+    if (githubWorkPoll) clearInterval(githubWorkPoll);
     options.jiraObserver?.close();
     clearInterval(journalPoll);
     unsubscribeManagerLoops?.();
     unsubscribeManagerConnected?.();
+    unsubscribeWorkCatalog?.();
+    unsubscribeGitHubWork?.();
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());
@@ -452,13 +508,96 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   });
   if (options.managerConnected) {
     const { store, relayToken } = options.managerConnected;
-    registerManagerRelay(app, store, relayToken);
+    registerManagerRelay(app, store, relayToken, {
+      validateDecisionScope(scope, rawAction) {
+        const catalog = options.workCatalogObserver?.catalog();
+        if (!catalog) throw new Error('work_catalog_unavailable');
+        const current = options.workCatalogObserver!.snapshot();
+        if (current.status !== 'available') throw new Error('work_catalog_stale');
+        const decisionScope = validateWorkScope(catalog, scope);
+        const action = object(rawAction);
+        const descriptor = object(action?.action);
+        if (action?.capability !== 'supported' || descriptor === undefined) return;
+        if (descriptor.kind === 'record_owner_response') return;
+        const target = object(descriptor.target);
+        const project = catalog.projects.find((candidate) => candidate.productId === decisionScope.productId);
+        const plan = project?.plans.find((candidate) => candidate.id === decisionScope.planId);
+        const phase = plan?.phases.find((candidate) => candidate.id === decisionScope.phaseId);
+        const ticket = decisionScope.ticketId === undefined ? undefined : phase?.tickets.find((candidate) => candidate.id === decisionScope.ticketId);
+        if (descriptor.kind === 'answer_provider_request') {
+          const runId = typeof target?.runId === 'string' ? target.runId : '';
+          const requestId = typeof target?.requestId === 'string' ? target.requestId : '';
+          const run = options.coordinator.snapshots().find((candidate) => candidate.intent.runId === runId);
+          if (!ticket?.runIds?.includes(runId) || run?.intent.target.productId !== decisionScope.productId || !publicProviderRequests(options.coordinator, runId).some((request) => request.requestId === requestId && request.status === 'pending')) throw new Error('decision_action_target_unavailable');
+          return;
+        }
+        if (descriptor.kind === 'enqueue_agent_task') {
+          const sessionId = typeof target?.sessionId === 'string' ? target.sessionId : '';
+          const session = store.snapshot().sessions.find((candidate) => candidate.id === sessionId);
+          if (!session || session.productId !== decisionScope.productId
+            || session.planId !== decisionScope.planId
+            || session.phaseId !== decisionScope.phaseId
+            || session.ticketId !== decisionScope.ticketId) throw new Error('decision_action_target_unavailable');
+          return;
+        }
+        if (descriptor.kind === 'open_external_record') {
+          const url = typeof target?.url === 'string' ? target.url : '';
+          const observed = options.jiraObserver?.snapshot().some((board) => board.status === 'connected' && board.productId === decisionScope.productId && board.issues.some((issue) => issue.key === ticket?.issueKey && issue.url === url));
+          if (!ticket?.issueKey || !observed) throw new Error('decision_action_target_unavailable');
+          return;
+        }
+        throw new Error('decision_action_target_unavailable');
+      },
+    });
     app.post('/api/console/manager-connected', async (request, reply) => {
       if (!commandAuthorized(request, reply)) return reply;
       const action = object(request.body);
       if (!action || !['enqueue', 'cancel'].includes(String(action.type))) return reply.code(400).send({ error: 'unsupported_owner_action' });
-      try { await store.operate(action); return { state: state() }; }
+      try {
+        if (action.type === 'enqueue') {
+          const catalog = options.workCatalogObserver?.catalog();
+          if (catalog) {
+            const current = options.workCatalogObserver!.snapshot();
+            const sessionId = typeof action.sessionId === 'string' ? action.sessionId : '';
+            const assignment = store.snapshot().sessions.find((session) => session.id === sessionId);
+            const requestId = typeof action.id === 'string' ? action.id : '';
+            const existing = store.snapshot().requests.find((request) => request.id === requestId);
+            if (existing) {
+              if (existing.catalogRevision !== action.catalogRevision || JSON.stringify(existing.scope) !== JSON.stringify(action.scope)) return reply.code(409).send({ error: 'request_identity_conflict', state: state() });
+              await store.operate(action); return { state: state() };
+            }
+            if (current.status !== 'available') return reply.code(409).send({ error: 'work_catalog_stale', state: state() });
+            if (action.catalogRevision !== current.revision) return reply.code(409).send({ error: 'catalog_revision_conflict', state: state() });
+            const scope = validateWorkScope(catalog, action.scope);
+            if (!assignment || assignment.productId !== scope.productId
+              || (assignment.planId !== undefined && assignment.planId !== scope.planId)
+              || (assignment.phaseId !== undefined && assignment.phaseId !== scope.phaseId)
+              || (assignment.ticketId !== undefined && assignment.ticketId !== scope.ticketId)) {
+              return reply.code(409).send({ error: 'session_scope_mismatch', state: state() });
+            }
+          } else if (action.catalogRevision !== undefined || action.scope !== undefined) {
+            return reply.code(409).send({ error: 'work_catalog_unavailable', state: state() });
+          }
+        }
+        await store.operate(action); return { state: state() };
+      }
       catch (error) { return reply.code(409).send({ error: safeText(error instanceof Error ? error.message : '') ?? 'manager_request_failed' }); }
+    });
+    app.post('/api/console/manager-connected/decision', async (request, reply) => {
+      if (!commandAuthorized(request, reply)) return reply;
+      const action = object(request.body);
+      if (!action || action.type !== 'record_owner_response') return reply.code(400).send({ error: 'unsupported_owner_action' });
+      try {
+        const result = await store.operate(action);
+        return { decision: 'decision' in result ? result.decision : undefined, state: state() };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'manager_decision_failed';
+        const code = message.includes('revision') ? 'decision_revision_conflict'
+          : message.includes('idempotency') ? 'decision_idempotency_conflict'
+            : message.includes('response') ? 'decision_response_conflict'
+              : 'manager_decision_failed';
+        return reply.code(409).send({ error: code, state: state() });
+      }
     });
   }
   app.get('/api/console/events', async (request, reply) => {

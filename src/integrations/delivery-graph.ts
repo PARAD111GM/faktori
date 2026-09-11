@@ -70,9 +70,13 @@ export function planGraphDelivery(input: GraphDeliveryInput): DeliverySyncPlan &
     // A newly observed Jira blocker cannot disappear just because the graph
     // projection has not caught up. Stop that node until its edges reconcile.
     for (const dependency of delivery.ticket.dependencies) {
-      if (!dependencies.some(d => d.key === dependency.key)) {
+      const existing = dependencies.find(d => d.key === dependency.key);
+      if (!existing) {
         dependencies.push({ key: dependency.key, state: 'unknown' });
         blockedEdges.push({ nodeId, edgeId: dependency.key, reason: 'tracker_dependency_missing_from_graph' });
+      } else if (dependency.state !== 'resolved') {
+        existing.state = 'unknown';
+        blockedEdges.push({ nodeId, edgeId: dependency.key, reason: 'tracker_dependency_not_resolved' });
       }
     }
     // Flat status flags never override revision-bound graph evidence.

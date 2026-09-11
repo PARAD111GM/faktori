@@ -44,6 +44,7 @@ export function evaluateSprintReadiness(value: unknown, target?: SprintAdmission
     return { ready: false, mode: 'unconfigured', blockers };
   }
   const mode = input.mode as 'attended' | 'unattended';
+  const expiries: number[] = [];
   if (target?.managerThreadId !== undefined && input.managerThreadId !== target.managerThreadId)
     blocked('foreman_goal', 'The readiness record belongs to a different Foreman task.');
   if (!Number.isFinite(now.getTime())) blocked('clock', 'Readiness clock is unavailable.');
@@ -55,6 +56,7 @@ export function evaluateSprintReadiness(value: unknown, target?: SprintAdmission
     const matches = input.checks.map(record).filter(c => c?.id === id && (!id.startsWith('builder_')
       || (c.workItemId === target?.workItemId && c.threadId === target?.threadId)));
     const c = matches[0];
+    if (Number.isFinite(stamp(c?.validUntil))) expiries.push(stamp(c?.validUntil));
     const valid = matches.length === 1 && c && c.state === 'passed' && c.revision === input.revision
       && text(c.owner) && text(c.evidence) && ['controller', 'platform', 'owner_decision'].includes(String(c.source))
       && stamp(c.observedAt) <= now.getTime() && stamp(c.validUntil) > now.getTime();
@@ -68,12 +70,12 @@ export function evaluateSprintReadiness(value: unknown, target?: SprintAdmission
       const t = record(value);
       if (!t || !text(t.workItemId) || !text(t.threadId)) { blocked('assignment', 'A builder assignment is invalid.'); continue; }
       const result = evaluateSprintReadiness(input, { workItemId: t.workItemId, threadId: t.threadId }, now);
+      if (result.validUntil) expiries.push(stamp(result.validUntil));
       for (const b of result.blockers.filter(b => b.id.startsWith('builder_') || b.id === 'assignment')) {
         if (!blockers.some(existing => existing.id === b.id)) blockers.push(b);
       }
     }
   }
-  const expiries = input.checks.map(record).map(c => stamp(c?.validUntil)).filter(Number.isFinite);
   return { ready: blockers.length === 0, mode, sprintId: input.sprintId, revision: input.revision, blockers,
     ...(expiries.length ? { validUntil: new Date(Math.min(...expiries)).toISOString() } : {}) };
 }

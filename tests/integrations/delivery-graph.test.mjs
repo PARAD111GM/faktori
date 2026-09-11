@@ -63,4 +63,13 @@ describe('graph-backed delivery frontier', () => {
     input.transitionsByTicket = { 'OPS-2': [{ id: '31', name: 'Ready', targetStatus: 'Ready' }] };
     expect(planGraphDelivery(input).instructions).toContainEqual(expect.objectContaining({ ticketKey: 'OPS-2', kind: 'blocked', reason: 'graph_dependency_evidence_not_satisfied' }));
   });
+  it('retains current tracker blockers even when matching graph evidence is satisfied', () => {
+    for (const state of ['unresolved', 'unknown']) {
+      const input = fixture();
+      input.observations.push({ edgeId: 'b-needs-a', state: 'satisfied', evidence: 'receipt:1', dependencyDigest: dependencyEvidenceDigest(input.hierarchy, 'b-needs-a') });
+      input.registrations[1].delivery.ticket.dependencies = [{ key: 'OPS-1', state }];
+      expect(planGraphDelivery(input).frontier.map(n => n.nodeId)).toEqual(['c']);
+      expect(planGraphDelivery(input).blockedEdges).toContainEqual({ nodeId: 'b', edgeId: 'OPS-1', reason: 'tracker_dependency_not_resolved' });
+    }
+  });
 });

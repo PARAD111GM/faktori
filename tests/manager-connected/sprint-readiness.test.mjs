@@ -78,4 +78,10 @@ describe('sprint admission', () => {
       blockers: expect.arrayContaining([expect.objectContaining({ id: 'manager_wakeup' })]) });
     expect(evaluateSprintReadiness(document(), undefined, now)).toMatchObject({ ready: true, mode: 'attended' });
   });
+  it('uses only applicable checks for the admission deadline', () => {
+    const input = document();
+    input.checks.push({ ...input.checks[0], id: 'manager_wakeup', validUntil: '2026-09-11T11:00:00Z' });
+    input.checks.push({ ...input.checks.find(c => c.id === 'builder_goal'), threadId: 'unrelated', validUntil: '2026-09-11T11:00:00Z' });
+    expect(evaluateSprintReadiness(input, undefined, now)).toMatchObject({ ready: true, validUntil: '2026-09-11T13:00:00.000Z' });
+  });
 });

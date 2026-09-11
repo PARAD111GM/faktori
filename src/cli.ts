@@ -2,6 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { inspectDeliveryConnections } from './integrations/delivery-inspect.ts';
+import { planGraphDelivery, type GraphDeliveryInput } from './integrations/delivery-graph.ts';
 import { callManagerRelay } from './console/manager-relay.ts';
 import {
   AppendOnlyJournal,
@@ -57,6 +58,7 @@ const HELP = `Usage:
   faktori preflight <request.json>
   faktori sprint readiness <private-readiness.json>
   faktori delivery inspect <connections.json>
+  faktori delivery plan <graph-delivery.json>
   faktori readiness report <local-console.json>
   faktori backup create <request.json> <backup-directory>
   faktori backup inspect-lock <absolute-journal-path>
@@ -112,6 +114,11 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'delivery' && action === 'plan') {
+    if (!source || argv.length !== 3) throw new Error('delivery plan requires one controller graph/evidence packet');
+    print(planGraphDelivery(await json(source, 'graph delivery') as GraphDeliveryInput));
+    return;
+  }
   if (group === 'delivery' && action === 'inspect') {
     if (!source || argv.length !== 3) throw new Error('delivery inspect requires one owner connection configuration');
     const report = await inspectDeliveryConnections(await json(source, 'delivery connections'));

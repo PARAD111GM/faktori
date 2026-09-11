@@ -39,6 +39,12 @@ describe('sprint admission', () => {
       await expect(store.operate(action)).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
       expect(store.snapshot().requests).toHaveLength(0);
       await writeFile(path, JSON.stringify(input), { mode: 0o600 });
+      expect((await store.sprintReadiness()).ready).toBe(true);
+      const foreign = structuredClone(input);
+      foreign.managerThreadId = 'other-manager'; foreign.checks.find(c => c.id === 'foreman_goal').threadId = 'other-manager';
+      await writeFile(path, JSON.stringify(foreign));
+      expect(await store.sprintReadiness()).toMatchObject({ ready: false, blockers: expect.arrayContaining([expect.objectContaining({ id: 'foreman_identity' })]) });
+      await writeFile(path, JSON.stringify(input));
       await store.operate(action);
       await expect(store.operate({ ...action, id: 'duplicate-ticket' })).rejects.toMatchObject({ code: 'sprint_assignment_busy' });
       await writeFile(intent, 'Changed intent');

@@ -799,7 +799,7 @@ export class ManagerConnectedStore {
       id: 'configuration', owner: 'Foreman', problem: 'Sprint admission checks are not configured for this legacy relay.',
       nextAction: 'Configure a private sprintReadinessPath before using this relay for a recovery sprint.',
     }] };
-    try { return await readSprintReadiness(this.#config.sprintReadinessPath); }
+    try { return await readSprintReadiness(this.#config.sprintReadinessPath, undefined, this.#config.manager.threadId); }
     catch { return { ready: false, mode: 'unconfigured', blockers: [{ id: 'configuration', owner: 'Foreman',
       problem: 'The configured sprint readiness record cannot be safely read.', nextAction: 'Check the private file, ownership and valid readiness document.' }] }; }
   }

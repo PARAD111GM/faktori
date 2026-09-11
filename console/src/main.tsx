@@ -49,7 +49,7 @@ type Hierarchy = {
   filters?: { products?: Array<{ id: string; name: string }>; pods?: Array<{ id: string; productId: string }> };
 };
 type ScopeFilter = { productId: string; podId: string };
-type SprintReadiness = { ready: boolean; mode: 'attended' | 'unattended' | 'unconfigured'; blockers: Array<{ id: string; owner: string; problem: string; nextAction: string }> };
+type SprintReadiness = { ready: boolean; mode: 'attended' | 'unattended' | 'unconfigured'; validUntil?: string; blockers: Array<{ id: string; owner: string; problem: string; nextAction: string }> };
 
 /** Catalog links must not inherit a different project's narrower Work filter. */
 export function projectScope(productId: string): ScopeFilter { return { productId, podId: '' }; }
@@ -272,12 +272,17 @@ export function Work({ state, runs, selectRun, openLoop, openRequest, openDecisi
   const [productId, setProductId] = useState('');
   const [sprintReadiness, setSprintReadiness] = useState<SprintReadiness>();
   const [sprintReadinessError, setSprintReadinessError] = useState<string>();
-  useEffect(() => { let cancelled = false; void fetch('/api/console/sprint-readiness', { cache: 'no-store' }).then(async response => {
+  useEffect(() => { let cancelled = false; let pending = false;
+    const refreshReadiness = () => { if (pending || cancelled) return; pending = true;
+      void fetch('/api/console/sprint-readiness', { cache: 'no-store', signal: AbortSignal.timeout(5000) }).then(async response => {
     if (!response.ok) throw new Error(`Sprint readiness request failed (${response.status})`);
     return await response.json() as SprintReadiness;
   }).then(report => { if (!cancelled) { setSprintReadiness(report); setSprintReadinessError(undefined); } }).catch(cause => {
     if (!cancelled) { setSprintReadiness(undefined); setSprintReadinessError(cause instanceof Error ? cause.message : 'Sprint readiness is unknown.'); }
-  }); return () => { cancelled = true; }; }, []);
+  }).finally(() => { pending = false; }); };
+    refreshReadiness(); const poll = window.setInterval(refreshReadiness, 15000);
+    return () => { cancelled = true; window.clearInterval(poll); };
+  }, [state.managerConnected?.sequence]);
   const filter = { productId, podId: '' };
   const projects = [...new Map([...(state.hierarchy?.filters?.products ?? []).map(product => [product.id, product.name] as const), ...(state.workManagement?.projects ?? []).map(project => [project.productId, project.title] as const)].map(([id, name]) => [id, { id, name }])).values()];
   return <section className="workspace"><SprintReadinessCard report={sprintReadiness} error={sprintReadinessError} /><TicketBoard projectControl={<label>Project<select value={productId} onChange={event => setProductId(event.target.value)}><option value="">All projects</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>} workManagement={state.workManagement} boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} /><ManagerConnected snapshot={state.managerConnected} workManagement={state.workManagement} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submitManagerConnected} /><div className="panel panel-primary section-header work-header"><div><HelpHeading level={2} scope="main">Start approved work</HelpHeading></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
@@ -285,8 +290,17 @@ export function Work({ state, runs, selectRun, openLoop, openRequest, openDecisi
 }
 
 export function SprintReadinessCard({ report, error }: { report?: SprintReadiness; error?: string }) {
-  const state = report?.ready ? 'available' : report ? 'unavailable' : 'unavailable';
-  return <section className="panel panel-primary sprint-readiness"><div className="panel-heading"><div><HelpHeading level={3} scope="work">Sprint readiness</HelpHeading><p>Read-only admission evidence. This card cannot approve, launch, or repair a sprint.</p></div><span className={`state state-${state}`}>{report?.ready ? `${report.mode} ready` : report ? `${report.mode} no-go` : 'unknown / no-go'}</span></div>{error ? <p className="notice">Sprint readiness is unknown and treated as no-go: {error}</p> : report?.ready ? <p className="quiet">Current controller-owned readiness report permits admission in {report.mode} mode. It is not an approval control.</p> : <><p className="notice">Admission is not ready. No approval is fabricated from this observation.</p>{report?.blockers.length ? <ul className="findings">{report.blockers.map((blocker) => <li key={blocker.id}><strong>{blocker.problem}</strong><span>{blocker.owner}</span><p>{blocker.nextAction}</p></li>)}</ul> : <p className="quiet">No blocker details were published; treat this as no-go until a current report is available.</p>}</>}</section>;
+  const [checkedAt, setCheckedAt] = useState(() => Date.now());
+  useEffect(() => {
+    if (!report?.validUntil) return;
+    const delay = Date.parse(report.validUntil) - Date.now();
+    if (!Number.isFinite(delay)) return;
+    const timer = window.setTimeout(() => setCheckedAt(Date.now()), Math.min(2147483647, Math.max(0, delay + 1)));
+    return () => window.clearTimeout(timer);
+  }, [report]);
+  const fresh = report?.ready === true && error === undefined && Date.parse(report.validUntil ?? '') > Math.max(checkedAt, Date.now());
+  const state = fresh ? 'available' : 'unavailable';
+  return <section className="panel panel-primary sprint-readiness"><div className="panel-heading"><div><HelpHeading level={3} scope="work">Sprint readiness</HelpHeading><p>Read-only admission evidence. This card cannot approve, launch, or repair a sprint.</p></div><span className={`state state-${state}`}>{fresh ? `${report.mode} ready` : report ? `${report.mode} no-go` : 'unknown / no-go'}</span></div>{error ? <p className="notice">Sprint readiness is unknown and treated as no-go: {error}</p> : fresh ? <p className="quiet">Observed readiness permits admission in {report.mode} mode until {report.validUntil}. Dispatch rechecks the evidence.</p> : <><p className="notice">Admission is not ready or its observation expired. Refreshing evidence does not grant approval.</p>{report?.blockers.length ? <ul className="findings">{report.blockers.map((blocker) => <li key={blocker.id}><strong>{blocker.problem}</strong><span>{blocker.owner}</span><p>{blocker.nextAction}</p></li>)}</ul> : <p className="quiet">No current blocker details were published; treat this as no-go until a fresh report is available.</p>}</>}</section>;
 }
 
 function ProviderRequests({ run, submit }: { run: Run; submit: (command: Command) => void }) {

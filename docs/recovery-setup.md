@@ -56,6 +56,37 @@ inspection command is intentionally not a local-ticket importer.
 
 ## Canonical artifacts and sprint admission
 
+### Graph engineering, not five independent automations
+
+Use the existing validated hierarchy and scoped context assembler as the graph
+foundation. Jira provides ticket/dependency observations, GitHub supplies
+revision-bound PR/delivery evidence, Codex supplies assignment/goal observations,
+Slack supplies handoff receipts, and Console renders their materialized view.
+The hierarchy remains a versioned projection of those authorities, not a second
+ticket system. Parent/child containment is distinct from a prerequisite edge.
+
+`faktori delivery plan <graph-delivery.json>` calls `planGraphDelivery` with
+`hierarchy`, `registrations` (nodeId plus registered delivery), `observations`,
+`policy` and `transitionsByTicket`. Only executable nodes can be assigned. The
+returned `frontier` contains capacity-selected eligible nodes and their narrow
+context packets. Jira rank orders eligible work; it cannot override an edge.
+
+Dependency observations identify `edgeId`, `dependencyDigest`, `state` and a
+retained `evidence` reference. The controller computes the expected digest with
+`dependencyEvidenceDigest` from the edge contract and upstream context closure.
+Changing an upstream artifact/contract invalidates affected downstream receipts;
+changing an unrelated sibling does not. A new tracker blocker missing from the
+graph blocks that node until reconciliation. Cycles and ambiguous mappings fail
+before selection. An observation is not satisfied merely because a Jira status
+says Done: its retained contract evidence is required. A digest binds evidence;
+it never manufactures it.
+
+The command is deterministic and read-only. Automatic frontier dispatch still
+requires the installed signed-action/relay wiring and exclusive scheduler owner.
+Include the graph and required artifact revisions in sprint artifactBindings so
+queued work cannot silently start on a different graph. No new graph database,
+LLM graph traversal, or separate workflow engine is introduced.
+
 1. Register one canonical project `artifactHome` in the existing work catalog,
    outside installation/update directories. Register the approved intent with
    role `intent` and its relative path. Reuse approved documents; draft missing

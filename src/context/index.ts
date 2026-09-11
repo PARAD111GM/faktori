@@ -220,7 +220,7 @@ export function validateHierarchy(document: unknown): HierarchyDocument {
       id,
       kind,
       label,
-      parentId,
+      ...(parentId === undefined ? {} : { parentId }),
       objective: sourceRecord(node.objective, `${path}.objective`, issues),
       criteria: sourceArray(node.criteria, `${path}.criteria`, issues),
       constraints: sourceArray(node.constraints ?? [], `${path}.constraints`, issues, { refinement: true }),

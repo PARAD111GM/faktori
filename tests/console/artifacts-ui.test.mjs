@@ -48,7 +48,10 @@ describe('Console Artifacts UI', () => {
   });
   it('renders sprint readiness as read-only evidence and treats a missing report as no-go', async () => {
     const { SprintReadinessCard } = await server.ssrLoadModule('/console/src/main.tsx');
-    const ready = renderToStaticMarkup(createElement(SprintReadinessCard, { report: { ready: true, mode: 'attended', blockers: [] } }));
+    const ready = renderToStaticMarkup(createElement(SprintReadinessCard, { report: { ready: true, mode: 'attended', validUntil: new Date(Date.now() + 60000).toISOString(), blockers: [] } }));
+    const expired = renderToStaticMarkup(createElement(SprintReadinessCard, { report: { ready: true, mode: 'attended', validUntil: new Date(Date.now() - 1).toISOString(), blockers: [] } }));
+    expect(expired).toContain('attended no-go');
+    expect(expired).not.toContain('attended ready');
     const unknown = renderToStaticMarkup(createElement(SprintReadinessCard, { error: 'Sprint readiness request failed (404)' }));
     expect(ready).toContain('attended ready');
     expect(ready).toContain('cannot approve, launch, or repair a sprint');

@@ -10,6 +10,7 @@ type CheckId = typeof SPRINT_CHECKS[number];
 export interface SprintAdmissionTarget { workItemId: string; threadId: string; managerThreadId?: string; }
 export interface SprintReadinessReport {
   ready: boolean; mode: 'attended' | 'unattended' | 'unconfigured'; sprintId?: string; revision?: string;
+  validUntil?: string;
   blockers: Array<{ id: string; owner: string; problem: string; nextAction: string }>;
 }
 type RecordValue = Record<string, unknown>;
@@ -72,11 +73,13 @@ export function evaluateSprintReadiness(value: unknown, target?: SprintAdmission
       }
     }
   }
-  return { ready: blockers.length === 0, mode, sprintId: input.sprintId, revision: input.revision, blockers };
+  const expiries = input.checks.map(record).map(c => stamp(c?.validUntil)).filter(Number.isFinite);
+  return { ready: blockers.length === 0, mode, sprintId: input.sprintId, revision: input.revision, blockers,
+    ...(expiries.length ? { validUntil: new Date(Math.min(...expiries)).toISOString() } : {}) };
 }
 
 /** Private local file is a controller configuration boundary, not an upload API. */
-export async function readSprintReadiness(path: string, target?: SprintAdmissionTarget): Promise<SprintReadinessReport> {
+export async function readSprintReadiness(path: string, target?: SprintAdmissionTarget, expectedManagerThreadId?: string): Promise<SprintReadinessReport> {
   if (!isAbsolute(path)) throw new Error('Sprint readiness path must be absolute');
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -85,6 +88,11 @@ export async function readSprintReadiness(path: string, target?: SprintAdmission
       || (typeof process.getuid === 'function' && stat.uid !== process.getuid())) throw new Error('Sprint readiness requires a private owner-owned bounded file');
     const input = JSON.parse(await handle.readFile('utf8')) as unknown;
     const report = evaluateSprintReadiness(input, target);
+    if (expectedManagerThreadId !== undefined && record(input)?.managerThreadId !== expectedManagerThreadId) {
+      report.ready = false;
+      report.blockers.push({ id: 'foreman_identity', owner: 'Foreman', problem: 'The readiness record belongs to a different Foreman task.',
+        nextAction: 'Collect readiness evidence for the Foreman configured on this relay.' });
+    }
     const bindings = record(input)?.artifactBindings;
     let artifactsMatch = Array.isArray(bindings) && bindings.length > 0 && bindings.length <= 100;
     if (artifactsMatch) {

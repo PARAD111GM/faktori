@@ -497,7 +497,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     if (!report) return { ready: false, mode: 'unconfigured', blockers: [{ id: 'configuration', owner: 'Foreman',
       problem: 'Manager-connected sprint execution is not configured.', nextAction: 'Configure the Foreman relay and verify its sprint admission checks.' }] };
     // Evidence references, configured paths and arbitrary owner text remain private.
-    return { ready: report.ready, mode: report.mode, blockers: report.blockers.map(b => ({
+    return { ready: report.ready, mode: report.mode, validUntil: report.validUntil, blockers: report.blockers.map(b => ({
       id: b.id, owner: 'Foreman', problem: b.problem, nextAction: b.nextAction,
     })) };
   });

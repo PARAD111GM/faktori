@@ -82,7 +82,57 @@ export interface GraphDispatchResult {
   receipts: Array<{ nodeId: string; requestId: string; status: 'enqueued' | 'duplicate' | 'failed'; detail?: string }>;
 }
 
-export async function enqueueGraphFrontier(configuration: GraphDispatchConfiguration, catalog: WorkCatalog, catalogRevision: string, store: ManagerConnectedStore, catalogPath: string): Promise<GraphDispatchResult> {
+export interface GraphDispatchOptions { reconcileExisting?: boolean; }
+
+function sameScope(left: ScopedWorkAssignment | undefined, right: ScopedWorkAssignment): boolean {
+  return left?.productId === right.productId && left.planId === right.planId && left.phaseId === right.phaseId && left.ticketId === right.ticketId;
+}
+
+function mappedTicket(catalog: WorkCatalog, scope: ScopedWorkAssignment, ticketKey: string): boolean {
+  const ticket = catalog.projects.find(project => project.productId === scope.productId)?.plans.find(plan => plan.id === scope.planId)
+    ?.phases.find(phase => phase.id === scope.phaseId)?.tickets.find(candidate => candidate.id === scope.ticketId);
+  return ticket !== undefined && (ticketKey === ticket.id || ticketKey === ticket.issueKey);
+}
+
+/**
+ * Applies only live relay reservation state to a cloned graph input. It never
+ * turns a report into dependency/acceptance evidence and never changes packet
+ * bytes, context, or the readiness binding used for durable enqueue.
+ */
+function overlayRelayState(input: GraphDeliveryInput, assignments: readonly FrontierAssignment[], catalog: WorkCatalog, catalogRevision: string, store: ManagerConnectedStore): GraphDeliveryInput {
+  const graph = structuredClone(input);
+  const byNode = new Map(assignments.map(assignment => [assignment.nodeId, assignment]));
+  const active = new Set<string>();
+  const terminal = new Set<string>();
+  for (const request of store.snapshot().requests) {
+    if (!request.scope) continue;
+    const registration = graph.registrations.find(candidate => {
+      const assignment = byNode.get(candidate.nodeId);
+      if (!assignment) return false;
+      let scope: ScopedWorkAssignment;
+      try { scope = validateWorkScope(catalog, assignment.scope); } catch { return false; }
+      const session = store.snapshot().sessions.find(candidateSession => candidateSession.id === assignment.sessionId);
+      return mappedTicket(catalog, scope, candidate.delivery.ticket.key)
+        && session !== undefined && session.productId === scope.productId && session.planId === scope.planId && session.phaseId === scope.phaseId && session.ticketId === scope.ticketId
+        && request.sessionId === assignment.sessionId && request.assignment.productId === session.productId && request.assignment.planId === session.planId
+        && request.assignment.phaseId === session.phaseId && request.assignment.ticketId === session.ticketId && sameScope(request.scope, scope);
+    });
+    const coding = /^(builder|implementer)$/i.test(request.assignment.role);
+    if (!registration) {
+      if (coding && ['queued', 'claimed', 'submitted', 'uncertain'].includes(request.status)) throw new Error('graph_relay_reconciliation_required');
+      continue;
+    }
+    if (['queued', 'claimed', 'submitted', 'uncertain'].includes(request.status)) active.add(registration.nodeId);
+    else if (request.status === 'completed' || request.status === 'cancelled') terminal.add(registration.nodeId);
+  }
+  for (const registration of graph.registrations) {
+    if (active.has(registration.nodeId)) registration.delivery.ticket.workState = 'coding';
+    else if (terminal.has(registration.nodeId)) registration.delivery.ticket.workState = 'review';
+  }
+  return graph;
+}
+
+export async function enqueueGraphFrontier(configuration: GraphDispatchConfiguration, catalog: WorkCatalog, catalogRevision: string, store: ManagerConnectedStore, catalogPath: string, options: GraphDispatchOptions = {}): Promise<GraphDispatchResult> {
   const packetFile = await privateJson(configuration.path, 'graph_dispatch_packet');
   const input = packet(packetFile.value);
   if (input.catalogRevision !== catalogRevision) throw new Error('catalog_revision_conflict');
@@ -107,7 +157,8 @@ export async function enqueueGraphFrontier(configuration: GraphDispatchConfigura
   // must be issued through a new readiness revision rather than selecting old work.
   const afterReadiness = await privateJson(configuration.path, 'graph_dispatch_packet');
   if (!afterReadiness.bytes.equals(packetFile.bytes)) throw new Error('graph_dispatch_packet_changed');
-  const plan = planGraphDelivery(input.graph);
+  const graph = options.reconcileExisting ? overlayRelayState(input.graph, input.assignments, catalog, input.catalogRevision, store) : input.graph;
+  const plan = planGraphDelivery(graph);
   if (plan.graphRevision !== input.sprintRevision) throw new Error('graph_revision_sprint_revision_mismatch');
   const assignments = new Map(input.assignments.map(item => [item.nodeId, item]));
   if (plan.frontier.some(item => !assignments.has(item.nodeId))) throw new Error('graph_frontier_assignment_missing');

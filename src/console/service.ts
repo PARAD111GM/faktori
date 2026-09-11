@@ -73,6 +73,8 @@ export interface ConsoleServiceOptions {
   managerConnected?: { store: ManagerConnectedStore; relayToken: string };
   /** Private controller-owned graph packet; owner can trigger one bounded frontier step. */
   graphDispatch?: GraphDispatchConfiguration;
+  /** Explicit controller configuration; never enabled by a browser request. */
+  automaticGraphDispatch?: boolean;
   workCatalogObserver?: WorkCatalogObserver;
   githubWorkObserver?: GitHubWorkObserver;
   factoryGM?: () => ReturnType<typeof coordinatorGMState> & { nightly?: GMNightlyState; efficiency: FactoryEfficiencyMetrics };
@@ -477,12 +479,66 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   }
 
   app.addHook('onSend', async (_request, reply) => { secureHeaders(reply); });
+  let graphPoll: ReturnType<typeof setInterval> | undefined;
+  let graphTick: Promise<void> | undefined;
+  let graphInputKey: string | undefined;
+  let graphValidUntil: string | undefined;
+  let graphRetryAt = 0;
+  let graphFailures = 0;
+  let graphDispatchState: { mode: 'manual' | 'automatic'; status: string; lastEvaluatedAt?: string; detail?: string } = {
+    mode: options.automaticGraphDispatch === true ? 'automatic' : 'manual', status: options.automaticGraphDispatch === true ? 'waiting' : 'disabled',
+  };
+  const replenishGraph = async (): Promise<void> => {
+    if (closed || graphTick || !options.automaticGraphDispatch || now().getTime() < graphRetryAt) return;
+    graphTick = (async () => {
+      const config = options.graphDispatch; const catalogObserver = options.workCatalogObserver; const store = options.managerConnected?.store;
+      if (!config || !catalogObserver || !store) {
+        graphDispatchState = { mode: 'automatic', status: 'blocked', detail: 'Graph packet, work catalog and sprint relay are required.' }; return;
+      }
+      try {
+        const files = await Promise.all([config.path, config.readinessPath, catalogObserver.configuration.path].map(async path => {
+          const stat = await lstat(path, { bigint: true });
+          return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(String);
+        }));
+        const snapshot = catalogObserver.snapshot();
+        const requests = store.snapshot().requests.map(r => [r.id, r.status]);
+        const key = JSON.stringify({ files, catalog: [snapshot.status, snapshot.revision], requests });
+        if (key === graphInputKey) {
+          if (graphValidUntil && Date.parse(graphValidUntil) <= now().getTime()) graphDispatchState = {
+            ...graphDispatchState, status: 'blocked', detail: 'Sprint readiness expired. Fresh admission evidence is required.',
+          };
+          return;
+        }
+        graphInputKey = key;
+        const catalog = catalogObserver.catalog();
+        if (!catalog || snapshot.status !== 'available' || !snapshot.revision) throw new Error('catalog_unavailable');
+        graphValidUntil = (await store.sprintReadiness()).validUntil;
+        const result = await enqueueGraphFrontier(config, catalog, snapshot.revision, store, catalogObserver.configuration.path, { reconcileExisting: true });
+        graphFailures = 0; graphRetryAt = 0;
+        graphDispatchState = { mode: 'automatic', status: result.receipts.some(r => r.status === 'failed') ? 'blocked' : 'monitoring',
+          lastEvaluatedAt: now().toISOString(), detail: result.receipts.some(r => r.status === 'failed')
+            ? 'Queue admission failed. Reconcile outstanding work and current sprint evidence.' : `${result.enqueued} assignments queued. Task execution still requires the Foreman relay.` };
+      } catch {
+        graphRetryAt = now().getTime() + Math.min(60_000, 5_000 * 2 ** Math.min(graphFailures++, 4));
+        graphDispatchState = { mode: 'automatic', status: 'blocked', lastEvaluatedAt: now().toISOString(),
+          detail: 'Graph admission is unavailable. Check the private packet, catalog bindings and Sprint readiness.' };
+      }
+    })();
+    try { await graphTick; } finally { graphTick = undefined; }
+  };
+  app.addHook('onReady', async () => {
+    if (!options.automaticGraphDispatch) return;
+    await replenishGraph();
+    graphPoll = setInterval(() => { void replenishGraph(); }, 5_000); graphPoll.unref();
+  });
   app.addHook('preClose', async () => {
     for (const stream of eventStreams) stream.end();
     eventStreams.clear();
   });
   app.addHook('onClose', async () => {
     closed = true;
+    if (graphPoll) clearInterval(graphPoll);
+    await graphTick;
     if (jiraPoll) clearInterval(jiraPoll);
     if (catalogPoll) clearInterval(catalogPoll);
     if (githubWorkPoll) clearInterval(githubWorkPoll);
@@ -500,7 +556,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     if (!report) return { ready: false, mode: 'unconfigured', blockers: [{ id: 'configuration', owner: 'Foreman',
       problem: 'Manager-connected sprint execution is not configured.', nextAction: 'Configure the Foreman relay and verify its sprint admission checks.' }] };
     // Evidence references, configured paths and arbitrary owner text remain private.
-    return { ready: report.ready, mode: report.mode, validUntil: report.validUntil, blockers: report.blockers.map(b => ({
+    return { ready: report.ready, mode: report.mode, validUntil: report.validUntil, graphDispatch: graphDispatchState, blockers: report.blockers.map(b => ({
       id: b.id, owner: 'Foreman', problem: b.problem, nextAction: b.nextAction,
     })) };
   });

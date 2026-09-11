@@ -127,10 +127,26 @@ catalog `scope` (productId, planId, phaseId, ticketId), `title` and bounded
 the catalog revision must still be current. The controller appends only the
 selected node's scoped context to its instruction, not the entire graph.
 
-This owner-triggered route is not an autonomous sprint scheduler. It does not
-observe Jira on a timer, mint signed external actions or wake an idle Foreman.
-The installed end-to-end test must still prove those capabilities before
-unattended operation is enabled. Existing Console configurations remain unchanged.
+Owner-triggered enqueue remains the default. Setting the local Console's
+`automaticGraphDispatch: true` explicitly enables a single controller poller for
+the configured graph packet. It evaluates at startup and checks for changed
+packet/readiness/catalog metadata or relay request states every five seconds;
+unchanged inputs skip planning. File/read failures back off to at most one check
+per minute. The Work readiness panel shows automatic/manual and blocked/monitoring.
+
+Automatic selection reserves capacity for queued, active or uncertain relay
+assignments. Terminal assignments are not replayed automatically, and their
+reports do not satisfy dependency contracts. Completion/cancellation can expose
+the next eligible assignment in the same approved packet. The existing exclusive
+Console and relay ownership plus durable request identities prevent a second
+controller from dispatching duplicates. Shutdown waits for any in-flight tick.
+
+This replenishes the relay queue, not the entire delivery chain. It does not
+fetch new Jira truth, mint signed external actions, launch desktop tasks or wake
+an idle Foreman. A controller still must produce revised evidence-bound packets
+from authoritative observations. The installed end-to-end test must prove the
+remaining capabilities before unattended operation is enabled. Existing Console
+configurations remain unchanged; do not enable this on an active product sprint.
 
 1. Register one canonical project `artifactHome` in the existing work catalog,
    outside installation/update directories. Register the approved intent with

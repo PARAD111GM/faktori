@@ -193,9 +193,38 @@ prior actions do not submit duplicate writes. The final focused run passed 22
 tests across composer, observation, inspection and Jira suites. Independent
 review verified the repaired PR-identity and mandatory-hook boundaries.
 
-Console startup configuration, durable installed authority bindings and actual
-delivery observation sources still need to be connected. These new components
+At this increment, Console startup configuration, durable installed authority
+bindings and actual observation sources were not yet connected. These components
 do not by themselves restore the installed factory. The earlier integration
 suite had one localhost-server failure under the sandbox; all five deployment
 adapter tests passed when rerun with loopback binding permitted. No product
 deployment was performed by that test.
+
+### Opt-in Console connection
+
+Console startup now accepts explicit `deliverySynchronization` configuration and
+projects its sanitized status into Factory and the Console API. It remains off
+when omitted. Missing private packets keep the Console available but visibly
+blocked; the runtime uses existing grants and action journals, not new authority.
+Evaluation begins only after the Console listener and initial startup succeed.
+
+The three startup behavior tests passed with temporary loopback binding allowed,
+including disabled operation, missing-packet failure, and an occupied-port check
+that proves no delivery evaluation starts after failed binding. Typecheck and
+the Console/runtime build passed. The final focused run passed 32 tests across
+startup, runtime, composer, observation, inspection and Jira. Runtime tests prove
+a completed transition, runtime restart without a second write, missing signed
+bindings, packet expiry/change, revoked authority and unresolved prior effects.
+Repository storage (including symlinked parents) is rejected. The Jira/GitHub
+boundaries in these tests are simulated; they are not live integration proof.
+
+Independent review verified the storage/status fixes and the narrowly scoped
+in-flight action exception: only this invocation's freshly admitted intent can
+pass its final guard, never an older unresolved action. The initial positive
+test exposed a denied action hidden by incorrect monitoring status; this was
+fixed rather than counted as successful synchronization.
+
+No active installation was changed. Installed signed bindings, actual approved
+Jira/Slack capabilities, native-task completion transport and the connected
+staging journey remain unproven. Tool discovery in this task still exposes no
+Jira or n8n management connector. This is not a release-acceptance claim.

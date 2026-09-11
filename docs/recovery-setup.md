@@ -272,9 +272,55 @@ The controller composition API uses an existing signed-action grant and explicit
 ticket/run/repository/revision binding. It does not mint authority or launch a
 builder. The Jira executor's `beforeWrite` hook rechecks delivery evidence after
 Jira reconciliation, followed by the existing final authority guard. A changed
-candidate or revoked grant prevents the transition. These APIs are construction
-components: their presence alone does not configure a running Console or prove
-an installed delivery chain.
+candidate or revoked grant prevents the transition. These APIs alone do not
+configure a running Console or prove an installed delivery chain.
+
+### Opt-in Console controller
+
+The Console can host this controller through an explicit local configuration:
+
+```json
+{
+  "deliverySynchronization": {
+    "packetPath": "/absolute/private/controller/delivery.json",
+    "grantVaultPath": "/absolute/private/controller/grants",
+    "pollIntervalMs": 30000
+  }
+}
+```
+
+This is an addition to the existing Console configuration, not a replacement.
+Omitting it preserves existing installations. Do not enable it on an active
+installation until the owner has reconciled workers and synchronization
+ownership. It does not start builders, create grants, approve merges, or deploy.
+
+The controller-owned packet must be a regular, owner-only (`0600`) file, not a
+symlink. Keep it and the grant vault outside product worktrees. Paths inside a
+Git repository or a recorded coordinator workspace are rejected, including
+symlinked parent paths. Its format is
+`faktori.delivery-synchronization/v1`: an expiry (`validUntil`), existing
+`connections`, registered deliveries (`registrations`), delivery `policy`, and
+`bindings`. Each binding retains the ticket, repository, run ID, exact action
+scope and authority epoch, request timestamp, and already-signed `request`.
+Do not put a signing secret or provider token in the packet. Provider
+authorization is resolved through the configured environment reference.
+
+This is currently a controller integration seam, not a self-service setup wizard.
+The configuring controller must supply valid signed requests from existing
+grants and current run authority; merely writing the example configuration does
+not authorize a transition. Missing intent, review, staging acceptance, grants,
+or authority must be repaired at their original source, never fabricated here.
+
+The Factory page and `/api/console/delivery-synchronization` expose sanitized
+status. **Not configured** means no controller is enabled; **blocked** means its
+packet, evidence, or action cannot currently proceed. **Monitoring** describes
+the synchronization evaluation, not successful deployment or product acceptance.
+Private packet paths and credentials are not returned. Poll intervals are bounded
+from five seconds to five minutes; failed evaluations back off. The runtime
+rechecks packet integrity/expiry and current authority before action execution,
+uses bounded Jira/GitHub calls, and drains in-flight work on Console shutdown.
+Retain original request identity and the action journal across restart; never
+delete uncertain action records to force another write.
 
 Wire Slack through `SlackRouterActionExecutor` and the existing signed
 `slack.notify` action boundary. Configure logical-channel allowlists, fixed

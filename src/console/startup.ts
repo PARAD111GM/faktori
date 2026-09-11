@@ -32,6 +32,7 @@ import { newManagerRelayToken, writeManagerRelayConnection } from './manager-rel
 import { WorkCatalogObserver, type WorkCatalogConfiguration } from './work-management.ts';
 import { GitHubWorkObserver } from './github-observer.ts';
 import { spawnGh } from '../integrations/github.ts';
+import { DeliverySynchronizationRuntime, parseDeliverySynchronizationConfiguration, type DeliverySynchronizationConfiguration, type DeliverySynchronizationDependencies } from './delivery-synchronization.ts';
 
 export interface LocalConsoleConfiguration {
   factoryId: string;
@@ -55,6 +56,8 @@ export interface LocalConsoleConfiguration {
   /** Opt-in private graph packet for owner-triggered frontier enqueue. */
   graphDispatchPath?: string;
   automaticGraphDispatch?: boolean;
+  /** Explicit opt-in; absent configuration never starts external synchronization. */
+  deliverySynchronization?: DeliverySynchronizationConfiguration;
   /** Optional owner-maintained JSON catalog; its path is never sent to the browser. */
   workCatalog?: WorkCatalogConfiguration;
 }
@@ -316,6 +319,8 @@ export interface LocalConsoleDependencies {
   healthPollIntervalMs?: number;
   /** Server-owned edit boundary; only file startup configures this in production. */
   settingsEditor?: ConsoleSettingsEditor;
+  /** Test-only transport/clock seams; production uses configured native adapters. */
+  deliverySynchronization?: DeliverySynchronizationDependencies;
 }
 
 function observedNativeProcess(value: Awaited<ReturnType<NativeIdentityProbeContract['inspect']>>): value is Exclude<typeof value, { status: 'absent' | 'unknown' } | undefined> {
@@ -410,6 +415,7 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   const workCatalog = workCatalogConfiguration(input.workCatalog);
   const managerConnected = input.managerConnected === undefined ? undefined : parseManagerConnectedConfig(input.managerConnected);
   const graphDispatchPath = input.graphDispatchPath === undefined ? undefined : absolutePath(input.graphDispatchPath, 'graphDispatchPath');
+  const deliverySynchronization = input.deliverySynchronization === undefined ? undefined : parseDeliverySynchronizationConfiguration(input.deliverySynchronization);
   if (graphDispatchPath && (!managerConnected?.sprintReadinessPath || !workCatalog)) throw new Error('graphDispatchPath requires Manager-connected sprint readiness and a work catalog');
   if (input.automaticGraphDispatch !== undefined && typeof input.automaticGraphDispatch !== 'boolean') throw new Error('automaticGraphDispatch must be an explicit boolean');
   if (input.automaticGraphDispatch === true && !graphDispatchPath) throw new Error('automaticGraphDispatch requires graphDispatchPath');
@@ -417,7 +423,7 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
     if (!factoryConfiguration.products.some((product) => product.id === session.productId)) throw new Error('managerConnected session must reference a configured product');
     if (session.podId && !factoryConfiguration.pods.some((pod) => pod.id === session.podId && pod.productId === session.productId)) throw new Error('managerConnected session pod must belong to its product');
   }
-  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: configuredLimits, managerLoops, ...(registry === undefined ? {} : { managerLoopRegistry: registry }), jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(graphDispatchPath ? { graphDispatchPath, automaticGraphDispatch: input.automaticGraphDispatch === true } : {}), ...(workCatalog ? { workCatalog } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: configuredLimits, managerLoops, ...(registry === undefined ? {} : { managerLoopRegistry: registry }), jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(graphDispatchPath ? { graphDispatchPath, automaticGraphDispatch: input.automaticGraphDispatch === true } : {}), ...(deliverySynchronization ? { deliverySynchronization } : {}), ...(workCatalog ? { workCatalog } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -826,6 +832,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
   let githubWorkObserver: GitHubWorkObserver | undefined;
   let managerLoopRegistry: ManagerLoopRegistry | undefined;
   let removeRelayConnection: (() => Promise<void>) | undefined;
+  let deliverySynchronization: DeliverySynchronizationRuntime | undefined;
   try {
     // Reconstruct and quarantine unresolved work before any configured runtime
     // can admit or launch a new worker. Unknown identity is a blocker, never
@@ -882,17 +889,26 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     const relayToken = newManagerRelayToken();
     const graphDispatch = configuration.graphDispatchPath && configuration.managerConnected?.sprintReadinessPath
       ? { path: configuration.graphDispatchPath, readinessPath: configuration.managerConnected.sprintReadinessPath } : undefined;
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(workCatalogObserver ? { workCatalogObserver } : {}), ...(githubWorkObserver ? { githubWorkObserver } : {}), ...(graphDispatch ? { graphDispatch, automaticGraphDispatch: configuration.automaticGraphDispatch } : {}), ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
+    app = createConsoleService({ coordinator,
+      deliverySynchronization: () => deliverySynchronization?.snapshot() ?? { status: 'not_configured' },
+      commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(workCatalogObserver ? { workCatalogObserver } : {}), ...(githubWorkObserver ? { githubWorkObserver } : {}), ...(graphDispatch ? { graphDispatch, automaticGraphDispatch: configuration.automaticGraphDispatch } : {}), ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
+    if (configuration.deliverySynchronization) {
+      deliverySynchronization = new DeliverySynchronizationRuntime({ configuration: configuration.deliverySynchronization, coordinator, dependencies: dependencies.deliverySynchronization });
+    }
     const listeningApp = app;
     pollInterval = setInterval(() => { void observer?.poll(); void refreshFactoryObservation(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();
     const address = await listeningApp.listen({ host: '127.0.0.1', port: configuration.port });
     if (configuration.managerConnected) removeRelayConnection = await writeManagerRelayConnection(configuration.managerConnected.directory, address, relayToken);
     await observer?.poll();
+    // Do not mutate delivery systems if Console startup (including its listener
+    // and relay registration) failed. Configured status stays pending until here.
+    await deliverySynchronization?.start();
     return {
       coordinator, app: listeningApp, url: address, ...(gm === undefined ? {} : { gm }), ...(nightlyGM === undefined ? {} : { nightlyGM }),
       async close(): Promise<void> {
         if (pollInterval !== undefined) clearInterval(pollInterval);
+        await deliverySynchronization?.close();
         await listeningApp.close();
         await configured?.shutdown();
         await observer?.settle();
@@ -904,6 +920,7 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     };
   } catch (error) {
     if (pollInterval !== undefined) clearInterval(pollInterval);
+    await deliverySynchronization?.close();
     await app?.close();
     await configured?.shutdown();
     await removeRelayConnection?.();

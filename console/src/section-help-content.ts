@@ -8,6 +8,12 @@ export type SectionHelp = {
 const help = (summary: string, source: string, next: string, note?: string): SectionHelp => ({ summary, source, next, note });
 
 const sections: Record<string, SectionHelp> = {
+  'delivery synchronization': help(
+    'Whether the configured controller is reconciling delivery evidence into already-authorized Jira transitions. Monitoring is not proof that a product shipped.',
+    'Fresh Jira and GitHub observations, revision-bound review and acceptance evidence, and the existing signed-action journal.',
+    'If blocked, ask the Foreman to repair the named observation or current grant. If not configured, complete the opt-in recovery setup. This panel cannot approve work or restart agents.',
+    'The ledger follows evidence—not optimism.',
+  ),
   'at a glance': help(
     'A quick count across saved project plans: open decisions, blocked tickets, and whether the numbers may be old. It is not live activity.',
     'Saved project plans and the latest Console snapshot; counts can be missing or old.',

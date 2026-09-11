@@ -23,6 +23,7 @@ import { registerManagerRelay } from './manager-relay.ts';
 import { validateWorkScope, type WorkCatalogObserver, type WorkManagementDailyEvent } from './work-management.ts';
 import type { GitHubWorkObserver } from './github-observer.ts';
 import { enqueueGraphFrontier, type GraphDispatchConfiguration } from './graph-dispatch.ts';
+import type { DeliverySynchronizationRuntime } from './delivery-synchronization.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -75,6 +76,7 @@ export interface ConsoleServiceOptions {
   graphDispatch?: GraphDispatchConfiguration;
   /** Explicit controller configuration; never enabled by a browser request. */
   automaticGraphDispatch?: boolean;
+  deliverySynchronization?: () => ReturnType<DeliverySynchronizationRuntime['snapshot']> | { status: 'not_configured' };
   workCatalogObserver?: WorkCatalogObserver;
   githubWorkObserver?: GitHubWorkObserver;
   factoryGM?: () => ReturnType<typeof coordinatorGMState> & { nightly?: GMNightlyState; efficiency: FactoryEfficiencyMetrics };
@@ -327,6 +329,15 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     events.emit('state');
   }, options.eventPollIntervalMs ?? 200);
   journalPoll.unref();
+  // Status projection only: external reads/writes remain in the single runtime.
+  let deliveryVersion = '';
+  const deliveryPoll = options.deliverySynchronization ? setInterval(() => {
+    const version = JSON.stringify(options.deliverySynchronization!());
+    if (version === deliveryVersion) return;
+    deliveryVersion = version;
+    events.emit('state');
+  }, 1_000) : undefined;
+  deliveryPoll?.unref();
   const unsubscribeManagerLoops = options.managerLoopObserver?.onChange(() => events.emit('state'));
   const unsubscribeManagerConnected = options.managerConnected?.store.onChange(() => events.emit('state'));
   const unsubscribeWorkCatalog = options.workCatalogObserver?.onChange(() => events.emit('state'));
@@ -405,6 +416,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       overview: { activeRuns: snapshots.filter((snapshot) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(snapshot.state)).length, waitingDecisions: waiting.length, failedRuns: snapshots.filter((snapshot) => snapshot.state === 'failed').length },
       resources: { knownUsageTokens: knownTokens, reportedUsageCount: reported.length, unavailableUsageCount: usages.length - reported.length, reservedTokens, unavailableMeasurements: usages.filter((usage) => usage.availability === 'unavailable').length, queueAge: snapshots.filter((snapshot) => snapshot.state === 'queued' || snapshot.state === 'admitted').map((snapshot) => ({ runId: snapshot.intent.runId, createdAt: snapshot.intent.createdAt })) },
       factoryGM: options.factoryGM?.() ?? coordinatorGMState(options.coordinator),
+      deliverySynchronization: options.deliverySynchronization?.() ?? { status: 'not_configured' },
     };
   }
 
@@ -545,6 +557,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     if (githubWorkPoll) clearInterval(githubWorkPoll);
     options.jiraObserver?.close();
     clearInterval(journalPoll);
+    if (deliveryPoll) clearInterval(deliveryPoll);
     unsubscribeManagerLoops?.();
     unsubscribeManagerConnected?.();
     unsubscribeWorkCatalog?.();
@@ -552,6 +565,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());
+  app.get('/api/console/delivery-synchronization', async () => options.deliverySynchronization?.() ?? { status: 'not_configured' });
   app.get('/api/console/sprint-readiness', async () => {
     const report = await options.managerConnected?.store.sprintReadiness();
     if (!report) return { ready: false, mode: 'unconfigured', blockers: [{ id: 'configuration', owner: 'Foreman',

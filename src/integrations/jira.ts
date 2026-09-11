@@ -22,8 +22,14 @@ export class FetchJiraHttpClient implements JiraHttpClient {
     if (this.#base.protocol !== 'https:' && this.#base.protocol !== 'http:') throw new Error('Jira base URL must be http(s)');
   }
   async request(input: { method: 'GET' | 'POST' | 'PUT'; path: string; headers: Readonly<Record<string, string>>; body?: unknown }): Promise<JiraHttpResponse> {
-    if (!input.path.startsWith('/rest/api/3/')) throw new Error('Jira path escaped configured API root');
-    const response = await this.#fetcher(new URL(input.path, this.#base), { method: input.method, headers: input.headers, ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }) });
+    // The Agile API is needed only for controller-owned, read-only sprint
+    // observation.  Keep it on the configured origin alongside the core API;
+    // callers still cannot provide a URL or escape to another host.
+    const destination = new URL(input.path, this.#base);
+    const agile = destination.pathname.startsWith('/rest/agile/1.0/');
+    if (destination.origin !== this.#base.origin || (!destination.pathname.startsWith('/rest/api/3/') && !agile)) throw new Error('Jira path escaped configured API root');
+    if (agile && input.method !== 'GET') throw new Error('Jira Agile access is read-only');
+    const response = await this.#fetcher(destination, { method: input.method, headers: input.headers, ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }) });
     const raw = await response.text();
     let body: unknown = undefined;
     if (raw.length > 0) { try { body = JSON.parse(raw); } catch { throw new Error('Jira returned invalid JSON'); } }

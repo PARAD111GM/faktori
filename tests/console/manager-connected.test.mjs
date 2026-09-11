@@ -20,6 +20,7 @@ describe('Manager-connected Console transport', () => {
     let remove;
     try {
       const ownerHeaders = { origin: 'http://127.0.0.1:43177', 'x-faktori-console-token': 'owner-token' };
+      expect((await app.inject('/api/console/sprint-readiness')).json()).toMatchObject({ ready: false, mode: 'unconfigured' });
       const action = { type: 'enqueue', id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', sessionId: 'phase-one', title: 'Verify arithmetic', instruction: 'Private task instruction: verify arithmetic only.' };
       const send = (payload, headers = ownerHeaders, url = '/api/console/manager-connected') => app.inject({ method: 'POST', url, headers, payload });
       expect((await send(action, {})).statusCode).toBe(403);

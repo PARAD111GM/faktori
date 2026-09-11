@@ -10,6 +10,7 @@ import { ManagerConnected, type ManagerConnectedAction, type ManagerConnectedSna
 import { TicketBoard } from './ticket-board.tsx';
 import { ActivityFeed, type ActivityItem, type JiraBoard } from './work-visibility.tsx';
 import { Projects } from './projects.tsx';
+import { Artifacts } from './artifacts.tsx';
 import { Sessions } from './sessions.tsx';
 import { DecisionInbox, type DecisionProjection } from './decisions.tsx';
 import type { ConsoleSettings } from '../../src/console/settings.ts';
@@ -48,6 +49,7 @@ type Hierarchy = {
   filters?: { products?: Array<{ id: string; name: string }>; pods?: Array<{ id: string; productId: string }> };
 };
 type ScopeFilter = { productId: string; podId: string };
+type SprintReadiness = { ready: boolean; mode: 'attended' | 'unattended' | 'unconfigured'; blockers: Array<{ id: string; owner: string; problem: string; nextAction: string }> };
 
 /** Catalog links must not inherit a different project's narrower Work filter. */
 export function projectScope(productId: string): ScopeFilter { return { productId, podId: '' }; }
@@ -201,13 +203,14 @@ function Empty({ title, detail }: { title: string; detail: string }) {
 
 function RunState({ state }: { state: string }) { return <span className={`state state-${state}`}>{stateLabel(state)}</span>; }
 
-type IconName = 'overview' | 'projects' | 'decisions' | 'work' | 'sessions' | 'run' | 'factory' | 'settings' | 'refresh';
+type IconName = 'overview' | 'projects' | 'artifacts' | 'decisions' | 'work' | 'sessions' | 'run' | 'factory' | 'settings' | 'refresh';
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
     settings: <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="8" cy="18" r="2" /></>,
     overview: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></>,
     projects: <><path d="M4 20V7l8-4 8 4v13" /><path d="M8 20v-5h8v5M8 9h.01M12 9h.01M16 9h.01" /></>,
+    artifacts: <><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
     decisions: <><path d="M5 4h14v16H5z" /><path d="M8 9h8M8 13h8M8 17h4" /><path d="m7.5 9 1 1 2-2" /></>,
     work: <><path d="M7 3h8l4 4v14H7z" /><path d="M15 3v5h5M10 12h6M10 16h6" /></>,
     sessions: <><circle cx="9" cy="8" r="3" /><path d="M3 21c.7-4 3-6 6-6s5.3 2 6 6M17 11a3 3 0 1 0-1-5.8M18 15c1.7.7 2.8 2.5 3 4.5" /></>,
@@ -267,10 +270,23 @@ function WorkHierarchy({ hierarchy, filter }: { hierarchy?: Hierarchy; filter: S
 export function Work({ state, runs, selectRun, openLoop, openRequest, openDecision, focusedRequestId, focusedSessionId, submit, submitManagerConnected }: { state: ConsoleState; runs: Run[]; selectRun: (id: string) => void; openLoop: (id: string) => void; openRequest: (id: string) => void; openDecision?: (id: string) => void; focusedRequestId?: string; focusedSessionId?: string; submit: (command: Command) => void; submitManagerConnected: (action: ManagerConnectedAction) => Promise<void> }) {
   const [workItemId, setWorkItemId] = useState('');
   const [productId, setProductId] = useState('');
+  const [sprintReadiness, setSprintReadiness] = useState<SprintReadiness>();
+  const [sprintReadinessError, setSprintReadinessError] = useState<string>();
+  useEffect(() => { let cancelled = false; void fetch('/api/console/sprint-readiness', { cache: 'no-store' }).then(async response => {
+    if (!response.ok) throw new Error(`Sprint readiness request failed (${response.status})`);
+    return await response.json() as SprintReadiness;
+  }).then(report => { if (!cancelled) { setSprintReadiness(report); setSprintReadinessError(undefined); } }).catch(cause => {
+    if (!cancelled) { setSprintReadiness(undefined); setSprintReadinessError(cause instanceof Error ? cause.message : 'Sprint readiness is unknown.'); }
+  }); return () => { cancelled = true; }; }, []);
   const filter = { productId, podId: '' };
   const projects = [...new Map([...(state.hierarchy?.filters?.products ?? []).map(product => [product.id, product.name] as const), ...(state.workManagement?.projects ?? []).map(project => [project.productId, project.title] as const)].map(([id, name]) => [id, { id, name }])).values()];
-  return <section className="workspace"><TicketBoard projectControl={<label>Project<select value={productId} onChange={event => setProductId(event.target.value)}><option value="">All projects</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>} workManagement={state.workManagement} boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} /><ManagerConnected snapshot={state.managerConnected} workManagement={state.workManagement} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submitManagerConnected} /><div className="panel panel-primary section-header work-header"><div><HelpHeading level={2} scope="main">Start approved work</HelpHeading></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
+  return <section className="workspace"><SprintReadinessCard report={sprintReadiness} error={sprintReadinessError} /><TicketBoard projectControl={<label>Project<select value={productId} onChange={event => setProductId(event.target.value)}><option value="">All projects</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>} workManagement={state.workManagement} boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} /><ManagerConnected snapshot={state.managerConnected} workManagement={state.workManagement} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submitManagerConnected} /><div className="panel panel-primary section-header work-header"><div><HelpHeading level={2} scope="main">Start approved work</HelpHeading></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
   <ActivityFeed items={state.activity ?? []} filter={filter} selectRun={selectRun} selectLoop={openLoop} selectRequest={openRequest} selectDecision={openDecision} /><ManagerLoops loops={state.managerLoops} filter={filter} /><WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
+}
+
+export function SprintReadinessCard({ report, error }: { report?: SprintReadiness; error?: string }) {
+  const state = report?.ready ? 'available' : report ? 'unavailable' : 'unavailable';
+  return <section className="panel panel-primary sprint-readiness"><div className="panel-heading"><div><HelpHeading level={3} scope="work">Sprint readiness</HelpHeading><p>Read-only admission evidence. This card cannot approve, launch, or repair a sprint.</p></div><span className={`state state-${state}`}>{report?.ready ? `${report.mode} ready` : report ? `${report.mode} no-go` : 'unknown / no-go'}</span></div>{error ? <p className="notice">Sprint readiness is unknown and treated as no-go: {error}</p> : report?.ready ? <p className="quiet">Current controller-owned readiness report permits admission in {report.mode} mode. It is not an approval control.</p> : <><p className="notice">Admission is not ready. No approval is fabricated from this observation.</p>{report?.blockers.length ? <ul className="findings">{report.blockers.map((blocker) => <li key={blocker.id}><strong>{blocker.problem}</strong><span>{blocker.owner}</span><p>{blocker.nextAction}</p></li>)}</ul> : <p className="quiet">No blocker details were published; treat this as no-go until a current report is available.</p>}</>}</section>;
 }
 
 function ProviderRequests({ run, submit }: { run: Run; submit: (command: Command) => void }) {
@@ -349,24 +365,26 @@ export function filterWorkRuns(runs: Run[], query: string): Run[] {
   return runs.filter((run) => [run.workItem.id, run.runId, run.provider ?? '', stateLabel(run.state)].join(' ').toLocaleLowerCase().includes(needle));
 }
 
-export function viewFromHash(hash: string): 'overview' | 'projects' | 'decisions' | 'work' | 'sessions' | 'run' | 'factory' | 'settings' {
+export function viewFromHash(hash: string): 'overview' | 'projects' | 'artifacts' | 'decisions' | 'work' | 'sessions' | 'run' | 'factory' | 'settings' {
   const view = hash.slice(1).split('?')[0];
-  return view === 'projects' || view === 'decisions' || view === 'work' || view === 'sessions' || view === 'run' || view === 'factory' || view === 'settings' ? view : 'overview';
+  return view === 'projects' || view === 'artifacts' || view === 'decisions' || view === 'work' || view === 'sessions' || view === 'run' || view === 'factory' || view === 'settings' ? view : 'overview';
 }
 
 function App() {
   const { state, connection, error, refresh, applyState } = useConsoleState();
   const [view, setView] = useState<ReturnType<typeof viewFromHash>>(() => viewFromHash(window.location.hash));
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(() => new URLSearchParams(window.location.hash.split('?')[1]).get('project') ?? undefined);
+  const [selectedArtifactProjectId, setSelectedArtifactProjectId] = useState<string | undefined>(() => new URLSearchParams(window.location.hash.split('?')[1]).get('project') ?? undefined);
   useEffect(() => {
     const onHashChange = () => {
       setView(viewFromHash(window.location.hash));
       setSelectedProjectId(new URLSearchParams(window.location.hash.split('?')[1]).get('project') ?? undefined);
+      setSelectedArtifactProjectId(new URLSearchParams(window.location.hash.split('?')[1]).get('project') ?? undefined);
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
-  useEffect(() => { window.history.replaceState(null, '', '#' + view + (view === 'projects' && selectedProjectId ? '?project=' + encodeURIComponent(selectedProjectId) : '')); }, [view, selectedProjectId]);
+  useEffect(() => { const projectId = view === 'projects' ? selectedProjectId : view === 'artifacts' ? selectedArtifactProjectId : undefined; window.history.replaceState(null, '', '#' + view + (projectId ? '?project=' + encodeURIComponent(projectId) : '')); }, [view, selectedProjectId, selectedArtifactProjectId]);
   const [selectedRunId, setSelectedRunId] = useState<string>();
   const [focusedRequestId, setFocusedRequestId] = useState<string>();
   const [focusedSessionId, setFocusedSessionId] = useState<string>();
@@ -427,14 +445,14 @@ function App() {
   }, [applyState, refresh, token]);
 
   if (!state) return <main className="loading"><HelpHeading level={1} scope="main">Faktori</HelpHeading><p>{error ?? 'Loading the coordinator projection…'}</p><button onClick={() => void refresh()}>Retry connection</button></main>;
-  const primaryViews = ['overview', 'projects', 'decisions', 'work', 'sessions', 'factory', 'settings'] as const;
+  const primaryViews = ['overview', 'projects', 'artifacts', 'decisions', 'work', 'sessions', 'factory', 'settings'] as const;
   const title = view === 'run' ? 'Run detail' : view[0].toUpperCase() + view.slice(1);
   return <main className="app-shell">
     <a className="skip-link" href="#console-content">Skip to content</a>
-    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><img className="brand-combo" src={faktoriLogo} alt="FAKTORI" /></a><nav aria-label="Console views">{primaryViews.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => { if (item === 'projects') setSelectedProjectId(undefined); setView(item); }}><Icon name={item} /><span>{item}</span></button>)}</nav></aside>
-    <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><HelpHeading level={1} scope="main">{title}</HelpHeading><p className="page-description">{({ projects: 'Goals and ordered work from your project catalog. Manager reports do not mark work accepted.', sessions: 'Session assignments and recorded contact—not live activity.', decisions: 'Resolve or delegate observed problems. Manager acknowledgement is recorded separately.', factory: 'Resources and operational health. Controls do not widen GM authority.', settings: 'Factory-wide configuration and provider assignments.' } as Record<string, string>)[view]}</p>{(view === 'projects' || view === 'sessions') && <details className="page-catalog-status"><HelpSummary scope="main">Catalog: {state.workManagement?.status ?? 'unavailable'}</HelpSummary><p>Revision {state.workManagement?.revision ?? 'not observed'}</p><p>Observed {formatDate(state.workManagement?.observedAt)}</p></details>}</div><div className="header-controls">{view === 'factory' && <button onClick={() => submit({ type: 'pause_admission', paused: !state.admissionPaused })}>{state.admissionPaused ? 'Resume admission' : 'Pause admission'}</button>}<button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
+    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><img className="brand-combo" src={faktoriLogo} alt="FAKTORI" /></a><nav aria-label="Console views">{primaryViews.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => { if (item === 'projects') setSelectedProjectId(undefined); if (item === 'artifacts') setSelectedArtifactProjectId(undefined); setView(item); }}><Icon name={item} /><span>{item}</span></button>)}</nav></aside>
+    <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><HelpHeading level={1} scope="main">{title}</HelpHeading><p className="page-description">{({ projects: 'Goals and ordered work from your project catalog. Manager reports do not mark work accepted.', artifacts: 'Safe catalog observations and owner-published snapshots; neither is live filesystem browsing.', sessions: 'Session assignments and recorded contact—not live activity.', decisions: 'Resolve or delegate observed problems. Manager acknowledgement is recorded separately.', factory: 'Resources and operational health. Controls do not widen GM authority.', settings: 'Factory-wide configuration and provider assignments.' } as Record<string, string>)[view]}</p>{(view === 'projects' || view === 'artifacts' || view === 'sessions') && <details className="page-catalog-status"><HelpSummary scope="main">Catalog: {state.workManagement?.status ?? 'unavailable'}</HelpSummary><p>Revision {state.workManagement?.revision ?? 'not observed'}</p><p>Observed {formatDate(state.workManagement?.observedAt)}</p></details>}</div><div className="header-controls">{view === 'factory' && <button onClick={() => submit({ type: 'pause_admission', paused: !state.admissionPaused })}>{state.admissionPaused ? 'Resume admission' : 'Pause admission'}</button>}<button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
     {error && <div className="alert" role="alert">{error}</div>}{pending.length > 0 && <div className="pending" role="status"><strong>{pending.length} command{pending.length === 1 ? '' : 's'} pending</strong>{pending.map((entry) => <span key={entry.id}>{entry.command.type.replaceAll('_', ' ')} {entry.status === 'failed' ? `failed: ${entry.detail}` : 'awaiting confirmation'}<button type="button" onClick={() => retry(entry)}>{entry.status === 'failed' ? 'Replay safely' : 'Retry with same identity'}</button></span>)}</div>}
-    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><HelpSummary scope="main">Connection settings</HelpSummary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} openDecisions={() => setView('decisions')} />}{view === 'projects' && <Projects workManagement={state.workManagement} selectedProjectId={selectedProjectId} onSelectProject={id => { setSelectedProjectId(id); window.location.hash = 'projects?project=' + encodeURIComponent(id); }} onBackToProjects={() => { setSelectedProjectId(undefined); window.location.hash = 'projects'; }} onRefresh={refresh} navigation={{ openRun: selectRun, openLoop, openRequest }} />}{view === 'decisions' && <DecisionInbox decisions={(state.workManagement as (WorkManagementState & { decisions?: DecisionProjection[] }) | undefined)?.decisions} token={token} onChanged={refresh} focusedDecisionId={focusedDecisionId} navigation={{ openRun: openDecisionRun, openSession: openDecisionSession }} />}{view === 'sessions' && <Sessions workManagement={state.workManagement} manager={state.managerConnected?.manager} lastHeartbeatAt={state.managerConnected?.lastHeartbeatAt} />}{view === 'work' && <Work state={state} runs={visibleRuns} selectRun={selectRun} openLoop={openLoop} openRequest={openRequest} openDecision={openDecision} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submit} submitManagerConnected={submitManagerConnected} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
+    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><HelpSummary scope="main">Connection settings</HelpSummary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} openDecisions={() => setView('decisions')} />}{view === 'projects' && <Projects workManagement={state.workManagement} selectedProjectId={selectedProjectId} onSelectProject={id => { setSelectedProjectId(id); window.location.hash = 'projects?project=' + encodeURIComponent(id); }} onBackToProjects={() => { setSelectedProjectId(undefined); window.location.hash = 'projects'; }} onRefresh={refresh} navigation={{ openRun: selectRun, openLoop, openRequest }} />}{view === 'artifacts' && <Artifacts workManagement={state.workManagement} initialProjectId={selectedArtifactProjectId} onProjectChange={id => { setSelectedArtifactProjectId(id); window.location.hash = 'artifacts' + (id ? '?project=' + encodeURIComponent(id) : ''); }} />}{view === 'decisions' && <DecisionInbox decisions={(state.workManagement as (WorkManagementState & { decisions?: DecisionProjection[] }) | undefined)?.decisions} token={token} onChanged={refresh} focusedDecisionId={focusedDecisionId} navigation={{ openRun: openDecisionRun, openSession: openDecisionSession }} />}{view === 'sessions' && <Sessions workManagement={state.workManagement} manager={state.managerConnected?.manager} lastHeartbeatAt={state.managerConnected?.lastHeartbeatAt} />}{view === 'work' && <Work state={state} runs={visibleRuns} selectRun={selectRun} openLoop={openLoop} openRequest={openRequest} openDecision={openDecision} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submit} submitManagerConnected={submitManagerConnected} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
   </main>;
 }
 

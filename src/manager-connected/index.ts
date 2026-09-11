@@ -4,6 +4,7 @@ import { lstat, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 
 import type { ScopedWorkAssignment } from '../console/work-management.ts';
+import { readSprintReadiness, requireSprintReadiness, type SprintReadinessReport } from '../sprint/readiness.ts';
 
 export interface ManagerConnectedManager {
   threadId: string;
@@ -24,6 +25,8 @@ export interface ManagerConnectedSessionAssignment {
 
 export interface ManagerConnectedConfig {
   directory: string;
+  /** Opt-in private controller observation file. Never accepted from a browser command. */
+  sprintReadinessPath?: string;
   manager: ManagerConnectedManager;
   sessions: ManagerConnectedSessionAssignment[];
 }
@@ -384,7 +387,9 @@ function parseDecisionOwner(value: unknown, path: string): string {
 
 export function parseManagerConnectedConfig(value: unknown): ManagerConnectedConfig {
   const input = record(value, 'managerConnected');
-  exactKeys(input, ['directory', 'manager', 'sessions'], 'managerConnected');
+  exactKeys(input, ['directory', 'manager', 'sessions', 'sprintReadinessPath'], 'managerConnected');
+  const sprintReadinessPath = input.sprintReadinessPath === undefined ? undefined : boundedText(input.sprintReadinessPath, 'managerConnected.sprintReadinessPath', 4096);
+  if (sprintReadinessPath !== undefined && !isAbsolute(sprintReadinessPath)) fail('invalid_input', 'managerConnected.sprintReadinessPath must be absolute');
   const directoryInput = boundedText(input.directory, 'managerConnected.directory', 4_096);
   if (!isAbsolute(directoryInput)) fail('invalid_input', 'managerConnected.directory must be absolute');
   const directory = resolve(directoryInput);
@@ -402,7 +407,7 @@ export function parseManagerConnectedConfig(value: unknown): ManagerConnectedCon
     ids.add(session.id);
     threads.add(session.threadId);
   }
-  return structuredClone({ directory, manager, sessions });
+  return structuredClone({ directory, manager, sessions, ...(sprintReadinessPath === undefined ? {} : { sprintReadinessPath }) });
 }
 
 function parseAction(value: unknown): ManagerConnectedAction {
@@ -789,6 +794,38 @@ export class ManagerConnectedStore {
     return () => this.#listeners.delete(listener);
   }
 
+  async sprintReadiness(): Promise<SprintReadinessReport> {
+    if (!this.#config.sprintReadinessPath) return { ready: false, mode: 'unconfigured', blockers: [{
+      id: 'configuration', owner: 'Foreman', problem: 'Sprint admission checks are not configured for this legacy relay.',
+      nextAction: 'Configure a private sprintReadinessPath before using this relay for a recovery sprint.',
+    }] };
+    try { return await readSprintReadiness(this.#config.sprintReadinessPath); }
+    catch { return { ready: false, mode: 'unconfigured', blockers: [{ id: 'configuration', owner: 'Foreman',
+      problem: 'The configured sprint readiness record cannot be safely read.', nextAction: 'Check the private file, ownership and valid readiness document.' }] }; }
+  }
+
+  isSprintWork(workItemId: string): boolean {
+    return this.#config.sprintReadinessPath !== undefined && this.#config.sessions.some(s => s.ticketId === workItemId);
+  }
+
+  private checkSprintCapacity(assignment: ManagerConnectedSessionAssignment, requestId?: string): void {
+    if (!this.#config.sprintReadinessPath) return;
+    const active = [...this.#requests.values()].filter(r => r.id !== requestId && ['queued', 'claimed', 'submitted', 'uncertain'].includes(r.status));
+    if (active.some(r => r.sessionId === assignment.id || (r.assignment.productId === assignment.productId && r.assignment.ticketId === assignment.ticketId)))
+      fail('sprint_assignment_busy', 'This task or ticket already has outstanding work. Reconcile it before another dispatch.');
+    if (requestId !== undefined && /^(builder|implementer)$/i.test(assignment.role)) {
+      const coding = active.filter(r => r.status !== 'queued' && /^(builder|implementer)$/i.test(r.assignment.role));
+      if (coding.length >= 3) fail('sprint_capacity_full', 'Three builder assignments are active or uncertain. Review-only tasks do not consume a coding slot.');
+    }
+  }
+
+  private async checkSprint(assignment: ManagerConnectedSessionAssignment): Promise<void> {
+    if (!this.#config.sprintReadinessPath) return;
+    if (!assignment.ticketId) fail('sprint_admission_blocked', 'Sprint dispatch requires an explicit ticket assignment.');
+    try { await requireSprintReadiness(this.#config.sprintReadinessPath, { workItemId: assignment.ticketId, threadId: assignment.threadId, managerThreadId: this.#config.manager.threadId }); }
+    catch { fail('sprint_admission_blocked', 'Sprint readiness or builder bootstrap is incomplete. Open Sprint readiness for the required evidence and next actions.'); }
+  }
+
   async operate(value: unknown): Promise<ManagerConnectedOperationResult> {
     /**
      * `complete` is trusted only because the containing service authenticates
@@ -944,6 +981,8 @@ export class ManagerConnectedStore {
         return { type: 'enqueue', duplicate: true, request: publicRequest(existing) };
       }
       const request: DurableRequest = { ...candidate, status: 'queued', createdAt: new Date().toISOString() };
+      await this.checkSprint(assignment);
+      this.checkSprintCapacity(assignment);
       await this.append('queued', request);
       return { type: 'enqueue', duplicate: false, request: publicRequest(request) };
     }
@@ -1022,6 +1061,8 @@ export class ManagerConnectedStore {
     const request = this.currentRequest(action.id);
     if (action.type === 'claim') {
       const assignment = this.currentAssignment(request);
+      await this.checkSprint(assignment);
+      this.checkSprintCapacity(assignment, request.id);
       if (request.status !== 'queued') fail('claim_not_available', `request ${request.id} is ${request.status}; claimed work is never retried automatically`);
       const claimedAt = new Date().toISOString();
       await this.append('claimed', { ...request, status: 'claimed', claimedAt });

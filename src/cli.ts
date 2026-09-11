@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
+import { readSprintReadiness } from './sprint/readiness.ts';
+import { inspectDeliveryConnections } from './integrations/delivery-inspect.ts';
 import { callManagerRelay } from './console/manager-relay.ts';
 import {
   AppendOnlyJournal,
@@ -53,6 +55,8 @@ const HELP = `Usage:
   faktori loop publication prepare <request.json>
   faktori loop publication publish <request.json>
   faktori preflight <request.json>
+  faktori sprint readiness <private-readiness.json>
+  faktori delivery inspect <connections.json>
   faktori readiness report <local-console.json>
   faktori backup create <request.json> <backup-directory>
   faktori backup inspect-lock <absolute-journal-path>
@@ -108,6 +112,19 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'delivery' && action === 'inspect') {
+    if (!source || argv.length !== 3) throw new Error('delivery inspect requires one owner connection configuration');
+    const report = await inspectDeliveryConnections(await json(source, 'delivery connections'));
+    print(report);
+    return;
+  }
+  if (group === 'sprint' && action === 'readiness') {
+    if (!source || argv.length !== 3) throw new Error('sprint readiness requires one private controller observation file');
+    const report = await readSprintReadiness(source);
+    print(report);
+    if (!report.ready) process.exitCode = 1;
+    return;
+  }
   if (group === 'manager') {
     if (action === 'decision') {
       const [kind, connection, decisionPath] = [source, extra, argv[4]];

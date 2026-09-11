@@ -266,4 +266,14 @@ dt { color: var(--secondary); }dd { margin: 0; text-align: right; font-weight: 6
 .sessions-list > .panel-heading :is(h3, p, strong) { color: var(--ink); }
 .session-card, .manager-session-card, .decision-card, .project-list-item, .manager-sessions, .manager-enqueue, .manager-requests, .work-artifact, .work-plan, .work-phase, .work-ticket, .factory-sections > section { border-radius: var(--card-radius); background: var(--paper); }
 .project-progress, .project-daily-summary, .project-pull-requests, .decision-response, .decision-action, .decision-history, .work-artifact pre { border-radius: var(--card-radius); }
+.artifacts-workspace, .artifact-projects, .artifact-list { display: grid; gap: 4px; }
+.artifacts-header { display: grid; gap: 12px; }
+.artifacts-header > label { display: grid; gap: 5px; max-width: 320px; font-size: 12px; font-weight: 700; }
+.artifact-project { display: grid; gap: 4px; padding: 16px; background: var(--section-surface); border-radius: var(--card-radius); }
+.artifact-project > .panel-heading { padding: 0 0 12px; border-bottom: 1px solid var(--line); background: transparent; }
+.artifact-project > .panel-heading > strong { color: var(--secondary); font: 650 11px var(--mono); }
+.artifact-intent-missing { padding: 12px; border-left: 3px solid #a77a25; background: #eee1c5; font-size: 12px; }
+.artifact-intent-missing p { margin: 6px 0 0; color: var(--secondary); }
+.sprint-readiness { margin-bottom: 4px; }
+.sprint-readiness .notice, .sprint-readiness .quiet { margin: 14px 16px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }

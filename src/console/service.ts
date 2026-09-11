@@ -438,6 +438,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     try {
       let result: Record<string, unknown> = {};
       if (request.command.type === 'start_work') {
+        if (options.managerConnected?.store.isSprintWork(request.command.workItemId)) throw new Error('This recovery sprint requires its visible Codex task. Dispatch through the Foreman relay after sprint readiness passes.');
         if (currentPause(records())) throw new Error('admission_paused');
         if (options.ownerActions?.startWork === undefined) throw new Error('start_work_unavailable');
         result = await options.ownerActions.startWork(request.command.workItemId);
@@ -491,6 +492,15 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());
+  app.get('/api/console/sprint-readiness', async () => {
+    const report = await options.managerConnected?.store.sprintReadiness();
+    if (!report) return { ready: false, mode: 'unconfigured', blockers: [{ id: 'configuration', owner: 'Foreman',
+      problem: 'Manager-connected sprint execution is not configured.', nextAction: 'Configure the Foreman relay and verify its sprint admission checks.' }] };
+    // Evidence references, configured paths and arbitrary owner text remain private.
+    return { ready: report.ready, mode: report.mode, blockers: report.blockers.map(b => ({
+      id: b.id, owner: 'Foreman', problem: b.problem, nextAction: b.nextAction,
+    })) };
+  });
   app.post('/api/console/manager-loops/register', async (request, reply) => {
     if (!commandAuthorized(request, reply)) return reply;
     if (options.managerLoopRegistry === undefined || options.managerLoopObserver === undefined) return reply.code(409).send({ error: 'manager_loop_registration_unavailable' });

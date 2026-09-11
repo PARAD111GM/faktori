@@ -1,5 +1,10 @@
 # Install Faktori — instructions for coding agents
 
+For a delivery-recovery upgrade, also read [Recovery setup](docs/recovery-setup.md).
+Verify the connected Jira/GitHub/Codex/Slack/Console journey; saved settings and
+source tests alone do not establish an operational factory. Never replace an
+active installation or its credentials merely to satisfy a readiness checkbox.
+
 Use this guide when an owner asks you to create a factory from this repository.
 It is an operational guide, not a request to continue Faktori's development
 backlog. Read it before installing dependencies or provisioning resources.

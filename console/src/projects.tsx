@@ -34,7 +34,7 @@ const formatDate = (value?: string): string => {
 
 const ordered = <T extends { order: number }>(items: T[]): T[] => [...items].sort((left, right) => left.order - right.order || String((left as { id?: string }).id).localeCompare(String((right as { id?: string }).id)));
 
-function Artifact({ artifact }: { artifact: WorkManagementArtifactProjection }) {
+export function Artifact({ artifact }: { artifact: WorkManagementArtifactProjection }) {
   const label = artifact.status === 'available' ? 'Available' : artifact.status === 'stale' ? 'Stale' : 'Unavailable';
   const snapshot = artifact.contentBasis === 'owner_snapshot';
   return <article className="work-artifact">

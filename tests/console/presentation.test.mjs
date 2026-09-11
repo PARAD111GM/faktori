@@ -130,7 +130,7 @@ describe('Console presentation contract', () => {
     expect(filterHtml).toContain('<span>Pod</span>');
     expect(filterHtml).toContain('All products');
     expect(filterHtml).toContain('All pods');
-    expect(source).toContain("const primaryViews = ['overview', 'projects', 'decisions', 'work', 'sessions', 'factory', 'settings'] as const;");
+    expect(source).toContain("const primaryViews = ['overview', 'projects', 'artifacts', 'decisions', 'work', 'sessions', 'factory', 'settings'] as const;");
     expect(source).toContain('>Project<select');
     expect(source).not.toContain("{view !== 'settings' && <ScopeFilters");
     expect(source).toContain('className="session-key"');

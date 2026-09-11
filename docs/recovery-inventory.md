@@ -277,3 +277,18 @@ limits that fan-out to four, forces ten-second Jira/GitHub call timeouts, and
 rejects Jira redirects. Fourteen targeted inspection/observation/runtime tests
 passed after the fix, as did typecheck. These are simulated transport tests,
 not proof of any installation's Jira credentials.
+
+### Native Foreman goal observation — 2026-09-11
+
+The shipped CLI, using Node 24.20.0 and Codex CLI 0.146.0, ran the read-only
+`sprint goal` diagnostic against the owner-named Twinzy Foreman task
+`01a08469-997a-7070-a2dc-677638594579`. At `2026-09-11T21:38:58.664Z` the
+vendor app-server returned an active native goal with an objective present.
+The objective text was not exported and no goal, task, or inference was started.
+
+The initial filesystem-sandboxed invocation returned `unavailable/process_failed`;
+the same diagnostic succeeded when local app-server access was allowed. An
+installation needs this access to verify goals; it must not reinterpret an
+unavailable result as missing or active. This observation verifies this one
+Foreman at that time only. Builder goals, completion transport, idle wake-up,
+installed readiness binding and the full staging exercise remain separate gates.

@@ -22,9 +22,12 @@ status essays to compensate for a disconnected integration.
 - The Artifacts tab reuses the project catalog's safe artifact projection.
 
 **Not yet demonstrated:** automatic observation-to-signed-action wiring in an
-installed factory, native-goal evidence collection, idle-Foreman wake-up, and the
+installed factory, builder-goal/bootstrap evidence collection, idle-Foreman wake-up, and the
 authorized staging journey. Do not call an installation recovered until these
 are demonstrated. See `recovery-inventory.md` for current access limitations.
+The read-only native-goal diagnostic has observed an active goal for the named
+Twinzy Foreman with local app-server access. That single observation is not
+blanket evidence for other tasks or later sprint admission.
 
 ## Inspect existing connections before changing them
 

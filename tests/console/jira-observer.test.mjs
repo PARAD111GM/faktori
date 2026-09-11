@@ -48,6 +48,8 @@ describe('Jira source configuration', () => {
     expect(() => parseJiraSources([{ ...source, projectKey: 'TWZ" OR project = SECRET' }], catalog)).toThrow(/projectKey/);
     expect(() => parseJiraSources([{ ...source, authorizationEnv: 'TOKEN=value' }], catalog)).toThrow(/environment variable name/);
     expect(() => parseJiraSources([{ ...source, pollIntervalMs: 14_999 }], catalog)).toThrow(/15000/);
+    expect(parseJiraSources([{ ...source, boardId: '42' }], catalog)).toEqual([{ ...source, boardId: '42' }]);
+    expect(() => parseJiraSources([{ ...source, boardId: '0' }], catalog)).toThrow(/board ID/);
     expect(() => parseJiraSources([{ ...source, podId: 'other' }], catalog)).toThrow(/configured pod/);
     expect(() => parseJiraSources([source, { ...source }], catalog)).toThrow(/unique/);
   });
@@ -67,7 +69,7 @@ describe('Jira observer', () => {
     expect(observer.snapshot()[0]).toMatchObject({ status: 'unavailable', message: 'Not synced yet.', issues: [] });
     await observer.refresh();
 
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(3);
     const [firstUrl, firstOptions] = fetcher.mock.calls[0];
     const first = new URL(firstUrl);
     expect(first.pathname).toBe('/rest/api/3/search/jql');
@@ -80,6 +82,7 @@ describe('Jira observer', () => {
     expect(observer.snapshot()).toEqual([{
       id: 'twinzy-board', projectKey: 'TWZ', productId: 'twinzy', podId: 'creator',
       status: 'connected', lastSyncedAt: '2026-09-09T13:00:00.000Z', truncated: false,
+      columnsMessage: 'Jira board columns are temporarily unavailable; issues remain available by status. Check Jira Software board read permission or configure boardId.',
       issues: [
         { key: 'TWZ-2', summary: 'TWZ-2 summary', status: 'In Progress', statusCategory: 'indeterminate', assignee: 'Nathan', updatedAt: '2026-09-09T12:00:00.000Z', url: 'https://example.atlassian.net/browse/TWZ-2' },
         { key: 'TWZ-1', summary: 'TWZ-1 summary', status: 'Done', statusCategory: 'done', updatedAt: '2026-09-09T12:00:00.000Z', url: 'https://example.atlassian.net/browse/TWZ-1' },
@@ -87,6 +90,71 @@ describe('Jira observer', () => {
       changes: [{ id: expect.any(String), at: '2026-09-09T13:00:00.000Z', summary: 'Initial Jira sync: 2 issues.' }],
     }]);
     expect(JSON.stringify(observer.snapshot())).not.toMatch(/secret|description|authorizationEnv|Bearer/i);
+  });
+
+  it('uses the configured Jira column order, groups status IDs, and preserves empty columns', async () => {
+    const configured = { ...source, boardId: '42' };
+    const fetcher = vi.fn(async (rawUrl) => {
+      const url = new URL(rawUrl);
+      if (url.pathname === '/rest/api/3/search/jql') return jsonResponse({
+        issues: [
+          jiraIssue('TWZ-1', 'To Do', 'new', { status: { id: '10', name: 'To Do', statusCategory: { key: 'new' } } }),
+          jiraIssue('TWZ-2', 'In Progress', 'indeterminate', { status: { id: '20', name: 'In Progress', statusCategory: { key: 'indeterminate' } } }),
+        ], isLast: true,
+      });
+      expect(url.pathname).toBe('/rest/agile/1.0/board/42/configuration');
+      return jsonResponse({ columnConfig: { columns: [
+        { name: 'Ready', statuses: [{ id: '10' }, { id: '11' }] },
+        { name: 'Building', statuses: [{ id: '20' }, { id: '21' }] },
+        { name: 'Released', statuses: [] },
+      ] } });
+    });
+    const observer = new JiraObserver([configured], { fetcher, environment: { TWINZY_JIRA_AUTHORIZATION: 'Bearer hidden' } });
+    await observer.refresh();
+    const board = observer.snapshot()[0];
+    expect(board.columns).toEqual([
+      { name: 'Ready', statusIds: ['10', '11'] },
+      { name: 'Building', statusIds: ['20', '21'] },
+      { name: 'Released', statusIds: [] },
+    ]);
+    expect(board.columnsMessage).toBeUndefined();
+    expect(board.issues.map(issue => issue.statusId)).toEqual(['10', '20']);
+  });
+
+  it('discovers configuration only for one matching board and keeps issues with a safe ambiguity message', async () => {
+    const fetcher = vi.fn(async (rawUrl) => {
+      const url = new URL(rawUrl);
+      if (url.pathname === '/rest/api/3/search/jql') return jsonResponse({ issues: [jiraIssue('TWZ-1', 'To Do', 'new')], isLast: true });
+      expect(url.pathname).toBe('/rest/agile/1.0/board');
+      expect(url.searchParams.get('projectKeyOrId')).toBe('TWZ');
+      return jsonResponse({ values: [{ id: 7 }, { id: 8 }], isLast: true });
+    });
+    const observer = new JiraObserver([source], { fetcher, environment: { TWINZY_JIRA_AUTHORIZATION: 'Bearer hidden' } });
+    await observer.refresh();
+    expect(observer.snapshot()[0]).toMatchObject({ status: 'connected', issues: [expect.objectContaining({ key: 'TWZ-1' })] });
+    expect(observer.snapshot()[0].columns).toBeUndefined();
+    expect(observer.snapshot()[0].columnsMessage).toMatch(/multiple boards may match TWZ.*Configure boardId/);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains prior configured columns as stale when configuration retrieval fails without failing issue sync', async () => {
+    let now = new Date('2026-09-09T13:00:00.000Z');
+    let configurationFails = false;
+    const fetcher = vi.fn(async (rawUrl) => {
+      const url = new URL(rawUrl);
+      if (url.pathname === '/rest/api/3/search/jql') return jsonResponse({ issues: [jiraIssue('TWZ-1', configurationFails ? 'In Progress' : 'To Do', configurationFails ? 'indeterminate' : 'new')], isLast: true });
+      if (configurationFails) throw new Error('Bearer hidden provider response');
+      return jsonResponse({ columnConfig: { columns: [{ name: 'To do', statuses: [] }] } });
+    });
+    const observer = new JiraObserver([{ ...source, boardId: '42' }], { fetcher, now: () => now, environment: { TWINZY_JIRA_AUTHORIZATION: 'Bearer hidden' } });
+    await observer.refresh();
+    configurationFails = true;
+    now = new Date('2026-09-09T13:00:15.000Z');
+    await observer.refresh();
+    const board = observer.snapshot()[0];
+    expect(board).toMatchObject({ status: 'connected', columns: [{ name: 'To do', statusIds: [] }], columnsStale: true, issues: [expect.objectContaining({ status: 'In Progress' })] });
+    expect(board.columnsMessage).toMatch(/could not be refreshed.*retained.*stale/);
+    expect(JSON.stringify(board)).not.toMatch(/hidden|Bearer|provider response/);
   });
 
   it('records each actual status transition once and respects per-source polling TTL', async () => {
@@ -101,7 +169,7 @@ describe('Jira observer', () => {
     await observer.refresh();
     now = new Date('2026-09-09T13:00:10.000Z');
     await observer.refresh();
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
     now = new Date('2026-09-09T13:00:15.000Z');
     await observer.refresh();
     expect(observer.snapshot()[0].changes).toHaveLength(2);
@@ -121,7 +189,7 @@ describe('Jira observer', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     release();
     await Promise.all([first, second]);
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it('retains the last complete board as stale when a later page fails without exposing errors or credentials', async () => {
@@ -172,7 +240,7 @@ describe('Jira observer', () => {
     });
     const empty = new JiraObserver([source], { fetcher: emptyFetcher, environment: { TWINZY_JIRA_AUTHORIZATION: 'Bearer hidden' } });
     await empty.refresh();
-    expect(emptyFetcher).toHaveBeenCalledTimes(10);
+    expect(emptyFetcher).toHaveBeenCalledTimes(11);
     expect(empty.snapshot()[0]).toMatchObject({ status: 'connected', truncated: true, issues: [] });
 
     let now = new Date('2026-09-09T13:00:00.000Z');
@@ -181,9 +249,15 @@ describe('Jira observer', () => {
       nextPageToken: `page-${page + 1}`,
       isLast: false,
     }));
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ issues: [jiraIssue('TWZ-999', 'Done', 'done')], isLast: true }))
-      .mockImplementation(async () => jsonResponse(truncatedPages.shift()));
+    let firstSearch = true;
+    const fetcher = vi.fn(async (rawUrl) => {
+      if (new URL(rawUrl).pathname === '/rest/agile/1.0/board') return jsonResponse({ values: [], isLast: true });
+      if (firstSearch) {
+        firstSearch = false;
+        return jsonResponse({ issues: [jiraIssue('TWZ-999', 'Done', 'done')], isLast: true });
+      }
+      return jsonResponse(truncatedPages.shift());
+    });
     const observer = new JiraObserver([source], { fetcher, now: () => now, environment: { TWINZY_JIRA_AUTHORIZATION: 'Bearer hidden' } });
     await observer.refresh();
     now = new Date('2026-09-09T13:00:15.000Z');

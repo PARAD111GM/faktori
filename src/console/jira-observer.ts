@@ -6,6 +6,8 @@ export interface JiraSource {
   projectKey: string;
   productId?: string;
   podId?: string;
+  /** Optional Jira Agile board ID. When absent, Console uses a board only when the project resolves to one board. */
+  boardId?: string;
   /** Name of a server environment variable containing the complete Authorization header value. */
   authorizationEnv: string;
   pollIntervalMs?: number;
@@ -17,10 +19,17 @@ export interface JiraIssue {
   key: string;
   summary: string;
   status: string;
+  statusId?: string;
   statusCategory: JiraStatusCategory;
   assignee?: string;
   updatedAt: string;
   url: string;
+}
+
+/** Ordered Jira board columns, with every Jira status ID assigned to that column. */
+export interface JiraColumn {
+  name: string;
+  statusIds: string[];
 }
 
 export interface JiraActivity {
@@ -39,6 +48,12 @@ export interface JiraBoard {
   lastSyncedAt?: string;
   message?: string;
   truncated: boolean;
+  /** Absent when a safe board configuration has not been obtained. An empty array is a configured empty board. */
+  columns?: JiraColumn[];
+  /** Fixed, safe explanation when column configuration is unavailable or retained stale. */
+  columnsMessage?: string;
+  /** True only when a prior successful column configuration is being retained after a failed retrieval. */
+  columnsStale?: boolean;
   issues: JiraIssue[];
   changes: JiraActivity[];
 }
@@ -51,12 +66,13 @@ export interface JiraObserverOptions {
 
 type InputRecord = Record<string, unknown>;
 
-const SOURCE_KEYS = new Set(['id', 'baseUrl', 'projectKey', 'productId', 'podId', 'authorizationEnv', 'pollIntervalMs']);
+const SOURCE_KEYS = new Set(['id', 'baseUrl', 'projectKey', 'productId', 'podId', 'boardId', 'authorizationEnv', 'pollIntervalMs']);
 const SOURCE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const SCOPE_ID = /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{0,126}[a-zA-Z0-9])?$/;
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]{0,31}$/;
 const ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/;
 const ISSUE_KEY = /^([A-Z][A-Z0-9_]{0,31})-([1-9][0-9]*)$/;
+const BOARD_ID = /^[1-9][0-9]{0,17}$/;
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const MINIMUM_POLL_INTERVAL_MS = 15_000;
 const MAXIMUM_POLL_INTERVAL_MS = 24 * 60 * 60_000;
@@ -69,6 +85,8 @@ const MAX_SUMMARY_LENGTH = 500;
 const MAX_STATUS_LENGTH = 128;
 const MAX_ASSIGNEE_LENGTH = 200;
 const MAX_PAGES = 10;
+const MAX_COLUMNS = 100;
+const MAX_STATUSES_PER_COLUMN = 200;
 
 class JiraPollFailure extends Error {
   readonly kind: 'authorization_missing' | 'access_denied';
@@ -103,7 +121,7 @@ export function parseJiraSources(value: unknown, catalog?: Pick<ResolvedFactoryC
   const sources = value.map((item, index): JiraSource => {
     const input = record(item);
     if (input === undefined || Object.keys(input).some((key) => !SOURCE_KEYS.has(key))) {
-      throw new Error(`jiraSources[${index}] must contain only id, baseUrl, projectKey, productId, podId, authorizationEnv, and pollIntervalMs`);
+      throw new Error(`jiraSources[${index}] must contain only id, baseUrl, projectKey, productId, podId, boardId, authorizationEnv, and pollIntervalMs`);
     }
     const id = requiredText(input.id, `jiraSources[${index}].id`);
     if (!SOURCE_ID.test(id)) throw new Error(`jiraSources[${index}].id must be a bounded lowercase identifier`);
@@ -118,6 +136,8 @@ export function parseJiraSources(value: unknown, catalog?: Pick<ResolvedFactoryC
     if (!PROJECT_KEY.test(projectKey)) throw new Error(`jiraSources[${index}].projectKey must be a bounded uppercase Jira project key`);
     const authorizationEnv = requiredText(input.authorizationEnv, `jiraSources[${index}].authorizationEnv`);
     if (!ENVIRONMENT_NAME.test(authorizationEnv)) throw new Error(`jiraSources[${index}].authorizationEnv must be an environment variable name`);
+    const boardId = input.boardId === undefined ? undefined : requiredText(input.boardId, `jiraSources[${index}].boardId`);
+    if (boardId !== undefined && !BOARD_ID.test(boardId)) throw new Error(`jiraSources[${index}].boardId must be a positive Jira board ID`);
     const productId = input.productId === undefined ? undefined : requiredText(input.productId, `jiraSources[${index}].productId`);
     const podId = input.podId === undefined ? undefined : requiredText(input.podId, `jiraSources[${index}].podId`);
     if (productId !== undefined && !SCOPE_ID.test(productId)) throw new Error(`jiraSources[${index}].productId must be a bounded identifier`);
@@ -140,6 +160,7 @@ export function parseJiraSources(value: unknown, catalog?: Pick<ResolvedFactoryC
       projectKey,
       ...(productId === undefined ? {} : { productId }),
       ...(podId === undefined ? {} : { podId }),
+      ...(boardId === undefined ? {} : { boardId }),
       authorizationEnv,
       ...(pollIntervalMs === undefined ? {} : { pollIntervalMs: Number(pollIntervalMs) }),
     };
@@ -189,6 +210,29 @@ async function boundedJson(response: Response): Promise<unknown> {
   try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown; } catch { throw new Error('response rejected'); }
 }
 
+/** Apply the same redirect, origin, size, timeout, and authorization boundaries to every Jira endpoint. */
+async function requestJson(source: JiraSource, authorization: string, fetcher: typeof fetch, controllers: Set<AbortController>, url: URL): Promise<unknown> {
+  const controller = new AbortController();
+  controllers.add(controller);
+  const timeout = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
+  timeout.unref();
+  try {
+    const response = await fetcher(url.toString(), {
+      method: 'GET',
+      redirect: 'manual',
+      headers: { Accept: 'application/json', Authorization: authorization },
+      signal: controller.signal,
+    });
+    if (response.status === 401 || response.status === 403) throw new JiraPollFailure('access_denied');
+    if (!response.ok || response.redirected || (response.status >= 300 && response.status < 400)) throw new Error('request rejected');
+    if (response.url !== '' && new URL(response.url).origin !== source.baseUrl) throw new Error('response origin rejected');
+    return await boundedJson(response);
+  } finally {
+    clearTimeout(timeout);
+    controllers.delete(controller);
+  }
+}
+
 function issue(source: JiraSource, value: unknown): JiraIssue {
   const input = record(value);
   const key = text(input?.key, 64);
@@ -198,6 +242,7 @@ function issue(source: JiraSource, value: unknown): JiraIssue {
   const categoryRecord = record(statusRecord?.statusCategory);
   const summary = text(fields?.summary, MAX_SUMMARY_LENGTH);
   const status = text(statusRecord?.name, MAX_STATUS_LENGTH);
+  const statusId = text(statusRecord?.id, MAX_STATUS_LENGTH);
   const updated = typeof fields?.updated === 'string' && Number.isFinite(Date.parse(fields.updated)) ? new Date(fields.updated).toISOString() : undefined;
   const assigneeRecord = fields?.assignee === null || fields?.assignee === undefined ? undefined : record(fields.assignee);
   const assignee = assigneeRecord === undefined ? undefined : text(assigneeRecord.displayName, MAX_ASSIGNEE_LENGTH);
@@ -209,6 +254,7 @@ function issue(source: JiraSource, value: unknown): JiraIssue {
     key: key as string,
     summary,
     status,
+    ...(statusId === undefined ? {} : { statusId }),
     statusCategory,
     ...(assignee === undefined ? {} : { assignee }),
     updatedAt: updated,
@@ -231,27 +277,7 @@ async function pollSource(source: JiraSource, authorization: string, fetcher: ty
     url.searchParams.set('fields', 'summary,status,assignee,updated');
     url.searchParams.set('maxResults', String(Math.min(PAGE_SIZE, MAX_ISSUES - issues.length)));
     if (nextPageToken !== undefined) url.searchParams.set('nextPageToken', nextPageToken);
-    const controller = new AbortController();
-    controllers.add(controller);
-    const timeout = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
-    timeout.unref();
-    let response: Response;
-    let bodyValue: unknown;
-    try {
-      response = await fetcher(url.toString(), {
-        method: 'GET',
-        redirect: 'manual',
-        headers: { Accept: 'application/json', Authorization: authorization },
-        signal: controller.signal,
-      });
-      if (response.status === 401 || response.status === 403) throw new JiraPollFailure('access_denied');
-      if (!response.ok || response.redirected || (response.status >= 300 && response.status < 400)) throw new Error('request rejected');
-      if (response.url !== '' && new URL(response.url).origin !== source.baseUrl) throw new Error('response origin rejected');
-      bodyValue = await boundedJson(response);
-    } finally {
-      clearTimeout(timeout);
-      controllers.delete(controller);
-    }
+    const bodyValue = await requestJson(source, authorization, fetcher, controllers, url);
     const body = record(bodyValue);
     if (!Array.isArray(body?.issues) || body.issues.length > PAGE_SIZE) throw new Error('response rejected');
     for (const raw of body.issues) {
@@ -274,8 +300,64 @@ async function pollSource(source: JiraSource, authorization: string, fetcher: ty
   return { issues, truncated: true };
 }
 
+function boardId(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
+  return typeof value === 'string' && BOARD_ID.test(value) ? value : undefined;
+}
+
+async function discoverBoardId(source: JiraSource, authorization: string, fetcher: typeof fetch, controllers: Set<AbortController>): Promise<{ boardId?: string; message?: string }> {
+  if (source.boardId !== undefined) return { boardId: source.boardId };
+  const url = new URL('/rest/agile/1.0/board', source.baseUrl);
+  url.searchParams.set('projectKeyOrId', source.projectKey);
+  url.searchParams.set('maxResults', '100');
+  const body = record(await requestJson(source, authorization, fetcher, controllers, url));
+  const values = body?.values;
+  if (!Array.isArray(values) || values.length > 100 || (body?.isLast !== undefined && typeof body.isLast !== 'boolean')) throw new Error('response rejected');
+  // A non-final page cannot establish uniqueness, even if its first page has one result.
+  const rawTotal = body?.total;
+  const total = typeof rawTotal === 'number' && Number.isSafeInteger(rawTotal) && rawTotal >= 0 && rawTotal <= 10_000 ? rawTotal : undefined;
+  if (body?.isLast === false || values.length > 1 || (total !== undefined && total > 1)) {
+    return { message: `Jira board columns are unavailable because multiple boards may match ${source.projectKey}. Configure boardId for this source.` };
+  }
+  if (values.length === 0) return { message: `Jira board columns are unavailable because no board matches ${source.projectKey}. Configure boardId for this source.` };
+  if (body?.isLast !== true && total !== 1) {
+    return { message: `Jira board columns are unavailable because Console could not confirm one board for ${source.projectKey}. Configure boardId for this source.` };
+  }
+  const id = boardId(record(values[0])?.id);
+  if (id === undefined) throw new Error('response rejected');
+  return { boardId: id };
+}
+
+function columns(value: unknown): JiraColumn[] {
+  const configuration = record(value);
+  const columnConfig = record(configuration?.columnConfig);
+  const rawColumns = columnConfig?.columns;
+  if (!Array.isArray(rawColumns) || rawColumns.length > MAX_COLUMNS) throw new Error('response rejected');
+  const seenStatuses = new Set<string>();
+  return rawColumns.map((raw): JiraColumn => {
+    const column = record(raw);
+    const name = text(column?.name, MAX_STATUS_LENGTH);
+    const statuses = column?.statuses;
+    if (name === undefined || !Array.isArray(statuses) || statuses.length > MAX_STATUSES_PER_COLUMN) throw new Error('response rejected');
+    const statusIds = statuses.map((status) => boardId(record(status)?.id));
+    if (statusIds.some((statusId) => statusId === undefined)) throw new Error('response rejected');
+    for (const statusId of statusIds as string[]) {
+      if (seenStatuses.has(statusId)) throw new Error('response rejected');
+      seenStatuses.add(statusId);
+    }
+    return { name, statusIds: statusIds as string[] };
+  });
+}
+
+async function pollColumns(source: JiraSource, authorization: string, fetcher: typeof fetch, controllers: Set<AbortController>): Promise<{ columns?: JiraColumn[]; message?: string }> {
+  const discovered = await discoverBoardId(source, authorization, fetcher, controllers);
+  if (discovered.boardId === undefined) return { message: discovered.message };
+  const url = new URL(`/rest/agile/1.0/board/${encodeURIComponent(discovered.boardId)}/configuration`, source.baseUrl);
+  return { columns: columns(await requestJson(source, authorization, fetcher, controllers, url)) };
+}
+
 function copyBoard(board: JiraBoard): JiraBoard {
-  return { ...board, issues: board.issues.map((item) => ({ ...item })), changes: board.changes.map((item) => ({ ...item })) };
+  return { ...board, issues: board.issues.map((item) => ({ ...item })), changes: board.changes.map((item) => ({ ...item })), ...(board.columns === undefined ? {} : { columns: board.columns.map((column) => ({ ...column, statusIds: [...column.statusIds] })) }) };
 }
 
 /** Server-only, bounded Jira polling. Browser state is always served from this sanitized cache. */
@@ -325,6 +407,19 @@ export class JiraObserver {
         if (typeof authorization !== 'string' || authorization.trim().length === 0 || authorization.length > 16_384) throw new JiraPollFailure('authorization_missing');
         const result = await pollSource(source, authorization, this.#fetcher, this.#controllers);
         if (this.#closed) return;
+        let columnState: Pick<JiraBoard, 'columns' | 'columnsMessage' | 'columnsStale'> = {};
+        try {
+          const columnResult = await pollColumns(source, authorization, this.#fetcher, this.#controllers);
+          if (columnResult.columns !== undefined) columnState = { columns: columnResult.columns };
+          else if (previous.columns !== undefined) {
+            columnState = { columns: previous.columns.map((column) => ({ ...column, statusIds: [...column.statusIds] })), columnsStale: true, columnsMessage: `${columnResult.message ?? 'Jira board columns are temporarily unavailable.'} The last successful column configuration is retained and may be stale.` };
+          } else columnState = { columnsMessage: columnResult.message ?? 'Jira board columns are temporarily unavailable; issues remain available by status. Check Jira Software board read permission or configure boardId.' };
+        } catch {
+          columnState = previous.columns === undefined
+            ? { columnsMessage: 'Jira board columns are temporarily unavailable; issues remain available by status. Check Jira Software board read permission or configure boardId.' }
+            : { columns: previous.columns.map((column) => ({ ...column, statusIds: [...column.statusIds] })), columnsStale: true, columnsMessage: 'Jira board columns could not be refreshed. Check Jira Software board read permission or configure boardId. The last successful column configuration is retained and may be stale.' };
+        }
+        if (this.#closed) return;
         const syncedAt = this.#now().toISOString();
         if (result.truncated && previous.lastSyncedAt !== undefined) {
           this.#boards[index] = {
@@ -356,6 +451,7 @@ export class JiraObserver {
           lastSyncedAt: syncedAt,
           ...(result.truncated ? { message: 'Jira result limit reached; snapshot is incomplete.' } : {}),
           truncated: result.truncated,
+          ...columnState,
           issues: result.issues,
           changes,
         };

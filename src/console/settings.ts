@@ -99,7 +99,7 @@ function scopeSummary(scope: ResolvedFactoryConfiguration['factory']['defaults']
       allowLocalDeployment: scope.authority.allowLocalDeployment,
       allowSeparateBilling: scope.authority.allowSeparateBilling,
     },
-    ...(scope.roleAssignments === undefined ? {} : { roleAssignments: scope.roleAssignments.map((assignment) => ({ role: assignment.role, providerId: assignment.providerId, ...(assignment.model === undefined ? {} : { model: assignment.model }), ...(assignment.reasoning === undefined ? {} : { reasoning: assignment.reasoning }) })) }),
+    ...(scope.roleAssignments === undefined ? {} : { roleAssignments: scope.roleAssignments.map((assignment) => ({ role: assignment.role, providerId: assignment.providerId, ...(assignment.model === undefined ? {} : { model: assignment.model }), ...(assignment.reasoning === undefined ? {} : { reasoning: assignment.reasoning }), ...(assignment.rolePrompt === undefined ? {} : { rolePrompt: assignment.rolePrompt }) })) }),
   };
 }
 

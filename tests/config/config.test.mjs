@@ -107,7 +107,7 @@ describe('resolveFactoryConfig', () => {
     const resolved = resolveFactoryConfig(withConfig((config) => {
       config.providers.push({ id: 'review-provider', kind: 'codex', capabilities: ['native', 'token-limit'] });
       config.factory.defaults.roleAssignments = [
-        { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high' },
+        { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high', rolePrompt: 'Keep the decision log current.\nDo not change authority.' },
         { role: 'release_captain', providerId: 'review-provider' },
       ];
       config.pods[0].overrides = { roleAssignments: [] };
@@ -115,7 +115,7 @@ describe('resolveFactoryConfig', () => {
     }));
 
     expect(resolved.factory.defaults.roleAssignments).toEqual([
-      { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high' },
+      { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high', rolePrompt: 'Keep the decision log current.\nDo not change authority.' },
       { role: 'release_captain', providerId: 'review-provider' },
     ]);
     expect(resolved.products[0].roleAssignments).toEqual(resolved.factory.defaults.roleAssignments);
@@ -136,11 +136,28 @@ describe('resolveFactoryConfig', () => {
       [{ role: 'builder', providerId: 'missing' }, /unknown provider/],
       [{ role: 'builder', providerId: 'codex', model: 'x'.repeat(129) }, /bounded non-empty string/],
       [{ role: 'builder', providerId: 'codex', reasoning: 'ultra' }, /must be "low", "medium", or "high"/],
+      [{ role: 'builder', providerId: 'codex', rolePrompt: 7 }, /rolePrompt: must be a string/],
+      [{ role: 'builder', providerId: 'codex', rolePrompt: 'x'.repeat(16_001) }, /rolePrompt: must be a string/],
       [{ role: 'builder', providerId: 'codex', command: 'forbidden' }, /not a supported setting/],
     ];
     for (const [assignments, expected] of invalid) {
       expect(() => resolveFactoryConfig(withConfig((config) => { config.factory.defaults.roleAssignments = Array.isArray(assignments) ? assignments : [assignments]; return config; }))).toThrow(expected);
     }
+  });
+
+  it('treats a blank role prompt as disabled without rewriting nonblank multiline input', () => {
+    const resolved = resolveFactoryConfig(withConfig((config) => {
+      config.factory.defaults.roleAssignments = [
+        { role: 'builder', providerId: 'codex', rolePrompt: '  \n\t' },
+        { role: 'reviewer', providerId: 'codex', rolePrompt: '\nRead the exact candidate.\n' },
+      ];
+      return config;
+    }));
+
+    expect(resolved.factory.defaults.roleAssignments).toEqual([
+      { role: 'builder', providerId: 'codex' },
+      { role: 'reviewer', providerId: 'codex', rolePrompt: '\nRead the exact candidate.\n' },
+    ]);
   });
 
   it('does not invent a pod for a product that has none', () => {

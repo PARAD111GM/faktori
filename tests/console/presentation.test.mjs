@@ -42,7 +42,7 @@ describe('Console presentation contract', () => {
     expect(html).toContain('1</strong> repair attempts');
     expect(html).toContain('This projection may be stale');
     expect(html).toContain('&lt;script&gt;');
-    expect(html).not.toContain('<button');
+    expect([...html.matchAll(/<button\b[^>]*>/g)].every(([tag]) => tag.includes('class="section-help-trigger"') && tag.includes('aria-haspopup="dialog"'))).toBe(true);
     const scoped = renderToStaticMarkup(createElement(ManagerLoops, { loops, filter: { productId: 'other', podId: '' } }));
     expect(scoped).not.toContain('quality-loop');
     expect(scoped).toContain('No connected loops in this scope');
@@ -54,7 +54,13 @@ describe('Console presentation contract', () => {
   it('offers flexible role assignments without implying merge authority', async () => {
     const { RoleAssignments } = await server.ssrLoadModule('/console/src/role-assignments.tsx');
     const settings = {providers:[{id:'codex',configuredIds:['my-codex']}]};
-    const html = renderToStaticMarkup(createElement(RoleAssignments, {settings, assignments:[{role:'merge-captain',providerId:'my-codex',model:'model-a',reasoning:'high'}], onChange() {}}));
+    const html = renderToStaticMarkup(createElement(RoleAssignments, {settings, assignments:[{role:'merge-captain',providerId:'my-codex',model:'model-a',reasoning:'high',rolePrompt:'Verify the exact head.\nRespect approval boundaries.'}], onChange() {}}));
+    expect(html).toContain('Role 1: Role Prompt');
+    expect(html).toContain('Verify the exact head.\nRespect approval boundaries.');
+    expect(html).toContain('maxLength="16000"');
+    const saved = renderToStaticMarkup(createElement(RoleAssignments, {settings, assignments:[{role:'reviewer',providerId:'my-codex',rolePrompt:'Inspect <changes>\nDo not publish.'}]}));
+    expect(saved).toContain('Inspect &lt;changes&gt;\nDo not publish.');
+    expect(saved).not.toContain('<textarea');
     expect(html).toContain('my-codex');
     expect(html).toContain('model-a');
     expect(html).toContain('Remove role merge-captain');
@@ -210,7 +216,7 @@ describe('Console presentation contract', () => {
       recovery: { configured: false, routineActions: [] },
       generalManager: { mode: 'not_configured', reviewRouteCount: 0 },
     } }));
-    expect(html).toContain('Factory settings need a catalog');
+    expect(html).toContain('Factory configuration is missing');
     expect(html).toContain('Restore factory settings');
     expect(html).toContain('factoryConfiguration');
     expect(html).toContain('factory.id');

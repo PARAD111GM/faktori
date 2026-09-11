@@ -180,7 +180,7 @@ describe('editable Console settings', () => {
       const edit = await editor.edit();
       const withRoles = structuredClone(edit.draft);
       withRoles.defaults.roleAssignments = [
-        { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high' },
+        { role: 'manager', providerId: 'codex', model: 'gpt-manager', reasoning: 'high', rolePrompt: 'Record the decision.\nPreserve authority.' },
         { role: 'merge_captain', providerId: 'review-provider', reasoning: 'medium' },
       ];
       const preview = await editor.preview({ revision: edit.revision, draft: withRoles });

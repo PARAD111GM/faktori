@@ -11,7 +11,7 @@ export type EnvironmentKind = 'local' | 'preview' | 'production';
 export type ExecutionProfile = 'isolated' | 'native';
 export interface Budget { maxConcurrentRuns: number; maxRetries: number; maxRuntimeMinutes: number; maxTokens: number; strictSpending: boolean; }
 export interface Authority { requireIntentApproval: boolean; requireSpecificationApproval: boolean; requireIndependentReview: boolean; mergeAuthority: 'human' | 'coordinator'; productionReleaseAuthority: 'human' | 'coordinator'; allowPreviewDeployment: boolean; allowLocalDeployment: boolean; allowSeparateBilling: boolean; }
-export interface FactoryRoleAssignment { role: string; providerId: string; model?: string; reasoning?: 'low' | 'medium' | 'high'; }
+export interface FactoryRoleAssignment { role: string; providerId: string; model?: string; reasoning?: 'low' | 'medium' | 'high'; rolePrompt?: string; }
 export type BudgetOverride = Partial<Budget>;
 export type AuthorityOverride = Partial<Authority> & { riskAcknowledgements?: Partial<Record<keyof Authority, string>> };
 export interface ScopeOverride { providerId?: string; environmentId?: string; executionProfile?: ExecutionProfile; requiredCapabilities?: ProviderCapability[]; }
@@ -276,7 +276,7 @@ function mergeRoleAssignments(base: FactoryRoleAssignment[] | undefined, sparse:
   sparse.forEach((value, index) => {
     const itemPath = `${path}[${index}]`;
     const assignment = record(value, itemPath, issues);
-    rejectUnknownKeys(assignment, new Set(['role', 'providerId', 'model', 'reasoning']), itemPath, issues);
+    rejectUnknownKeys(assignment, new Set(['role', 'providerId', 'model', 'reasoning', 'rolePrompt']), itemPath, issues);
     const role = requiredString(assignment.role, `${itemPath}.role`, issues);
     const providerId = requiredString(assignment.providerId, `${itemPath}.providerId`, issues);
     if (role !== undefined && (role.length > 64 || !/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/.test(role))) addIssue(issues, `${itemPath}.role`, 'must be a lowercase role slug of at most 64 characters');
@@ -287,7 +287,9 @@ function mergeRoleAssignments(base: FactoryRoleAssignment[] | undefined, sparse:
     if (model !== undefined && (typeof model !== 'string' || model.trim().length === 0 || model.length > 128)) addIssue(issues, `${itemPath}.model`, 'must be a bounded non-empty string');
     const reasoning = assignment.reasoning;
     if (reasoning !== undefined && reasoning !== 'low' && reasoning !== 'medium' && reasoning !== 'high') addIssue(issues, `${itemPath}.reasoning`, 'must be "low", "medium", or "high"');
-    if (role !== undefined && providerId !== undefined) assignments.push({ role, providerId, ...(typeof model === 'string' && model.trim().length > 0 && model.length <= 128 ? { model } : {}), ...(reasoning === 'low' || reasoning === 'medium' || reasoning === 'high' ? { reasoning } : {}) });
+    const rolePrompt = assignment.rolePrompt;
+    if (rolePrompt !== undefined && (typeof rolePrompt !== 'string' || rolePrompt.length > 16_000)) addIssue(issues, `${itemPath}.rolePrompt`, 'must be a string of at most 16000 characters');
+    if (role !== undefined && providerId !== undefined) assignments.push({ role, providerId, ...(typeof model === 'string' && model.trim().length > 0 && model.length <= 128 ? { model } : {}), ...(reasoning === 'low' || reasoning === 'medium' || reasoning === 'high' ? { reasoning } : {}), ...(typeof rolePrompt === 'string' && rolePrompt.trim().length > 0 && rolePrompt.length <= 16_000 ? { rolePrompt } : {}) });
   });
   return assignments;
 }

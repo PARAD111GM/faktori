@@ -36,6 +36,17 @@ afterAll(async () => {
 });
 
 describe('Console work-management UI', () => {
+  it('offers labelled help without opening a dialog or treating title text as markup', async () => {
+    const { HelpHeading } = await server.ssrLoadModule('/console/src/section-help.tsx');
+    const html = renderToStaticMarkup(createElement(HelpHeading, { level: 2, scope: 'projects' }, '<script>Project</script>'));
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain('aria-label="About &lt;script&gt;Project&lt;/script&gt;"');
+    expect(html).not.toContain('<dialog');
+    expect(html).not.toContain('<script>');
+    const { sectionHelp } = await server.ssrLoadModule('/console/src/section-help-content.ts');
+    const help = sectionHelp('Connect your project plans', 'projects');
+    expect([help.summary, help.source, help.next].join(' ')).toContain('workCatalog.path');
+  });
   it('renders goals, ordered plans and bounded artifacts with IDs kept secondary', async () => {
     const { Projects } = await server.ssrLoadModule('/console/src/projects.tsx');
     const html = renderToStaticMarkup(createElement(Projects, { workManagement, selectedProjectId: 'faktori', onBackToProjects() {}, navigation: { openRun() {}, openLoop() {}, openRequest() {} } }));
@@ -77,9 +88,11 @@ describe('Console work-management UI', () => {
     const { Projects } = await server.ssrLoadModule('/console/src/projects.tsx');
     const html = renderToStaticMarkup(createElement(Projects, { workManagement: { status: 'unavailable', error: 'Configured catalog could not be read.', projects: [], sessions: [], requests: [] }, navigation: { openRun() {}, openLoop() {}, openRequest() {} } }));
 
-    expect(html).toContain('Work catalog unavailable');
+    expect(html).toContain('Project plans could not be loaded');
     expect(html).toContain('Configured catalog could not be read.');
-    expect(html).toContain('Legacy Console configuration remains usable.');
+    expect(html).toContain('Your source files are not changed by this error.');
+    expect(html).toContain('Technical details for your agent');
+    expect(html).toContain('workCatalog file path');
     expect(html).not.toContain('0%');
   });
 

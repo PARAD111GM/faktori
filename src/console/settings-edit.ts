@@ -105,7 +105,7 @@ function roleAssignments(value: unknown, path: string): FactoryRoleAssignment[] 
   const roles = new Set<string>();
   return value.map((entry, index) => {
     const itemPath = `${path}[${index}]`;
-    const item = object(entry, itemPath, ['role', 'providerId', 'model', 'reasoning']);
+    const item = object(entry, itemPath, ['role', 'providerId', 'model', 'reasoning', 'rolePrompt']);
     const role = text(item.role, `${itemPath}.role`);
     const providerId = text(item.providerId, `${itemPath}.providerId`);
     if (role.length > 64 || !/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/.test(role)) throw new Error(`${itemPath}.role must be a lowercase role slug of at most 64 characters`);
@@ -115,7 +115,9 @@ function roleAssignments(value: unknown, path: string): FactoryRoleAssignment[] 
     if (model !== undefined && (typeof model !== 'string' || model.trim().length === 0 || model.length > 128)) throw new Error(`${itemPath}.model must be a bounded non-empty string`);
     const reasoning = item.reasoning;
     if (reasoning !== undefined && reasoning !== 'low' && reasoning !== 'medium' && reasoning !== 'high') throw new Error(`${itemPath}.reasoning is invalid`);
-    return { role, providerId, ...(typeof model === 'string' ? { model } : {}), ...(reasoning === 'low' || reasoning === 'medium' || reasoning === 'high' ? { reasoning } : {}) };
+    const rolePrompt = item.rolePrompt;
+    if (rolePrompt !== undefined && (typeof rolePrompt !== 'string' || rolePrompt.length > 16_000)) throw new Error(`${itemPath}.rolePrompt must be a string of at most 16000 characters`);
+    return { role, providerId, ...(typeof model === 'string' ? { model } : {}), ...(reasoning === 'low' || reasoning === 'medium' || reasoning === 'high' ? { reasoning } : {}), ...(typeof rolePrompt === 'string' && rolePrompt.trim().length > 0 ? { rolePrompt } : {}) };
   });
 }
 

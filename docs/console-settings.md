@@ -6,10 +6,15 @@ policies, and compatible models on existing execution routes.
 
 Factory defaults include optional **Role assignments**. Add manager, builder,
 reviewer, merge-captain, or any custom role; choose its configured provider ID,
-optional model, and reasoning preference. One provider can fill several roles.
+optional model, reasoning preference, and optional multiline Role Prompt (up to
+16,000 characters). A blank Role Prompt disables it without changing the
+provider/model assignment. One provider can fill several roles.
 Roles inherit into products and pods unless overridden. At the start of new
 work, the coordinator applies the matching role's provider, model and reasoning
-before recording the admitted run. Work without an explicit role uses `builder`
+before recording the admitted run. A nonblank Role Prompt is appended once to
+the exact provider context and its approved payload digest is rebound before
+admission, including explicit session resumes that use the assignment. Work
+without an explicit role uses `builder`
 when that assignment exists; otherwise its existing execution plan is preserved.
 Setting a role does not start work or grant merge, deployment, or policy authority.
 
@@ -34,9 +39,14 @@ rerouted into a different provider's session. Roles select who performs already
 configured work; they do not generate a manager/build/review pipeline merely by
 being added to Settings.
 
-Factory GM diagnosis can opt into a named role through its diagnosis template's
-`intent.workItem.role`. It does not inherit the product Builder role implicitly,
-and assigning a product Manager does not turn it into the Factory GM.
+Factory GM diagnosis and nightly review can opt into a named role through their
+configured template's `intent.workItem.role`. They do not inherit the product
+Builder role implicitly, and assigning a product Manager does not turn it into
+the Factory GM.
+
+Manager/Lean Loop executions and Manager-connected external sessions have their
+own owner-configured routing and context contracts; Factory Role Prompts do not
+modify those independent dispatch paths.
 
 1. Edit the fields you need. Expanding a section does not change it.
 2. Choose **Review changes**. The service validates the proposed configuration

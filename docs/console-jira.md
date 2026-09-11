@@ -34,6 +34,7 @@ Add an allowlisted source to the local Console configuration:
       "id": "demo-board",
       "baseUrl": "https://example.atlassian.net",
       "projectKey": "DEMO",
+      "boardId": "42",
       "productId": "demo-project",
       "podId": "example-pod",
       "authorizationEnv": "DEMO_JIRA_AUTHORIZATION",
@@ -43,13 +44,13 @@ Add an allowlisted source to the local Console configuration:
 }
 ```
 
-`baseUrl` must be an HTTPS origin with no user information, path, query, or fragment. `projectKey` is restricted to a bounded uppercase Jira key. `productId` and `podId`, when present, must match the resolved factory catalog; a pod always requires its product. Polling cannot be configured more frequently than once every 15 seconds.
+`baseUrl` must be an HTTPS origin with no user information, path, query, or fragment. `projectKey` is restricted to a bounded uppercase Jira key. `boardId`, when supplied, is a positive Jira Software board ID and selects the ordered board columns to display. If it is omitted, Console makes one bounded board lookup for the selected project and uses it only when Jira explicitly establishes one matching board; an ambiguous or incomplete lookup leaves issues available but asks the owner to configure `boardId`. `productId` and `podId`, when present, must match the resolved factory catalog; a pod always requires its product. Polling cannot be configured more frequently than once every 15 seconds.
 
 `authorizationEnv` is an environment variable **name**, not a token. Its server-side value must be the complete HTTP `Authorization` header value accepted by the Jira site. Set it only in the environment that starts the local Console. Do not put the value in Faktori configuration, checked-in files, browser storage, command output, or documentation.
 
 ## Observed data
 
-The observer uses Jira's enhanced search endpoint with a fixed project query and requests only issue key, summary, status, status category, assignee display name, and updated time. It follows at most ten pages and retains at most 500 issues per board. An initially bounded result can show an explicit incomplete-snapshot notice. If any later bounded result would replace a prior snapshot, Console keeps the prior snapshot and marks it stale and truncated instead.
+The observer uses Jira's enhanced search endpoint with a fixed project query and requests only issue key, summary, status (including its ID), status category, assignee display name, and updated time. It follows at most ten pages and retains at most 500 issues per board. It also reads the Jira Agile board configuration through the same bounded transport, returning the configured column order, grouped status IDs, and intentionally empty columns. An initially bounded result can show an explicit incomplete-snapshot notice. If any later bounded result would replace a prior snapshot, Console keeps the prior snapshot and marks it stale and truncated instead.
 
 Descriptions, comments, attachments, account identifiers, raw Jira responses, request errors, environment variable names, and authorization values are not exposed in the snapshot. Malformed or out-of-project issues reject the whole poll instead of silently producing an incomplete board.
 
@@ -59,6 +60,6 @@ Console activity has different durability depending on its source. Actual run pr
 
 ## Availability and recovery
 
-Before the first successful poll, the source is truthfully `unavailable`. A successful poll is `connected`. Missing server authorization and Jira access denial receive fixed, actionable messages without naming an environment variable or exposing a provider response. If a later request times out, redirects, exceeds the response bound, returns malformed data, or otherwise fails, the last complete issue snapshot is retained and marked `stale`. A failed later page never removes tickets learned from an earlier complete poll.
+Before the first successful poll, the source is truthfully `unavailable`. A successful issue poll is `connected` even when board-column configuration cannot be read: issues remain visible and Console emits a fixed recovery message to check Jira Software board-read permission or configure `boardId`. Missing server authorization and Jira access denial receive fixed, actionable messages without naming an environment variable or exposing a provider response. If a later board-configuration retrieval fails, the last successful columns remain available and are marked stale; it never removes issue data. If a later issue request times out, redirects, exceeds the response bound, returns malformed data, or otherwise fails, the last complete issue snapshot is retained and marked `stale`. A failed later page never removes tickets learned from an earlier complete poll.
 
 The observer is read-only: it does not create, edit, transition, assign, or comment on Jira issues. Restarting the Console clears its in-memory snapshot and Jira activity history.

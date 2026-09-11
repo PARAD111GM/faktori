@@ -39,6 +39,18 @@ function controller(journal, router = transport(), statusReader) {
 }
 
 describe('Slack router durable outbox', () => {
+  it('delivers other project ticket identities without relaxing destination or identity validation', async () => {
+    const journal = new InMemorySlackOutboxJournal();
+    const { outbox, router } = controller(journal);
+    await expect(outbox.dispatch(notification({ ticket: 'APP-42' }), async () => undefined)).resolves.toEqual({ status: 'delivered', duplicate: false });
+    expect(router.posts[0].ticket).toBe('APP-42');
+    for (const ticket of ['APP-0', 'APP-42\n', '<@U123>', 'A'.repeat(33) + '-1']) {
+      await expect(outbox.dispatch(notification({ eventId: 'invalid', ticket }), async () => undefined)).rejects.toThrow('issue identity');
+    }
+    await expect(outbox.dispatch(notification({ eventId: 'wrong-channel', ticket: 'APP-43', channel: 'C012345' }), async () => undefined)).rejects.toThrow('configured safe event');
+    expect(router.posts).toHaveLength(1);
+  });
+
   it('persists intent before the router call, rejects a forged channel, and retains no private auth callback', async () => {
     const journal = new InMemorySlackOutboxJournal();
     const { outbox, router } = controller(journal);

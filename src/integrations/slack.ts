@@ -414,7 +414,9 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 function prepare(notification: SlackNotification, channels: ReadonlySet<string>): Prepared {
   if (!safe(notification.eventId) || !repository(notification.repository) || !Number.isSafeInteger(notification.pullRequest) || notification.pullRequest < 1 || !channels.has(notification.channel) || !safe(notification.text)) throw new Error('Slack notification is not a configured safe event');
-  if (notification.ticket !== undefined && !/^TWZ-[0-9]+$/.test(notification.ticket)) throw new Error('Slack ticket must be a configured issue identity');
+  // Project identity comes from the controller-configured notification, not a
+  // hardcoded installation prefix. Require a bounded, complete tracker key.
+  if (notification.ticket !== undefined && !/^[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,17}(?![\s\S])/.test(notification.ticket)) throw new Error('Slack ticket must be a valid issue identity');
   for (const value of [notification.title, notification.stage]) if (value !== undefined && !safe(value)) throw new Error('Slack notification contains unsafe metadata');
   const payload: SlackRouterPayload = { eventId: notification.eventId, ref: `${notification.repository}#${notification.pullRequest}`, channel: notification.channel, text: notification.text, ...(notification.ticket === undefined ? {} : { ticket: notification.ticket }), ...(notification.title === undefined ? {} : { title: notification.title }), ...(notification.stage === undefined ? {} : { stage: notification.stage }), ...(notification.resolved === true ? { resolved: true } : {}) };
   const subject = `${payload.ref}|${payload.channel}`;

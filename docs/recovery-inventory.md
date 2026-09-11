@@ -151,3 +151,29 @@ unavailable to the construction task. Required recovery preflight now includes
 new admission; a source-defined check is not a claim that live cutover occurred.
 The focused admission/graph regression passed six tests, with strict typecheck
 and build passing after the required-check addition.
+
+### Publisher permission recovery
+
+On 2026-09-11, after the owner approved the installation update, GitHub's
+installation API for `triforge-publisher` installation `157373512` reported
+`workflows: write` alongside its existing contents and pull-request write
+permissions. The installation grant is now verified; successful publication is
+still a separate gate.
+
+Run `34641023779` retained TWZ-81 candidate
+`24a33286f98cb3998665abea0fedf5bbd44f2082` in
+`/bundles/job-20260911-195051-TWZ-81`. Its builder completed successfully;
+publication was refused for `.github/workflows/ci.yml`. No PR was returned for
+`feat/pipeline-TWZ-81-pr-playtest` during reconciliation. The active Twinzy
+Foreman received this evidence and a publish-only recovery handoff using the
+existing authentication route, subject to current candidate/job reconciliation.
+No replacement builder, workflow retry, deployment or merge was initiated by
+this construction task. Approval of the App permission does not clear review,
+merge authority, scheduler ownership or the connected staging release gate.
+
+The resumed source pass removed the Slack adapter's hardcoded `TWZ-` ticket
+restriction. A non-Twinzy project ticket now reaches the configured route;
+invalid keys and unapproved destinations remain rejected. All ten Slack outbox
+behavior tests, strict typecheck and build passed, with an independent read-only
+review reporting no findings. These are deterministic local tests, not a live
+Slack delivery receipt.

@@ -1,9 +1,11 @@
+import { HelpHeading } from "./section-help.tsx";
 import { useMemo, useState } from 'react';
 
 export type JiraIssue = {
   key: string;
   summary: string;
   status: string;
+  statusId?: string;
   statusCategory: 'new' | 'indeterminate' | 'done' | 'unknown';
   assignee?: string;
   updatedAt: string;
@@ -19,6 +21,8 @@ export type JiraBoard = {
   lastSyncedAt?: string;
   message?: string;
   truncated?: boolean;
+  columns?: { name: string; statusIds: string[] }[];
+  columnsMessage?: string;
   issues: JiraIssue[];
 };
 
@@ -94,24 +98,24 @@ export function JiraWorkBoard({ boards, runs, filter, selectRun }: { boards: Jir
   });
 
   if (visibleBoards.length === 0) {
-    return <section className="panel panel-primary jira-board-section"><div className="panel-heading"><div><h2>Jira work</h2><p>Jira is not configured for this scope.</p></div></div><div className="empty"><strong>Execution runs remain available</strong><p>To add a read-only Jira work source, follow docs/console-jira.md and restart the Console.</p></div></section>;
+    return <section className="panel panel-primary jira-board-section"><div className="panel-heading"><div><HelpHeading level={2} scope="work-visibility">Jira work</HelpHeading><p>Jira is not configured for this scope.</p></div></div><div className="empty"><strong>Execution runs remain available</strong><p>To add a read-only Jira work source, follow docs/console-jira.md and restart the Console.</p></div></section>;
   }
 
   const unavailable = visibleBoards.filter((board) => board.status === 'unavailable');
   return <section className="jira-board-section" aria-labelledby="jira-work-title">
-    <div className="panel panel-primary section-header jira-header"><div><span className="eyebrow">Read-only work source</span><h2 id="jira-work-title">Jira work</h2><p>Synced issue statuses from {visibleBoards.map((board) => board.projectKey).join(', ')}. Changes must be made in Jira.</p></div><div className="jira-sync-list">{visibleBoards.map((board) => <span className={`jira-sync jira-sync-${board.status}`} key={board.id}><b>{board.projectKey}</b>{board.status === 'connected' ? 'Synced' : board.status === 'stale' ? 'Stale' : 'Unavailable'} · {formatDate(board.lastSyncedAt)}</span>)}</div></div>
+    <div className="panel panel-primary section-header jira-header"><div><span className="eyebrow">Read-only work source</span><HelpHeading level={2} scope="work-visibility" id="jira-work-title">Jira work</HelpHeading><p>Synced issue statuses from {visibleBoards.map((board) => board.projectKey).join(', ')}. Changes must be made in Jira.</p></div><div className="jira-sync-list">{visibleBoards.map((board) => <span className={`jira-sync jira-sync-${board.status}`} key={board.id}><b>{board.projectKey}</b>{board.status === 'connected' ? 'Synced' : board.status === 'stale' ? 'Stale' : 'Unavailable'} · {formatDate(board.lastSyncedAt)}</span>)}</div></div>
     {visibleBoards.some((board) => board.status === 'stale') && <p className="jira-notice jira-notice-stale" role="status">This board is showing the last successful Jira sync. Issue state may be out of date.</p>}
     {unavailable.map((board) => <p className="jira-notice jira-notice-error" role="alert" key={board.id}><strong>{board.projectKey} could not be refreshed.</strong> {board.message ?? 'No Jira issues are available from this source.'}</p>)}
     {visibleBoards.some((board) => board.truncated) && <p className="jira-notice" role="status">This view is truncated. Open Jira to inspect the complete project backlog.</p>}
     <div className="board-toolbar"><label>Find Jira work<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search key, summary, status, or assignee" /></label><span role="status" aria-live="polite">{issues.length} issue{issues.length === 1 ? '' : 's'}{query && <button type="button" onClick={() => setQuery('')}>Clear search</button>}</span></div>
     {statuses.length === 0 ? <div className="panel panel-muted"><div className="empty"><strong>{unavailable.length === visibleBoards.length ? 'Jira work unavailable' : 'No Jira issues in this scope'}</strong><p>{unavailable.length === visibleBoards.length ? 'The last Jira refresh did not produce a safe issue projection.' : 'The connected Jira source returned no issues.'}</p></div></div> : <div className="panel panel-muted jira-board" tabIndex={0} aria-label="Jira work board">{statuses.map((status) => {
       const statusIssues = issues.filter((entry) => entry.issue.status === status);
-      return <div className="jira-column" key={status}><h3>{status} <span>{statusIssues.length}</span></h3>{statusIssues.length === 0 ? <p className="quiet">None</p> : statusIssues.map(({ board, issue }) => {
+      return <div className="jira-column" key={status}><HelpHeading level={3} scope="work-visibility">{status} <span>{statusIssues.length}</span></HelpHeading>{statusIssues.length === 0 ? <p className="quiet">None</p> : statusIssues.map(({ board, issue }) => {
         const issueUrl = safeExternalUrl(issue.url);
         const runId = runs.find((run) => run.workItem.id === issue.key
           && (board.productId === undefined || run.target.productId === board.productId)
           && (board.podId === undefined || run.target.podId === board.podId))?.runId;
-        return <article className={`jira-card jira-category-${issue.statusCategory}`} key={`${board.id}:${issue.key}`}><div className="jira-card-key">{issueUrl ? <a href={issueUrl} target="_blank" rel="noopener noreferrer">{issue.key}<span className="sr-only"> (opens Jira in a new tab)</span></a> : <strong>{issue.key}</strong>}<span>{issue.status}</span></div><h4>{issue.summary}</h4><dl><dt>Assignee</dt><dd>{issue.assignee ?? 'Unassigned'}</dd><dt>Updated</dt><dd>{formatDate(issue.updatedAt)}</dd></dl>{runId && <button type="button" className="jira-run-link" onClick={() => selectRun(runId)}>Open coordinator run</button>}</article>;
+        return <article className={`jira-card jira-category-${issue.statusCategory}`} key={`${board.id}:${issue.key}`}><div className="jira-card-key">{issueUrl ? <a href={issueUrl} target="_blank" rel="noopener noreferrer">{issue.key}<span className="sr-only"> (opens Jira in a new tab)</span></a> : <strong>{issue.key}</strong>}<span>{issue.status}</span></div><HelpHeading level={4} scope="work-visibility">{issue.summary}</HelpHeading><dl><dt>Assignee</dt><dd>{issue.assignee ?? 'Unassigned'}</dd><dt>Updated</dt><dd>{formatDate(issue.updatedAt)}</dd></dl>{runId && <button type="button" className="jira-run-link" onClick={() => selectRun(runId)}>Open coordinator run</button>}</article>;
       })}</div>;
     })}</div>}
   </section>;
@@ -120,7 +124,7 @@ export function JiraWorkBoard({ boards, runs, filter, selectRun }: { boards: Jir
 export function ActivityFeed({ items, filter, selectRun, selectLoop, selectRequest, selectDecision, compact = false }: { items: ActivityItem[]; filter: ScopeFilter; selectRun: (id: string) => void; selectLoop?: (id: string) => void; selectRequest?: (id: string) => void; selectDecision?: (id: string) => void; compact?: boolean }) {
   const [source, setSource] = useState<'all' | ActivityItem['source']>('all');
   const visible = useMemo(() => filterActivity(items, filter, source).slice(0, compact ? 5 : 100), [compact, filter, items, source]);
-  return <section className={`panel panel-support activity-feed ${compact ? 'activity-feed-compact' : ''}`} aria-labelledby={compact ? 'overview-activity-title' : 'work-activity-title'}><div className="panel-heading"><div><h2 id={compact ? 'overview-activity-title' : 'work-activity-title'}>Running activity</h2><p>Up to {compact ? 5 : 100} recent published factory events in this scope. Recorded milestones, not a live agent transcript.</p></div><label>Source<select value={source} onChange={(event) => setSource(event.target.value as typeof source)}><option value="all">All sources</option><option value="run">Runs</option><option value="loop">Loops</option><option value="request">Requests</option><option value="decision">Decisions</option><option value="jira">Jira</option></select></label></div>{visible.length === 0 ? <div className="empty"><strong>No activity published</strong><p>No safe run, loop, request, decision, or Jira event summaries match this scope and source.</p></div> : <ol className="activity-list">{visible.map((item) => {
+  return <section className={`panel panel-support activity-feed ${compact ? 'activity-feed-compact' : ''}`} aria-labelledby={compact ? 'overview-activity-title' : 'work-activity-title'}><div className="panel-heading"><div><HelpHeading level={2} scope="work-visibility" id={compact ? 'overview-activity-title' : 'work-activity-title'}>Running activity</HelpHeading><p>Up to {compact ? 5 : 100} recent published factory events in this scope. Recorded milestones, not a live agent transcript.</p></div><label>Source<select value={source} onChange={(event) => setSource(event.target.value as typeof source)}><option value="all">All sources</option><option value="run">Runs</option><option value="loop">Loops</option><option value="request">Requests</option><option value="decision">Decisions</option><option value="jira">Jira</option></select></label></div>{visible.length === 0 ? <div className="empty"><strong>No activity published</strong><p>No safe run, loop, request, decision, or Jira event summaries match this scope and source.</p></div> : <ol className="activity-list">{visible.map((item) => {
     const externalUrl = safeExternalUrl(item.url);
     return <li key={item.id}><span className={`activity-source activity-source-${item.source}`}>{item.source}</span><div><p>{item.summary}</p><small><time dateTime={item.at}>{formatDate(item.at)}</time>{item.issueKey ? ` · ${item.issueKey}` : ''}{item.loopId ? ` · ${item.loopId}` : ''}{item.requestId ? ` · ${item.requestId}` : ''}{item.decisionId ? ` · ${item.decisionId}` : ''}</small></div>{item.runId ? <button type="button" onClick={() => selectRun(item.runId!)}>Open run</button> : item.loopId && selectLoop ? <button type="button" onClick={() => selectLoop(item.loopId!)}>Open loop</button> : item.requestId && selectRequest ? <button type="button" onClick={() => selectRequest(item.requestId!)}>Open request</button> : item.decisionId && selectDecision ? <button type="button" onClick={() => selectDecision(item.decisionId!)}>Open decision</button> : externalUrl ? <a href={externalUrl} target="_blank" rel="noopener noreferrer">Open source<span className="sr-only"> in a new tab</span></a> : null}</li>;
   })}</ol>}{compact && <a className="loop-detail-link" href="#work">Open Work for the expanded activity feed</a>}</section>;

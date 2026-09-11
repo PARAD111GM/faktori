@@ -1,3 +1,4 @@
+import { HelpHeading } from "./section-help.tsx";
 import { useEffect, useRef, useState } from 'react';
 import type {
   ManagerConnectedAction as StoreManagerConnectedAction,
@@ -54,8 +55,8 @@ export function ManagerConnected({ snapshot, workManagement, focusedRequestId, f
   const [error, setError] = useState<string>();
   const [sending, setSending] = useState(false);
   const [cancelling, setCancelling] = useState<string>();
-  const pendingId = useRef<string>();
-  const pendingAction = useRef<Extract<ManagerConnectedAction, { type: 'enqueue' }>>();
+  const pendingId = useRef<string | undefined>(undefined);
+  const pendingAction = useRef<Extract<ManagerConnectedAction, { type: 'enqueue' }> | undefined>(undefined);
   const sessions = snapshot?.sessions ?? [];
   const catalogConfigured = workManagement?.status === 'available' || workManagement?.status === 'stale';
   const catalogEnabled = workManagement?.status === 'available';
@@ -74,7 +75,7 @@ export function ManagerConnected({ snapshot, workManagement, focusedRequestId, f
   }, [focusedSessionId, requestableSessions]);
 
   if (!snapshot?.manager) return <section className="panel panel-support manager-connected manager-connected-setup" aria-labelledby="manager-connected-title">
-    <div className="panel-heading"><div><h2 id="manager-connected-title">Manager-connected work</h2><p>Optional experimental work handoff.</p></div></div>
+    <div className="panel-heading"><div><HelpHeading level={2} scope="manager-connected" id="manager-connected-title">Manager-connected work</HelpHeading><p>Optional experimental work handoff.</p></div></div>
     <p>Set up an active Manager in <code>docs/manager-connected.md</code>, then restart the Console to publish its recorded sessions.</p>
   </section>;
 
@@ -128,12 +129,12 @@ export function ManagerConnected({ snapshot, workManagement, focusedRequestId, f
   };
 
   return <section className="panel panel-primary manager-connected" aria-labelledby="manager-connected-title">
-    <div className="panel-heading manager-connected-heading"><div><h2 id="manager-connected-title">{managerTitle}</h2><p>Experimental handoff. Active Manager required. {lastContactAt ? `Last contact: ${formatDate(lastContactAt)}.` : 'No Manager heartbeat recorded yet.'}</p></div><span className="state">Configured</span></div>
+    <div className="panel-heading manager-connected-heading"><div><HelpHeading level={2} scope="manager-connected" id="manager-connected-title">{managerTitle}</HelpHeading><p>Experimental handoff. Active Manager required. {lastContactAt ? `Last contact: ${formatDate(lastContactAt)}.` : 'No Manager heartbeat recorded yet.'}</p></div><span className="state">Configured</span></div>
     <p className="notice">Manager reports are not independent acceptance. Contact time is a record, not a liveness signal.{workManagement?.status === 'available' && ` New requests carry catalog revision ${workManagement.revision ?? 'not observed'} when available.`}</p>
     <div className="manager-connected-grid">
-      <section className="manager-sessions"><h3>Recorded sessions</h3>{sessions.length === 0 ? <p className="quiet">No sessions have been published by this Manager.</p> : <ul>{sessions.map((session) => <li key={sessionId(session) || sessionAlias(session)}><strong>{session.title ?? sessionAlias(session)}</strong><small>{sessionAlias(session)}</small><SessionFacts session={session} /></li>)}</ul>}</section>
+      <section className="manager-sessions"><HelpHeading level={3} scope="manager-connected">Recorded sessions</HelpHeading>{sessions.length === 0 ? <p className="quiet">No sessions have been published by this Manager.</p> : <ul>{sessions.map((session) => <li key={sessionId(session) || sessionAlias(session)}><strong>{session.title ?? sessionAlias(session)}</strong><small>{sessionAlias(session)}</small><SessionFacts session={session} /></li>)}</ul>}</section>
       <form className="manager-enqueue" id="manager-enqueue" onSubmit={(event) => void enqueue(event)}>
-        <h3>Enqueue work</h3>
+        <HelpHeading level={3} scope="manager-connected">Enqueue work</HelpHeading>
         <label>Session alias<input list="manager-session-aliases" value={alias} onChange={(event) => { setAlias(event.target.value); setError(undefined); }} disabled={Boolean(pendingAction.current)} placeholder="Choose a recorded session" required /><datalist id="manager-session-aliases">{requestableSessions.map((session) => <option key={sessionId(session) || sessionAlias(session)} value={sessionAlias(session)} />)}</datalist></label>
         <label>Title<input value={title} onChange={(event) => setTitle(event.target.value)} disabled={Boolean(pendingAction.current)} maxLength={240} placeholder="Name the bounded work" required /></label>
         <label>Instruction<textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} disabled={Boolean(pendingAction.current)} maxLength={16000} placeholder="State the bounded instruction" required /></label>
@@ -142,6 +143,6 @@ export function ManagerConnected({ snapshot, workManagement, focusedRequestId, f
         <p className="quiet">{catalogEnabled ? 'Catalog-backed requests require the shown revision and the selected recorded scope.' : catalogConfigured ? 'Catalog reload is stale, so new scoped requests stay disabled until a current revision is observed.' : 'If a response is uncertain, this form keeps the same request ID for a manual retry. It never retries automatically.'}</p>
       </form>
     </div>
-    <section className="manager-requests"><div className="panel-heading"><div><h3>Requests</h3><p>Recorded request summaries and statuses.</p></div><strong>{requests.length}</strong></div>{requests.length === 0 ? <p className="quiet">No Manager-connected requests have been recorded.</p> : <ul>{requests.map((request) => { const session = sessions.find((item) => sessionId(item) === request.sessionId); return <li id={`manager-request-${request.id}`} className={focusedRequestId === request.id ? 'is-focused' : undefined} key={request.id}><div><strong>{request.title ?? 'Untitled request'}</strong><span className={`state state-${request.status ?? 'unknown'}`}>{label(request.status)}</span></div><p>{request.report?.summary ?? requestGuidance(request.status)}</p>{request.report && <small className="reported-result">Manager-reported result; product acceptance not evaluated.</small>}<small>{session?.title ?? request.sessionId ?? 'Session not recorded'} · {formatDate(request.report?.observedAt ?? request.createdAt)}</small>{request.status === 'queued' && <button type="button" className="danger" disabled={cancelling === request.id} onClick={() => void cancel(request.id)}>{cancelling === request.id ? 'Cancelling request' : 'Cancel queued request'}</button>}</li>; })}</ul>}</section>
+    <section className="manager-requests"><div className="panel-heading"><div><HelpHeading level={3} scope="manager-connected">Requests</HelpHeading><p>Recorded request summaries and statuses.</p></div><strong>{requests.length}</strong></div>{requests.length === 0 ? <p className="quiet">No Manager-connected requests have been recorded.</p> : <ul>{requests.map((request) => { const session = sessions.find((item) => sessionId(item) === request.sessionId); return <li id={`manager-request-${request.id}`} className={focusedRequestId === request.id ? 'is-focused' : undefined} key={request.id}><div><strong>{request.title ?? 'Untitled request'}</strong><span className={`state state-${request.status ?? 'unknown'}`}>{label(request.status)}</span></div><p>{request.report?.summary ?? requestGuidance(request.status)}</p>{request.report && <small className="reported-result">Manager-reported result; product acceptance not evaluated.</small>}<small>{session?.title ?? request.sessionId ?? 'Session not recorded'} · {formatDate(request.report?.observedAt ?? request.createdAt)}</small>{request.status === 'queued' && <button type="button" className="danger" disabled={cancelling === request.id} onClick={() => void cancel(request.id)}>{cancelling === request.id ? 'Cancelling request' : 'Cancel queued request'}</button>}</li>; })}</ul>}</section>
   </section>;
 }

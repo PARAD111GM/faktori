@@ -1,3 +1,4 @@
+import { HelpHeading, HelpSummary } from "./section-help.tsx";
 import { useEffect, useRef, useState } from 'react';
 import type { ManagerConnectedDecisionSnapshot } from '../../src/manager-connected/index.ts';
 
@@ -60,7 +61,7 @@ function DecisionAction({ decision, token, onChanged, navigation }: { decision: 
   const [responseId, setResponseId] = useState('');
   const [error, setError] = useState<string>();
   const [sending, setSending] = useState(false);
-  const idempotency = useRef<{ responseId: string; key: string }>();
+  const idempotency = useRef<{ responseId: string; key: string } | undefined>(undefined);
   const canRecord = decision.capability === 'supported'
     && decision.action.kind === 'record_owner_response'
     && decision.state === 'open'
@@ -128,11 +129,11 @@ function DecisionAction({ decision, token, onChanged, navigation }: { decision: 
 
 function DecisionCard({ decision, token, onChanged, navigation, compact = false }: { decision: DecisionProjection; token: string; onChanged?: () => Promise<void> | void; navigation?: DecisionNavigation; compact?: boolean }) {
   return <article className="decision-card" id={`decision-${decision.id}`}>
-    <header className="decision-heading"><div><span className="eyebrow">{scopeLabel(decision.scope)}</span><h3>{decision.problem}</h3></div><span className={`state state-${decision.state}`}>{stateLabel[decision.state]}</span></header>
+    <header className="decision-heading"><div><span className="eyebrow">{scopeLabel(decision.scope)}</span><HelpHeading level={3} scope="decisions">{decision.problem}</HelpHeading></div><span className={`state state-${decision.state}`}>{stateLabel[decision.state]}</span></header>
     <p className="decision-impact">{decision.impact}</p>{decision.ownerResponse && <p className="decision-recorded-response"><strong>Recorded owner response:</strong> {decision.ownerResponse.label}</p>}
     {compact ? <><p><strong>Next:</strong> {decision.recommendedNextAction}</p><p className="quiet">Owner: {decision.accountableOwner} · Cause basis: {decision.cause.basis}</p></> : <>
       <DecisionFacts decision={decision} />
-      <section className="decision-evidence-section"><h4>Evidence</h4><DecisionEvidence decision={decision} /></section>
+      <section className="decision-evidence-section"><HelpHeading level={4} scope="decisions">Evidence</HelpHeading><DecisionEvidence decision={decision} /></section>
       <DecisionAction decision={decision} token={token} onChanged={onChanged} navigation={navigation} />
       <small className="decision-record">Decision {decision.id} · observed {formatDate(decision.observedAt)}</small>
     </>}
@@ -153,9 +154,9 @@ export function DecisionInbox({ decisions = [], token = '', onChanged, compact =
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [compact, focusedDecisionId]);
   return <section className={`decision-inbox ${compact ? 'decision-inbox-compact' : ''}`} aria-label={compact ? 'Decision Inbox' : 'Decisions'}>
-    {compact && <div className="panel panel-primary decision-inbox-heading"><div><span className="eyebrow">Owner decisions</span><h2 id={compact ? 'overview-decisions-title' : 'decisions-title'}>{title}</h2><p>{compact ? 'The most actionable observed decisions across projects.' : 'Resolve or delegate a specific observed problem. Manager acknowledgement remains a separate recorded state.'}</p></div><strong>{visible.length} shown</strong></div>}
+    {compact && <div className="panel panel-primary decision-inbox-heading"><div><span className="eyebrow">Owner decisions</span><HelpHeading level={2} scope="decisions" id={compact ? 'overview-decisions-title' : 'decisions-title'}>{title}</HelpHeading><p>{compact ? 'The most actionable observed decisions across projects.' : 'Resolve or delegate a specific observed problem. Manager acknowledgement remains a separate recorded state.'}</p></div><strong>{visible.length} shown</strong></div>}
     {visible.length === 0 ? <div className="panel panel-support"><div className="empty"><strong>No decisions need attention</strong><p>No open, uncertain, or pending decision records were published in this projection.</p></div></div> : <div className="decision-list">{visible.map((decision) => <DecisionCard key={decision.id} decision={decision} token={token} onChanged={onChanged} navigation={navigation} compact={compact} />)}</div>}
-    {!compact && retainedHistory.length > 0 && <details className="decision-history"><summary>Resolved and withdrawn history ({retainedHistory.length})</summary><div className="decision-list">{retainedHistory.map((decision) => <DecisionCard key={decision.id} decision={decision} token={token} onChanged={onChanged} navigation={navigation} />)}</div></details>}
+    {!compact && retainedHistory.length > 0 && <details className="decision-history"><HelpSummary scope="decisions">Resolved and withdrawn history ({retainedHistory.length})</HelpSummary><div className="decision-list">{retainedHistory.map((decision) => <DecisionCard key={decision.id} decision={decision} token={token} onChanged={onChanged} navigation={navigation} />)}</div></details>}
     {compact && <button type="button" className="decision-open-all" onClick={openDecisions}>Open all decisions</button>}
     {focusedDecisionId && <span className="sr-only">Focused decision {focusedDecisionId}</span>}
   </section>;

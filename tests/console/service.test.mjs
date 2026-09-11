@@ -386,6 +386,7 @@ describe('loopback Console service', () => {
     try {
       const sourceIntent = intent('source-run');
       const targetIntent = intent('target-run');
+      sourceIntent.workItem.role = targetIntent.workItem.role = 'builder';
       sourceIntent.execution.model = targetIntent.execution.model = 'fixture';
       const sourceContext = { packetRevision: 'packet@1', digest: 'packet', prompt: 'Create the source provider session.' };
       const targetContext = { packetRevision: 'packet@1', digest: 'packet', prompt: 'Continue only in the explicitly bound source session.' };
@@ -396,6 +397,10 @@ describe('loopback Console service', () => {
         factoryId: 'factory', journalPath: join(root, 'operations.jsonl'), projectionPath: join(root, 'projection.sqlite'), port: 0,
         commandToken: 'installed-token', allowedOrigins: ['http://127.0.0.1:4173'],
         limits: { maxConcurrentRuns: 3, maxRetries: 1, maxRuntimeMinutes: 10, maxTokens: 500, strictSpending: false, strictSpendingSupported: false },
+        factoryConfiguration: {
+          factory: { id: 'factory', name: 'Factory', defaults: { providerId: 'codex', environmentId: 'local', executionProfile: 'native', budget: { strictSpending: false }, roleAssignments: [{ role: 'builder', providerId: 'codex', rolePrompt: 'Keep the resume within the accepted scope.\nDo not widen authority.' }] } },
+          providers: [{ id: 'codex', kind: 'codex', capabilities: ['native'] }], environments: [{ id: 'local', kind: 'local' }], products: [{ id: 'product', name: 'Product' }], pods: [],
+        },
         runtime: {
           provider: { id: 'codex', environment: { PATH: '/usr/bin' }, compatibleModels: ['fixture'], runNonce: 'resume-test' },
           workItems: [{ workItemId: 'source-work', intent: sourceIntent, context: sourceContext }, { workItemId: 'target-work', intent: targetIntent, context: targetContext }],
@@ -409,7 +414,8 @@ describe('loopback Console service', () => {
       const resumed = await started.app.inject({ method: 'POST', url: '/api/console/commands', headers, payload: { commandId: 'resume-source', command: { type: 'resume', runId: 'source-run' } } });
       expect(resumed.statusCode).toBe(200);
       await waitFor(() => started.coordinator.snapshot('target-run'), (snapshot) => snapshot?.state === 'succeeded');
-      expect(calls[1]).toEqual(['exec', 'resume', '--json', '--model', 'fixture', 'explicit-session', targetContext.prompt]);
+      expect(calls[0].at(-1)).toBe(`${sourceContext.prompt}\n\nFACTORY_ROLE_PROMPT (builder):\nKeep the resume within the accepted scope.\nDo not widen authority.`);
+      expect(calls[1]).toEqual(['exec', 'resume', '--json', '--model', 'fixture', 'explicit-session', `${targetContext.prompt}\n\nFACTORY_ROLE_PROMPT (builder):\nKeep the resume within the accepted scope.\nDo not widen authority.`]);
       await started.close();
     } finally { await rm(root, { recursive: true, force: true }); }
   });
@@ -514,7 +520,7 @@ describe('loopback Console service', () => {
         configuredIntent.execution.providerId = 'codex';
         configuredIntent.execution.model = profile === 'isolated' ? 'isolated-model' : 'original-model';
         const context = { packetRevision: 'packet@1', digest: 'packet', prompt: `Run ${workItemId}.` };
-        configuredIntent.execution.approvedInputDigests = [providerContextPayloadDigest(context)];
+        configuredIntent.execution.approvedInputDigests = [providerContextPayloadDigest(context), 'approved-artifact-digest'];
         return { workItemId, intent: configuredIntent, context };
       };
       const calls = [];
@@ -541,8 +547,8 @@ describe('loopback Console service', () => {
       const editor = new FileConsoleSettingsEditor({ path: configPath, loadedContent: originalContent, validate: parseLocalConsoleConfiguration });
       const edit = await editor.edit();
       edit.draft.defaults.roleAssignments = [
-        { role: 'builder', providerId: 'claude-custom', model: 'claude-role', reasoning: 'high' },
-        { role: 'reviewer', providerId: 'codex-custom', model: 'codex-review', reasoning: 'low' },
+        { role: 'builder', providerId: 'claude-custom', model: 'claude-role', reasoning: 'high', rolePrompt: 'Keep scope narrow.\nReport evidence.' },
+        { role: 'reviewer', providerId: 'codex-custom', model: 'codex-review', reasoning: 'low', rolePrompt: 'Inspect independently.\nDo not edit.' },
         { role: 'designer', providerId: 'claude-custom', model: 'claude-role' },
       ];
       await editor.save({ revision: edit.revision, draft: edit.draft, confirm: true, acknowledgedRiskIds: [] });
@@ -562,6 +568,10 @@ describe('loopback Console service', () => {
       ]));
       expect(calls.find((call) => call.providerId === 'claude').request.args).toEqual(expect.arrayContaining(['--model', 'claude-role', '--effort', 'high']));
       expect(calls.find((call) => call.providerId === 'codex').request.args).toEqual(expect.arrayContaining(['--model', 'codex-review', '-c', 'model_reasoning_effort="low"']));
+      expect(calls.find((call) => call.providerId === 'claude').request.args.at(-1)).toContain('FACTORY_ROLE_PROMPT (builder):\nKeep scope narrow.\nReport evidence.');
+      expect(calls.find((call) => call.providerId === 'codex').request.args.at(-1)).toContain('FACTORY_ROLE_PROMPT (reviewer):\nInspect independently.\nDo not edit.');
+      for (const snapshot of snapshots) expect(snapshot.intent.execution.approvedInputDigests).toContain(providerContextPayloadDigest({ packetRevision: snapshot.intent.context.packetRevision, digest: snapshot.intent.context.digest, prompt: calls.find((call) => call.providerId === snapshot.intent.execution.providerId).request.args.at(-1) }));
+      for (const snapshot of snapshots) expect(snapshot.intent.execution.approvedInputDigests).toContain('approved-artifact-digest');
       for (const snapshot of snapshots) expect(snapshot.intent.authority.policy).toEqual(intent().authority.policy);
       const invalid = await started.app.inject({ method: 'POST', url: '/api/console/commands', headers, payload: { commandId: 'invalid-start', command: { type: 'start_work', workItemId: 'invalid-work' } } });
       expect(invalid.statusCode).toBe(409);

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 
-import { resolveFactoryConfig, type FactoryConfiguration, type ResolvedFactoryConfiguration } from '../config/index.ts';
+import { resolveFactoryConfig, type FactoryConfiguration, type FactoryRoleAssignment, type ResolvedFactoryConfiguration } from '../config/index.ts';
 import type { AdmissionLimits, CoordinatorIdentity, DurableCoordinator, ProcessProbe, ProcessStatus } from '../runtime/index.ts';
 import { CoordinatorProviderDelivery, DurableCoordinator as Coordinator } from '../runtime/index.ts';
 import { CodexAdapter } from '../providers/codex.ts';
@@ -445,6 +445,41 @@ function runtimeProviderId(kind: ResolvedFactoryConfiguration['providers'][numbe
   return kind === 'claude-code' ? 'claude' : kind;
 }
 
+function roleAssignmentFor(entry: LocalConsoleRuntimeConfiguration['workItems'][number], catalog: ResolvedFactoryConfiguration | undefined, role: string): FactoryRoleAssignment | undefined {
+  const target = entry.intent.target;
+  if (target.productId === undefined) return catalog?.factory.defaults.roleAssignments?.find((candidate) => candidate.role === role);
+  const scope = target.podId === undefined
+    ? catalog?.products.find((product) => product.id === target.productId)
+    : catalog?.pods.find((pod) => pod.id === target.podId && pod.productId === target.productId);
+  return scope?.roleAssignments?.find((candidate) => candidate.role === role);
+}
+
+function withRolePrompt(entry: LocalConsoleRuntimeConfiguration['workItems'][number], role: string, rolePrompt: string | undefined): LocalConsoleRuntimeConfiguration['workItems'][number] {
+  if (rolePrompt === undefined) return entry;
+  const context = { ...entry.context, prompt: `${entry.context.prompt}\n\nFACTORY_ROLE_PROMPT (${role}):\n${rolePrompt}` };
+  const previousPayloadDigest = providerContextPayloadDigest(entry.context);
+  const approvedInputDigests = entry.intent.execution.approvedInputDigests.map((digest) => digest === previousPayloadDigest ? providerContextPayloadDigest(context) : digest);
+  if (!approvedInputDigests.includes(providerContextPayloadDigest(context))) throw new Error(`role_assignment_context_not_authorized:${role}`);
+  return {
+    ...entry,
+    context,
+    intent: {
+      ...structuredClone(entry.intent),
+      context: { packetRevision: context.packetRevision, digest: context.digest },
+      execution: { ...entry.intent.execution, approvedInputDigests },
+    },
+  };
+}
+
+function matchingAdmittedEntry(entry: LocalConsoleRuntimeConfiguration['workItems'][number], admitted: RunIntent | undefined, role: string | undefined): LocalConsoleRuntimeConfiguration['workItems'][number] {
+  if (admitted === undefined) return entry;
+  const payloadDigest = providerContextPayloadDigest(entry.context);
+  if (admitted.context.packetRevision !== entry.context.packetRevision || admitted.context.digest !== entry.context.digest || !admitted.execution.approvedInputDigests.includes(payloadDigest)) {
+    throw new Error(`role_assignment_context_changed:${role ?? 'unassigned'}`);
+  }
+  return { ...entry, intent: admitted };
+}
+
 function roleRoutedEntry(
   entry: LocalConsoleRuntimeConfiguration['workItems'][number],
   catalog: ResolvedFactoryConfiguration | undefined,
@@ -458,7 +493,7 @@ function roleRoutedEntry(
   const scope = target.podId === undefined
     ? catalog?.products.find((product) => product.id === target.productId)
     : catalog?.pods.find((pod) => pod.id === target.podId && pod.productId === target.productId);
-  const assignment = scope?.roleAssignments?.find((candidate) => candidate.role === role);
+  const assignment = roleAssignmentFor(entry, catalog, role);
   if (assignment === undefined) {
     if (explicitRole !== undefined) throw new Error(`role_assignment_not_configured:${role}`);
     return entry;
@@ -475,19 +510,25 @@ function roleRoutedEntry(
   if ('compatibleModels' in route && !route.compatibleModels.includes(model)) throw new Error(`role_assignment_model_unavailable:${role}`);
   const reasoning = assignment.reasoning ?? entry.intent.execution.reasoning;
   if (providerId === 'cursor' && reasoning !== undefined) throw new Error(`role_assignment_reasoning_unsupported:${role}`);
+  const prompted = withRolePrompt(entry, role, assignment.rolePrompt);
   return {
-    ...entry,
+    ...prompted,
     intent: {
-      ...structuredClone(entry.intent),
+      ...structuredClone(prompted.intent),
       workItem: { ...entry.intent.workItem, role },
       execution: {
-        ...entry.intent.execution,
+        ...prompted.intent.execution,
         providerId,
         model,
         ...(reasoning === undefined ? {} : { reasoning }),
       },
     },
   };
+}
+
+function rolePromptedEntry(entry: LocalConsoleRuntimeConfiguration['workItems'][number], catalog: ResolvedFactoryConfiguration | undefined): LocalConsoleRuntimeConfiguration['workItems'][number] {
+  const role = entry.intent.workItem.role;
+  return role === undefined ? entry : withRolePrompt(entry, role, roleAssignmentFor(entry, catalog, role)?.rolePrompt);
 }
 
 function gmDiagnosisPrompt(request: Parameters<GMProviderDiagnosisPort['diagnose']>[0]): string {
@@ -657,11 +698,10 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
       const entry = entries.get(workItemId);
       if (entry === undefined) return undefined;
       const existing = coordinator.snapshot(entry.intent.runId);
-      const routed = existing === undefined
-        ? roleRoutedEntry(entry, catalog, configuration.providers, true)
-        : { ...entry, intent: existing.intent };
-      routedByRunId.set(routed.intent.runId, routed);
-      return routed.intent;
+      const routed = roleRoutedEntry(entry, catalog, configuration.providers, true);
+      const bound = matchingAdmittedEntry(routed, existing?.intent, routed.intent.workItem.role);
+      routedByRunId.set(bound.intent.runId, bound);
+      return bound.intent;
     },
     startAdmittedRun: async (runId) => {
       const entry = routedByRunId.get(runId);
@@ -682,8 +722,9 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
       const source = coordinator.snapshot(sourceRunId);
       const sessionId = source?.providerResult?.sessionId;
       if (configuredEntry === undefined || source === undefined || sessionId === undefined) throw new Error('trusted_explicit_resume_plan_unavailable');
-      const priorTarget = coordinator.snapshot(configuredEntry.intent.runId);
-      const entry = priorTarget === undefined ? configuredEntry : { ...configuredEntry, intent: priorTarget.intent };
+      const routed = roleRoutedEntry(configuredEntry, catalog, configuration.providers, true);
+      const priorTarget = coordinator.snapshot(routed.intent.runId);
+      const entry = matchingAdmittedEntry(routed, priorTarget?.intent, routed.intent.workItem.role);
       const admitted = await coordinator.admit(entry.intent);
       if (!admitted.accepted) throw new Error(admitted.reason ?? 'resume_target_admission_rejected');
       const binding: ProviderSessionBinding = {
@@ -741,7 +782,7 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
       const suffix = createHash('sha256').update(attemptId).digest('hex').slice(0, 24);
       const context: ProviderCurrentContext = { packetRevision: template.context.packetRevision, digest: `sha256:${createHash('sha256').update(`faktori-gm-nightly:${prompt}`).digest('hex')}`, prompt };
       const intent: RunIntent = { ...structuredClone(template), runId: `gm-nightly-${suffix}`, admissionKey: `gm-nightly-${suffix}`, context: { packetRevision: context.packetRevision, digest: context.digest }, execution: { ...template.execution, approvedInputDigests: [providerContextPayloadDigest(context)] }, budget: { ...template.budget, reservationId: `gm-nightly-${suffix}`, status: 'held' }, attempt: 1 };
-      const entry = { workItemId: intent.workItem.id, intent, context, dependsOnWorkItemIds: [] };
+      const entry = rolePromptedEntry({ workItemId: intent.workItem.id, intent, context, dependsOnWorkItemIds: [] }, catalog);
       const admitted = await coordinator.admit(entry.intent);
       if (!admitted.accepted) throw new Error(admitted.reason ?? 'GM nightly review admission rejected');
       const result = await deliver(entry);

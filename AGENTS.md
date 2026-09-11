@@ -21,6 +21,7 @@ installation or operation of an owner's factory.
 - Budget targets are estimates, not completion criteria. Record measured versus unknown usage; never infer tokens from account percentages or double-count parent/child usage.
 - Keep construction estimates only in the construction records. Never copy or infer an estimate into a native goal `token_budget`; a native hard cap requires an explicit owner request.
 - Use apply_patch for file edits, small conventional commits, no co-author trailers, and no force pushes.
+- Every merge must include release notes in `docs/releases/` and an updated README release-note link. Small patches increment the patch version by one (for example, 0.2.1 to 0.2.2); keep package.json and the root package-lock.json versions aligned. Release notes distinguish source changes from installed/runtime verification and document required update steps.
 - Implement the simplest behavior that meets the specification. Write behavior-level tests; focus deeper tests on authority, concurrency, credentials and recovery.
 - Do not buy services, switch to separately billed inference, alter existing provider credentials, or mutate active product infrastructure.
 - Provider authentication remains in the unmodified vendor CLI. Never print, copy, commit, or export credentials/session tokens into Faktori records.

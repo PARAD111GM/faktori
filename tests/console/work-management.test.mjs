@@ -48,7 +48,7 @@ describe('work catalog boundary', () => {
     tickets.push({ id: 'CWM-007', order: 2, title: 'Blocked', goal: 'Wait.', dependencies: [], status: 'blocked' });
     source.projects[0].linkedPullRequests = [{ ticketId: 'CWM-006', repository: 'example/faktori', number: 7 }];
     await writeFile(path, JSON.stringify(source), 'utf8');
-    const observer = await WorkCatalogObserver.open({ path });
+    const observer = await WorkCatalogObserver.open({ path, timezone: 'UTC' }, undefined, { now: () => new Date('2026-09-10T12:00:00.000Z') });
     const project = observer.snapshot().projects[0];
     expect(project.progress).toEqual(expect.objectContaining({ populationBasis: 'catalog_tickets_explicit_status', tickets: { total: 2, done: 1, inProgress: 0, remaining: 0, blocked: 1, unknown: 0 }, evidence: { local: 'owner_published', reviewed: 'owner_published', merged: 'owner_published', deployed: 'owner_published', productAccepted: 'unknown' }, pullRequests: expect.objectContaining({ denominator: 1, merged: 0, independentReviewPassed: 0, independentReviewUnknown: 1 }) }));
     expect(project.dailySummaries).toEqual([expect.objectContaining({ populationBasis: 'retained_same_day_events', timezone: expect.any(String), done: 1, inProgress: 0, remaining: 0, blocked: 1, activity: expect.objectContaining({ managerReports: 0, decisionTransitions: 0, blockers: 0, ticketTransitions: 1, ticketDoneTransitions: 1, loopPhaseEvents: 0, pullRequestChangeCoverage: 'unavailable' }) })]);

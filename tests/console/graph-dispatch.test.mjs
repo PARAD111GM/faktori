@@ -13,7 +13,7 @@ import { enqueueGraphFrontier } from '../../src/console/graph-dispatch.ts';
 
 const roots = []; const opened = [];
 const ids = { manager: '019c89ea-34b1-7f65-8c96-0f496bb5a001', builder: '019c89ea-34b1-7f65-8c96-0f496bb5a002', builderB: '019c89ea-34b1-7f65-8c96-0f496bb5a003' };
-afterEach(async () => { await Promise.all(opened.splice(0).map(async ({ app, store, coordinator }) => { await app.close(); await store.close(); await coordinator.release(); coordinator.close(); })); await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))); vi.useRealTimers(); });
+afterEach(async () => { await Promise.all(opened.splice(0).map(async ({ app, store, coordinator }) => { await app.close(); await store.close(); await coordinator.release(); coordinator.close(); })); await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 const catalog = { format: 'faktori.work-catalog/v1', projects: [{ productId: 'faktori', title: 'Faktori', goal: 'Ship.', artifacts: [], plans: [{ id: 'console-plan', order: 1, title: 'Console', goal: 'Ship.', phases: [{ id: 'batch-one', order: 1, title: 'Batch', goal: 'Ship.', acceptance: 'Works.', tickets: [{ id: 'CWM-006', order: 1, title: 'Graph A', goal: 'Queue it.', dependencies: [] }, { id: 'CWM-007', order: 2, title: 'Graph B', goal: 'Queue it.', dependencies: [] }] }] }] }] };
 function graph() { const source = id => ({ id, text: id, revision: 'r1' }); const node = id => ({ id, kind: 'executable', label: id, objective: source(`${id}-objective`), criteria: [source(`${id}-criteria`)], designReferences: [], artifacts: [source(`${id}-artifact`)], commands: [], authority: [], evidenceRequirements: [] }); return { hierarchy: { revision: 'r1', globalConstraints: [], nodes: [node('node-1'), node('node-2')], dependencies: [] }, registrations: ['CWM-006', 'CWM-007'].map((key, index) => ({ nodeId: `node-${index + 1}`, delivery: { ticket: { key, rank: index, status: 'To Do', workState: 'idle', dependencies: [] }, repository: { repository: 'owner/repo', branch: 'main', registered: true } } })), observations: [], transitionsByTicket: {}, policy: { eligibleCodingStatuses: ['To Do'], protectedStatuses: [], maxConcurrentCoding: 1 } }; }
@@ -32,10 +32,15 @@ describe('owner graph frontier enqueue', () => {
     await writeFile(readinessPath, JSON.stringify(readiness), { mode: 0o600 });
     const coordinator = await DurableCoordinator.open({ factoryId: 'factory', journalPath: join(directory, 'ops.jsonl'), projectionPath: join(directory, 'projection.sqlite'), identity: { instanceId: 'test', pid: process.pid, processStartedAt: 'now' }, limits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 5, maxTokens: 100, strictSpending: false, strictSpendingSupported: false } }); await coordinator.claim();
     const store = await ManagerConnectedStore.open({ directory: join(directory, 'manager'), sprintReadinessPath: readinessPath, manager: { threadId: ids.manager, title: 'Foreman' }, sessions: [{ id: 'builder', threadId: ids.builder, title: 'Builder', role: 'implementer', productId: 'faktori', planId: 'console-plan', phaseId: 'batch-one', ticketId: 'CWM-006' }, { id: 'builder-b', threadId: ids.builderB, title: 'Builder B', role: 'implementer', productId: 'faktori', planId: 'console-plan', phaseId: 'batch-one', ticketId: 'CWM-007' }] });
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.spyOn(store, 'sprintReadiness').mockRejectedValueOnce(new Error('temporary read failure'));
     const app = createConsoleService({ coordinator, commandToken: 'owner-token', allowedOrigins: ['http://127.0.0.1:43177'], managerConnected: { store, relayToken: 'a'.repeat(64) }, workCatalogObserver: observer, graphDispatch: { path: packetPath, readinessPath }, automaticGraphDispatch: true }); opened.push({ app, store, coordinator });
     const headers = { origin: 'http://127.0.0.1:43177', 'x-faktori-console-token': 'owner-token' };
-    await app.ready(); expect(store.snapshot().requests).toHaveLength(1);
+    await app.ready(); expect(store.snapshot().requests).toHaveLength(0);
+    expect((await app.inject('/api/console/sprint-readiness')).json()).toMatchObject({ graphDispatch: { status: 'blocked' } });
+    // A transient read failure must retry unchanged input after bounded backoff.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect.poll(() => store.snapshot().requests.length).toBe(1);
     expect((await app.inject('/api/console/sprint-readiness')).json()).toMatchObject({ graphDispatch: { mode: 'automatic', status: 'monitoring' } });
     expect((await app.inject({ method: 'POST', url: '/api/console/manager-connected', headers, payload: { type: 'enqueue_frontier', graph: {} } })).statusCode).toBe(409);
     const first = await app.inject({ method: 'POST', url: '/api/console/manager-connected', headers, payload: { type: 'enqueue_frontier' } }); expect(first.statusCode).toBe(200); expect(first.json().result).toMatchObject({ enqueued: 0, duplicate: 1, receipts: [expect.objectContaining({ status: 'duplicate' })] });

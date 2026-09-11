@@ -519,6 +519,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
           lastEvaluatedAt: now().toISOString(), detail: result.receipts.some(r => r.status === 'failed')
             ? 'Queue admission failed. Reconcile outstanding work and current sprint evidence.' : `${result.enqueued} assignments queued. Task execution still requires the Foreman relay.` };
       } catch {
+        graphInputKey = undefined;
         graphRetryAt = now().getTime() + Math.min(60_000, 5_000 * 2 ** Math.min(graphFailures++, 4));
         graphDispatchState = { mode: 'automatic', status: 'blocked', lastEvaluatedAt: now().toISOString(),
           detail: 'Graph admission is unavailable. Check the private packet, catalog bindings and Sprint readiness.' };

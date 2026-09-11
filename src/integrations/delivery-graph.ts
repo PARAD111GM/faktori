@@ -79,8 +79,12 @@ export function planGraphDelivery(input: GraphDeliveryInput): DeliverySyncPlan &
     return { ...delivery, ticket: { ...delivery.ticket, dependencies } };
   });
   const plan = planDeliverySynchronization({ deliveries, policy: input.policy, transitionsByTicket: input.transitionsByTicket });
+  const blockedNodes = new Set(blockedEdges.map(e => e.nodeId));
+  const blockedTickets = new Set(input.registrations.filter(r => blockedNodes.has(r.nodeId)).map(r => r.delivery.ticket.key));
   const selected = new Set(plan.coding.selected);
-  return { ...plan, graphRevision: hierarchy.revision, blockedEdges,
+  return { ...plan, instructions: plan.instructions.map(instruction => instruction.kind === 'transition' && blockedTickets.has(instruction.ticketKey)
+      ? { id: instruction.id, kind: 'blocked' as const, ticketKey: instruction.ticketKey, repository: instruction.repository, reason: 'graph_dependency_evidence_not_satisfied' }
+      : instruction), graphRevision: hierarchy.revision, blockedEdges,
     frontier: input.registrations.filter(r => selected.has(r.delivery.ticket.key)).map(r => ({
       nodeId: r.nodeId, ticketKey: r.delivery.ticket.key, context: assembleContextPacket(hierarchy, r.nodeId),
     })) };

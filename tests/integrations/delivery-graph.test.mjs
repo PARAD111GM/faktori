@@ -55,4 +55,12 @@ describe('graph-backed delivery frontier', () => {
     expect(result.frontier).toEqual([]);
     expect(result.blockedEdges).toContainEqual({ nodeId: 'c', edgeId: 'OPS-99', reason: 'tracker_dependency_missing_from_graph' });
   });
+  it('does not promote a reviewed candidate across an unsatisfied graph edge', () => {
+    const input = fixture();
+    input.registrations[1].delivery.pullRequest = { repository: 'owner/repo', number: 1, headCommit: 'head', merged: false,
+      evidence: ['check', 'review'].map(kind => ({ kind, commit: 'head', verdict: 'passed', source: kind, observedAt: '2026-09-11T12:00:00Z' })) };
+    input.policy.readyForDeploymentStatus = 'Ready';
+    input.transitionsByTicket = { 'OPS-2': [{ id: '31', name: 'Ready', targetStatus: 'Ready' }] };
+    expect(planGraphDelivery(input).instructions).toContainEqual(expect.objectContaining({ ticketKey: 'OPS-2', kind: 'blocked', reason: 'graph_dependency_evidence_not_satisfied' }));
+  });
 });

@@ -75,9 +75,20 @@ credentials must not be copied into the construction task.
 
 ### Still incomplete, not merely unverified
 
-The installed automatic observer-to-action composition and automatic replacement
-dispatch are not implemented by the owner-triggered graph enqueue route. A
+The installed automatic observer-to-signed-action composition and desktop task
+launch remain incomplete. A
 platform-native goal observation producer and verified idle-Foreman wake-up are
 also not supplied by a readiness document. These remain implementation/integration
 work; granting access alone will not make this release complete. The connected
 staging exercise remains the release gate after those seams are finished.
+
+### Queue replenishment increment
+
+At `7e2213b`, opt-in automatic queue replenishment is connected to Console startup.
+The actual service startup queues A; its next timer evaluation after cancellation
+queues eligible B. Relay reservations prevent duplicate selection, including
+uncertain work, and terminal assignments do not become new implementation work.
+The same private packet, catalog and readiness bindings apply. Build, typecheck
+and 52 Console/relay/graph regression tests passed. This advances automatic queue
+replenishment only: a queued request is not a launched desktop task, a native goal,
+a delivered notification, or accepted product work.

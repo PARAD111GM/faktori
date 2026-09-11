@@ -347,6 +347,45 @@ failure grant authority.
 
 ## Upgrade and proof
 
+### Live recovery exercise approval boundary
+
+The operator must approve a dedicated exercise before enabling live effects.
+The construction task's read-only handoff identifies Twinzy project `TWZ`,
+reported active Sprint 67, and existing Triforge Slack logical routes
+`pr-review`, `merge-train`, and `error`. Sprint/board membership and the exact
+approved destination must be freshly verified before use. These names are
+references, not authorization to send messages.
+
+Two inspected Test Drive configuration files, `config/creator-console.json`
+and `config/console.json`, both select port 43171 and contain neither
+Manager-connected nor delivery-synchronization configuration nor Jira sources.
+Their presence does not identify the current running process or its config.
+Do not overwrite either file, start both, or infer that these are the active
+Foreman's settings. Obtain the active process/config binding read-only first.
+
+The approval packet must identify all of the following, with no placeholders:
+
+- One dedicated test ticket, its board/sprint policy, and allowed Jira transitions;
+  no existing sprint assignment may be repurposed implicitly.
+- One repository/branch and staging-only deployment target, a bounded product
+  change, and executable user-facing acceptance criteria.
+- One approved Slack logical route, resolved destination and accountable recipient,
+  using the existing router and persisted receipts.
+- One isolated controller configuration and private records directory, the
+  scheduler's exclusive scope, Foreman/builder task ownership, and goal evidence.
+- Exact allowed effects: ticket claim/transitions, task dispatch, PR publication,
+  notification, authorized merge and staging deployment. Asad's merge decision
+  remains separate; no production publication or billing-route change is allowed.
+- A stop path that prevents new test admission and preserves unresolved records,
+  without terminating unrelated workers or deleting journals.
+
+Until that packet is approved, permit only discovery, source preparation and
+non-mutating checks. The reported current operating authority is Triforge, with
+Faktori observational. Do not activate a competing scheduler. If idle wake-up
+cannot be demonstrated, explicitly run the approved exercise attended; do not
+advertise unattended execution. A missing live authorization is not a reason
+to replace the connected release gate with a simulated test.
+
 Run the pinned `npm run check` before packaging. Install an explicitly reviewed
 artifact only in the agreed installation. Do not restart product workers or
 activate providers. Keep old and new dispatch ownership mutually exclusive;

@@ -572,7 +572,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
           const catalog = options.workCatalogObserver.catalog();
           const current = options.workCatalogObserver.snapshot();
           if (!catalog || current.status !== 'available' || typeof current.revision !== 'string') return reply.code(409).send({ error: 'work_catalog_stale', state: state() });
-          const result = await enqueueGraphFrontier(options.graphDispatch, catalog, current.revision, store);
+          const result = await enqueueGraphFrontier(options.graphDispatch, catalog, current.revision, store, options.workCatalogObserver.configuration.path);
           return { result, state: state() };
         }
         if (action.type === 'enqueue') {

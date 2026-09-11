@@ -27,7 +27,7 @@ describe('owner graph frontier enqueue', () => {
     await writeFile(packetPath, JSON.stringify(packet), { mode: 0o600 });
     const packetDigest = createHash('sha256').update(await readFile(packetPath)).digest('hex');
     const now = new Date(); const checks = SPRINT_CHECKS.filter(id => id !== 'manager_wakeup').map(id => ({ id, state: 'passed', revision: 'r1', owner: 'Foreman', evidence: 'receipt:current', source: id.endsWith('_goal') ? 'platform' : 'controller', observedAt: new Date(now - 1_000).toISOString(), validUntil: new Date(now.getTime() + 60_000).toISOString(), ...(id.startsWith('builder_') ? { workItemId: 'CWM-006', threadId: ids.builder } : {}), ...(id === 'foreman_goal' ? { threadId: ids.manager } : {}) }));
-    const readiness = { format: 'faktori.sprint-readiness/v1', sprintId: 'sprint', revision: 'r1', mode: 'attended', managerThreadId: ids.manager, targets: [{ workItemId: 'CWM-006', threadId: ids.builder }], artifactBindings: [{ path: packetPath, sha256: packetDigest }], checks };
+    const readiness = { format: 'faktori.sprint-readiness/v1', sprintId: 'sprint', revision: 'r1', mode: 'attended', managerThreadId: ids.manager, targets: [{ workItemId: 'CWM-006', threadId: ids.builder }], artifactBindings: [{ path: packetPath, sha256: packetDigest }, { path: catalogPath, sha256: packet.catalogRevision }], checks };
     await writeFile(readinessPath, JSON.stringify(readiness), { mode: 0o600 });
     const coordinator = await DurableCoordinator.open({ factoryId: 'factory', journalPath: join(directory, 'ops.jsonl'), projectionPath: join(directory, 'projection.sqlite'), identity: { instanceId: 'test', pid: process.pid, processStartedAt: 'now' }, limits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 5, maxTokens: 100, strictSpending: false, strictSpendingSupported: false } }); await coordinator.claim();
     const store = await ManagerConnectedStore.open({ directory: join(directory, 'manager'), sprintReadinessPath: readinessPath, manager: { threadId: ids.manager, title: 'Foreman' }, sessions: [{ id: 'builder', threadId: ids.builder, title: 'Builder', role: 'implementer', productId: 'faktori', planId: 'console-plan', phaseId: 'batch-one', ticketId: 'CWM-006' }] });
@@ -42,7 +42,9 @@ describe('owner graph frontier enqueue', () => {
     expect((await app.inject({ method: 'POST', url: '/api/console/manager-connected', headers, payload: { type: 'enqueue_frontier' } })).statusCode).toBe(409); expect(store.snapshot().requests).toHaveLength(1);
     await writeFile(packetPath, JSON.stringify(packet)); readiness.artifactBindings[0].sha256 = createHash('sha256').update(await readFile(packetPath)).digest('hex'); await writeFile(readinessPath, JSON.stringify(readiness));
     const staleCatalog = structuredClone(catalog); staleCatalog.projects[0].title = 'New catalog revision'; await writeFile(catalogPath, JSON.stringify(staleCatalog)); await observer.refresh();
+    await expect(store.operate({ type: 'claim', id: store.snapshot().requests[0].id })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
     expect((await app.inject({ method: 'POST', url: '/api/console/manager-connected', headers, payload: { type: 'enqueue_frontier' } })).statusCode).toBe(409); expect(store.snapshot().requests).toHaveLength(1);
+    await writeFile(catalogPath, JSON.stringify(catalog));
     await writeFile(packetPath, JSON.stringify({ ...packet, catalogRevision: 'changed' }));
     await expect(store.operate({ type: 'claim', id: store.snapshot().requests[0].id })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
   });

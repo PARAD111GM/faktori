@@ -82,13 +82,19 @@ export interface GraphDispatchResult {
   receipts: Array<{ nodeId: string; requestId: string; status: 'enqueued' | 'duplicate' | 'failed'; detail?: string }>;
 }
 
-export async function enqueueGraphFrontier(configuration: GraphDispatchConfiguration, catalog: WorkCatalog, catalogRevision: string, store: ManagerConnectedStore): Promise<GraphDispatchResult> {
+export async function enqueueGraphFrontier(configuration: GraphDispatchConfiguration, catalog: WorkCatalog, catalogRevision: string, store: ManagerConnectedStore, catalogPath: string): Promise<GraphDispatchResult> {
   const packetFile = await privateJson(configuration.path, 'graph_dispatch_packet');
   const input = packet(packetFile.value);
   if (input.catalogRevision !== catalogRevision) throw new Error('catalog_revision_conflict');
   const readinessFile = await privateJson(configuration.readinessPath, 'sprint_readiness');
   const readiness = record(readinessFile.value, 'sprint_readiness');
   if (readiness.revision !== input.sprintRevision || !Array.isArray(readiness.artifactBindings)) throw new Error('sprint_readiness_binding_missing');
+  // The same artifact verification runs at claim, even if the observer has not
+  // refreshed yet. Reapproving new catalog bytes changes the queued binding too.
+  if (!isAbsolute(catalogPath) || !readiness.artifactBindings.some(value => {
+    const binding = value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+    return binding?.path === resolve(catalogPath) && binding.sha256 === catalogRevision;
+  })) throw new Error('graph_dispatch_catalog_not_readiness_bound');
   const packetPath = resolve(configuration.path);
   const packetDigest = createHash('sha256').update(packetFile.bytes).digest('hex');
   if (!readiness.artifactBindings.some(value => { const binding = value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined;

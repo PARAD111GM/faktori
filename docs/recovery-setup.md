@@ -58,6 +58,16 @@ inspection command is intentionally not a local-ticket importer.
 
 ### Graph engineering, not five independent automations
 
+Design reference: [Awesome Graph Engineering](https://github.com/DEEP-JLU/Awesome-Graph-Engineering)
+and its [survey](https://arxiv.org/abs/2608.21156). Their system-level framing
+separates task organization, agent coordination, runtime state and evolution.
+For Faktori this means the task dependency DAG alone is insufficient: assignment,
+context provenance, evidence, recovery and cost observations must remain linked.
+This is an architectural application of the survey, not a claim that a listed
+framework or autonomous optimization technique is validated for this factory.
+Keep routine graph evaluation deterministic; require measured delivery benefit
+before adding inference-driven graph optimization or another storage engine.
+
 Use the existing validated hierarchy and scoped context assembler as the graph
 foundation. Jira provides ticket/dependency observations, GitHub supplies
 revision-bound PR/delivery evidence, Codex supplies assignment/goal observations,
@@ -97,7 +107,7 @@ browser cannot select a file or provide its own graph or passing observations.
 The owner-authenticated Manager-connected endpoint accepts
 `{ "type": "enqueue_frontier" }`. It recomputes eligibility from the packet,
 checks current catalog/session scope, and queues bounded context through the
-existing durable relay. The packet itself must be hash-bound in readiness
+existing durable relay. The packet and current catalog file must be hash-bound in readiness
 `artifactBindings`, so changing it after enqueue prevents claim until the new
 inputs are reviewed. Identical requests retain stable identities; they do not
 create duplicate builders. Enqueue is not task launch, native-goal verification,

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as nativeGoals from '../../src/sprint/codex-goal.ts';
 import { evaluateSprintReadiness, SPRINT_CHECKS } from '../../src/sprint/readiness.ts';
 import { ManagerConnectedStore } from '../../src/manager-connected/index.ts';
 import { mkdtemp, writeFile, rm, chmod } from 'node:fs/promises';
@@ -48,6 +49,18 @@ describe('sprint admission', () => {
       await writeFile(path, JSON.stringify(input));
       await store.operate(action);
       await expect(store.operate({ ...action, id: 'duplicate-ticket' })).rejects.toMatchObject({ code: 'sprint_assignment_busy' });
+      // A still-passing document cannot authorize a builder whose real goal
+      // ended. A failed claim leaves the queued request recoverable.
+      const probe = vi.spyOn(nativeGoals, 'observeCodexGoal').mockImplementation(async threadId => ({
+        format: 'faktori.codex-goal-observation/v1', threadId, observedAt: new Date().toISOString(),
+        status: threadId === builder ? 'inactive' : 'active',
+        goal: { status: threadId === builder ? 'complete' : 'active', objectivePresent: true },
+      }));
+      try {
+        await expect(store.operate({ type: 'claim', id: 'test-request' })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
+        expect(store.snapshot().requests[0].status).toBe('queued');
+        expect(probe.mock.calls.map(([id]) => id).sort()).toEqual([manager, builder].sort());
+      } finally { probe.mockRestore(); }
       await writeFile(intent, 'Changed intent');
       await expect(store.operate({ type: 'claim', id: 'test-request' })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
       await writeFile(intent, 'Approved intent');
@@ -65,6 +78,23 @@ describe('sprint admission', () => {
       store = await ManagerConnectedStore.open(config);
       await expect(store.operate({ type: 'claim', id: 'test-request' })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
       await store.operate({ type: 'cancel', id: 'test-request' });
+      await store.operate({ ...action, id: 'fresh-request' });
+      const activeProbe = vi.spyOn(nativeGoals, 'observeCodexGoal').mockImplementation(async threadId => ({
+        format: 'faktori.codex-goal-observation/v1', threadId, observedAt: new Date().toISOString(),
+        status: 'active', goal: { status: 'active', objectivePresent: true },
+      }));
+      try {
+        activeProbe.mockImplementationOnce(async threadId => {
+          await writeFile(intent, 'Changed during native observation');
+          return { format: 'faktori.codex-goal-observation/v1', threadId, observedAt: new Date().toISOString(),
+            status: 'active', goal: { status: 'active', objectivePresent: true } };
+        });
+        await expect(store.operate({ type: 'claim', id: 'fresh-request' })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
+        expect(store.snapshot().requests.find(r => r.id === 'fresh-request').status).toBe('queued');
+        await writeFile(intent, 'Approved intent');
+        await expect(store.operate({ type: 'claim', id: 'fresh-request' })).resolves.toMatchObject({ type: 'claim' });
+        expect(store.snapshot().requests.find(r => r.id === 'fresh-request').status).toBe('claimed');
+      } finally { activeProbe.mockRestore(); }
     } finally { await store.close(); await rm(root, { recursive: true, force: true }); }
   });
   it('admits only current correlated observations and never treats a prompt as a native goal', () => {

@@ -5,6 +5,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 
 import type { ScopedWorkAssignment } from '../console/work-management.ts';
 import { readSprintReadiness, requireSprintReadiness, type SprintReadinessReport } from '../sprint/readiness.ts';
+import { observeCodexGoal } from '../sprint/codex-goal.ts';
 
 export interface ManagerConnectedManager {
   threadId: string;
@@ -1074,6 +1075,21 @@ export class ManagerConnectedStore {
       if (sprintBinding !== request.sprintBinding) fail('sprint_admission_blocked', 'Sprint evidence changed after enqueue. Cancel and enqueue fresh work; old context cannot inherit new approval.');
       this.checkSprintCapacity(assignment, request.id);
       if (request.status !== 'queued') fail('claim_not_available', `request ${request.id} is ${request.status}; claimed work is never retried automatically`);
+      if (this.#config.sprintReadinessPath) {
+        // Polling the Console does not launch vendor processes. Verify actual
+        // native goals only at the execution handoff, inside the serialized claim.
+        const targets = [this.#config.manager.threadId, assignment.threadId];
+        const observations = await Promise.all(targets.map(threadId => observeCodexGoal(threadId)));
+        const rejected = observations.findIndex((observation, i) => observation.status !== 'active'
+          || observation.threadId !== targets[i] || observation.goal?.status !== 'active'
+          || observation.goal.objectivePresent !== true);
+        if (rejected !== -1) fail('sprint_admission_blocked',
+          `${rejected === 0 ? 'Foreman' : 'Builder'} native goal is ${observations[rejected]?.status ?? 'unavailable'}. Verify the registered task with faktori sprint goal before claiming work; no task was started.`);
+        // External observation takes time; do not admit if approved files or
+        // readiness expired/changed while the vendor responded.
+        if (await this.checkSprint(assignment) !== sprintBinding)
+          fail('sprint_admission_blocked', 'Sprint evidence changed during native goal verification. Reconcile before claiming work.');
+      }
       const claimedAt = new Date().toISOString();
       await this.append('claimed', { ...request, status: 'claimed', claimedAt });
       return {

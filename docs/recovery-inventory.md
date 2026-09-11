@@ -117,3 +117,13 @@ read-only native-goal integration proof, not proof of the complete sprint.
 The final goal/admission regression run passed eight tests across two files;
 build passed and independent read-only review cleared the repaired protocol,
 redaction and process-cleanup boundary.
+
+### Fresh goals at execution handoff
+
+Recovery-mode relay claims now query the native Foreman and builder goals before
+recording the claim. The final focused regression run passed 29 tests across
+four files, including an ended builder goal leaving work queued, active goals
+allowing a claim, and artifact changes during observation blocking admission.
+Typecheck, build and independent read-only review passed. Enqueue, dashboard
+polling and legacy relays remain free of native goal probes. This closes the
+stale-goal handoff gap; it does not launch desktop tasks or prove callbacks.

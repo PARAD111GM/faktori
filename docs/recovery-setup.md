@@ -218,6 +218,14 @@ active goal does not prove a live worker, matching approved objective, desktop
 visibility, callback delivery or idle-Foreman wake-up. Those require separate
 evidence; the objective text is deliberately not exported by this diagnostic.
 
+For a relay opted into recovery with `sprintReadinessPath`, each new claim also
+queries the actual Foreman and assigned builder goals. Both must be active;
+failure leaves the request queued and does not start a task. The controller
+rechecks the private readiness binding after the queries so that expired or
+changed evidence cannot pass during the wait. This happens at claim time, not
+on dashboard polling or enqueue. Recorded readiness is a snapshot, not a live
+worker-health guarantee. Legacy relays without sprint readiness are unchanged.
+
 The method is documented in the
 [official Codex app-server goal documentation](https://learn.chatgpt.com/docs/app-server#manage-a-thread-goal).
 Unsupported CLI versions and inaccessible local state fail closed. Fix that

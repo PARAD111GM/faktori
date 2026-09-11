@@ -34,3 +34,22 @@ Local tests cannot establish the connected journey. Release acceptance remains
 pending until an authorized Jira ticket is claimed, a visible goal-driven builder
 delivers a PR, substantive review passes, Slack delivery is verified, the merge
 owner merges, deployment and staging acceptance pass, and Jira/Console reconcile.
+
+## Construction verification — 2026-09-11
+
+Graph/readiness fixes at `08a5a367ff3155ccc43622c164b078272436f587` passed
+typecheck, build and the focused graph/admission suites (12 tests). Independent
+read-only review verified both final fixes: current tracker blockers override
+older satisfied graph evidence, and readiness expiry uses applicable checks.
+
+The serial full-suite run completed with 574 passing tests across 77 files.
+That run began at `67ecf6e` and overlapped the final two regression fixes; the
+focused suites above were rerun after those changes. Earlier concurrent runs
+had timeouts, not assertion failures; their unchanged affected suites passed
+when run alone. No timeout threshold was weakened.
+
+Packed CLI verification passed under Node 24.20.0 / npm 12.0.2 in a clean
+temporary install. The final source was rebuilt after the last fix. These
+receipts establish local construction behavior, not installed integration,
+native task wake-up, notification delivery or staging acceptance. No product
+worker was restarted and no release was published during this verification.

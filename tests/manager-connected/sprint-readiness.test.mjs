@@ -32,8 +32,9 @@ describe('sprint admission', () => {
       if (c.id.startsWith('builder_')) c.threadId = builder;
       if (c.id === 'foreman_goal') c.threadId = manager;
     }
-    const store = await ManagerConnectedStore.open({ directory: join(root, 'relay'), sprintReadinessPath: path,
-      manager: { threadId: manager, title: 'Foreman' }, sessions: [{ id: 'builder', threadId: builder, title: 'Builder', role: 'implementer', productId: 'product', ticketId: 'T-1' }] });
+    const config = { directory: join(root, 'relay'), sprintReadinessPath: path,
+      manager: { threadId: manager, title: 'Foreman' }, sessions: [{ id: 'builder', threadId: builder, title: 'Builder', role: 'implementer', productId: 'product', ticketId: 'T-1' }] };
+    let store = await ManagerConnectedStore.open(config);
     const action = { type: 'enqueue', id: 'test-request', sessionId: 'builder', title: 'Implement ticket', instruction: 'Read approved context then implement.' };
     try {
       await expect(store.operate(action)).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
@@ -59,6 +60,9 @@ describe('sprint admission', () => {
       input.checks[0].validUntil = new Date(Date.now() + 120000).toISOString();
       await writeFile(path, JSON.stringify(input));
       expect((await store.sprintReadiness()).ready).toBe(true);
+      await expect(store.operate({ type: 'claim', id: 'test-request' })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
+      await store.close();
+      store = await ManagerConnectedStore.open(config);
       await expect(store.operate({ type: 'claim', id: 'test-request' })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
       await store.operate({ type: 'cancel', id: 'test-request' });
     } finally { await store.close(); await rm(root, { recursive: true, force: true }); }

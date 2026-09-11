@@ -53,3 +53,10 @@ temporary install. The final source was rebuilt after the last fix. These
 receipts establish local construction behavior, not installed integration,
 native task wake-up, notification delivery or staging acceptance. No product
 worker was restarted and no release was published during this verification.
+
+The subsequent owner-triggered graph enqueue change at `c4b3c87` passed build,
+typecheck and 49 Console/relay/prepare tests. A further focused admission test
+also passed after closing and reopening the relay: refreshed passing readiness
+still cannot authorize a request queued with older evidence. This is an
+owner-triggered queue operation, not proof of automatic replacement dispatch or
+platform task execution.

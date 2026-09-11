@@ -103,6 +103,12 @@ inputs are reviewed. Identical requests retain stable identities; they do not
 create duplicate builders. Enqueue is not task launch, native-goal verification,
 or permission to merge.
 
+Queued requests retain the exact readiness digest through restart. Replacing
+that readiness document (even with a new passing observation) does not authorize
+an old queued instruction: cancel it and enqueue from the refreshed packet.
+This conservative first implementation also treats an expiry-only refresh as a
+new admission. Do not continuously rewrite unchanged readiness records.
+
 The packet uses `format: "faktori.graph-dispatch/v1"`, `sprintRevision`,
 `catalogRevision`, `graph` (the delivery-plan input described above), and
 `assignments`. Each assignment names `nodeId`, a preconfigured `sessionId`,

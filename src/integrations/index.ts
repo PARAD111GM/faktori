@@ -4,5 +4,7 @@ export * from './progression.ts';
 export * from './deployment.ts';
 export * from './delivery-sync.ts';
 export * from './delivery-inspect.ts';
+export * from './delivery-observation.ts';
+export * from './delivery-composer.ts';
 export * from './delivery-graph.ts';
 export * from './slack.ts';

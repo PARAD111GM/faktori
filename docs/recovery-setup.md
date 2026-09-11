@@ -249,6 +249,33 @@ weakening validation. No automatic retries or model probes are performed.
 
 ## Notification and delivery authority
 
+### Observation-to-action composition
+
+`observeDeliveryForSynchronization` reads the configured Jira sprint, per-ticket
+transitions, and registered GitHub PR/checks through the existing inspection
+adapters. It replaces old ticket status and check results rather than treating
+stored snapshots as current truth. Missing sprint membership, unavailable or
+closed PRs, and mismatched identities are reported as unavailable and excluded
+from writes. Independent review is retained only for its exact head; deployment
+and staging acceptance receipts remain separate and must match the observed
+merge revision. GitHub review summaries never become an independent review.
+
+`createDeliveryTransitionController` is the production composition entry point.
+It constructs the Jira executor and required final evidence hook together; do
+not manually assemble a composer with an unguarded executor. Supply the existing
+action journal, private grant vault, current authority store and signer. Retain
+the binding's original request timestamp and stable signed request/nonce for
+each idempotency key across restarts; generating a new signature identity for an
+old operation is rejected, not treated as permission to retry.
+
+The controller composition API uses an existing signed-action grant and explicit
+ticket/run/repository/revision binding. It does not mint authority or launch a
+builder. The Jira executor's `beforeWrite` hook rechecks delivery evidence after
+Jira reconciliation, followed by the existing final authority guard. A changed
+candidate or revoked grant prevents the transition. These APIs are construction
+components: their presence alone does not configure a running Console or prove
+an installed delivery chain.
+
 Wire Slack through `SlackRouterActionExecutor` and the existing signed
 `slack.notify` action boundary. Configure logical-channel allowlists, fixed
 router URLs and private auth callbacks in the controller, never browser input.

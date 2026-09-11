@@ -177,3 +177,25 @@ invalid keys and unapproved destinations remain rejected. All ten Slack outbox
 behavior tests, strict typecheck and build passed, with an independent read-only
 review reporting no findings. These are deterministic local tests, not a live
 Slack delivery receipt.
+
+### Observation-to-action construction increment
+
+The resumed build added a live inspection reconciliation adapter and a signed
+delivery-transition controller. Fresh Jira status and GitHub checks replace
+stored snapshots; closed/unavailable/out-of-sprint or mismatched work cannot
+advance. Retained independent review and deployment/acceptance evidence must
+match current revisions. PR identity is included in operation idempotency.
+
+The production constructor always connects the post-reconciliation evidence
+check before the existing final authority guard. It consumes existing grants;
+it does not mint authority. Repeated/concurrent synchronization and uncertain
+prior actions do not submit duplicate writes. The final focused run passed 22
+tests across composer, observation, inspection and Jira suites. Independent
+review verified the repaired PR-identity and mandatory-hook boundaries.
+
+Console startup configuration, durable installed authority bindings and actual
+delivery observation sources still need to be connected. These new components
+do not by themselves restore the installed factory. The earlier integration
+suite had one localhost-server failure under the sandbox; all five deployment
+adapter tests passed when rerun with loopback binding permitted. No product
+deployment was performed by that test.

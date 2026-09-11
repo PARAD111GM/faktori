@@ -57,6 +57,8 @@ export interface JiraRestExecutorOptions {
   transitions: Readonly<Record<string, JiraTransition>>;
   /** Called only inside the controller process. Its value is never retained by this adapter. */
   authorizationHeader?: () => Promise<string>;
+  /** Optional controller evidence gate after reconciliation, before authority/effect. */
+  beforeWrite?: (action: AuthorizedAction, operation: JiraOperation) => Promise<void>;
 }
 
 class JiraConfigurationError extends Error {}
@@ -85,12 +87,14 @@ export class JiraRestActionExecutor implements ControllerActionExecutor {
   readonly #operationFor: JiraRestExecutorOptions['operationFor'];
   readonly #transitions: JiraRestExecutorOptions['transitions'];
   readonly #authorizationHeader?: JiraRestExecutorOptions['authorizationHeader'];
+  readonly #beforeWrite?: JiraRestExecutorOptions['beforeWrite'];
 
   constructor(options: JiraRestExecutorOptions) {
     this.#client = options.client;
     this.#operationFor = options.operationFor;
     this.#transitions = options.transitions;
     this.#authorizationHeader = options.authorizationHeader;
+    this.#beforeWrite = options.beforeWrite;
   }
 
   async execute(action: AuthorizedAction, guard: () => Promise<void>): Promise<ActionExecutionResult> {
@@ -109,6 +113,8 @@ export class JiraRestActionExecutor implements ControllerActionExecutor {
 
   private async executeConfigured(action: AuthorizedAction, operation: JiraOperation, guard: () => Promise<void>): Promise<ActionExecutionResult> {
     if (await this.reconciled(action, operation)) return { outcome: 'safe_noop', detail: 'Jira already reflects this idempotent action' };
+    try { await this.#beforeWrite?.(action, operation); }
+    catch { return { outcome: 'blocked', detail: 'delivery_evidence_changed_before_write' }; }
     await guard(); // Immediately precedes the only possible externally visible write.
     const response = await this.write(action, operation);
     if (response.status >= 200 && response.status < 300) return { outcome: 'completed', detail: `Jira ${operation.kind} completed` };

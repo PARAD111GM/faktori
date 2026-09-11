@@ -75,6 +75,7 @@ export interface InspectedPullRequest {
   state: 'available' | 'unknown';
   headCommit?: string;
   merged?: boolean;
+  closed?: boolean;
   mergeCommit?: string;
   checks?: readonly { name: string; state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'SKIPPING' }[];
   /** GitHub reviewDecision is not retained exact-head independent-review evidence. */
@@ -132,7 +133,7 @@ async function inspectPullRequest(connection: DeliveryConnection, command: GitHu
     if ((state !== 'OPEN' && state !== 'CLOSED' && state !== 'MERGED') || typeof headCommit !== 'string' || headCommit.length === 0 || (rawMerge !== undefined && typeof rawMerge !== 'string')) return unavailablePullRequest(connection);
     const merged = state === 'MERGED' && typeof body?.mergedAt === 'string';
     const checks = await new GitHubRepositoryObserver(command).observeChecks({ repository: connection.repository, expectedRevision: headCommit });
-    return { ...connection, state: 'available', headCommit, merged, ...(typeof rawMerge === 'string' ? { mergeCommit: rawMerge } : {}), checks: checks.map(({ name, state: checkState }) => ({ name, state: checkState })), independentReview: 'unknown', deployment: 'unknown' };
+    return { ...connection, state: 'available', headCommit, merged, closed: state === 'CLOSED', ...(typeof rawMerge === 'string' ? { mergeCommit: rawMerge } : {}), checks: checks.map(({ name, state: checkState }) => ({ name, state: checkState })), independentReview: 'unknown', deployment: 'unknown' };
   } catch { return unavailablePullRequest(connection); }
 }
 

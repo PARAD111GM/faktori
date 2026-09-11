@@ -127,3 +127,27 @@ allowing a claim, and artifact changes during observation blocking admission.
 Typecheck, build and independent read-only review passed. Enqueue, dashboard
 polling and legacy relays remain free of native goal probes. This closes the
 stale-goal handoff gap; it does not launch desktop tasks or prove callbacks.
+
+### Live Triforge operator-route inspection
+
+On 2026-09-11 the existing GitHub `ops` route was readable. Run `34627149163`
+was observed in progress for TWZ-81 at Triforge revision
+`ca0c70dbed3f2ae2bf53292b9e09c346ae6a462d`; preceding runs `34624318592` and
+`34621444455` had failed. Thus an old scheduler is still issuing work; a new
+Faktori scheduler must not assume exclusive ownership from local Console state.
+
+The completed run `34624318592` failed at publication: GitHub refused creation
+or update of `.github/workflows/pr-playtest.yml` by the publisher App without
+`workflows` permission. This is a publishing capability failure, not a builder
+quality or merge-owner response failure. An authorized App owner must resolve
+the permission boundary or approve a different publication route. No permission
+was changed, run cancelled/retried, notification sent, or product file edited.
+
+The repository's `ops.yml` defaults `deploy` to true and syncs source before
+execution; it must not be invoked as an innocent status probe. No workflow was
+dispatched during this inspection. Jira/n8n direct connector access remains
+unavailable to the construction task. Required recovery preflight now includes
+`dispatch_ownership`, with existing workers and scheduler scope reconciled before
+new admission; a source-defined check is not a claim that live cutover occurred.
+The focused admission/graph regression passed six tests, with strict typecheck
+and build passing after the required-check addition.

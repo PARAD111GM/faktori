@@ -111,6 +111,10 @@ describe('sprint admission', () => {
       const input = document(); change(input);
       expect(evaluateSprintReadiness(input, { workItemId: 'T-1', threadId: 'builder' }, now).ready).toBe(false);
     }
+    const overlapping = document();
+    overlapping.checks = overlapping.checks.filter(c => c.id !== 'dispatch_ownership');
+    expect(evaluateSprintReadiness(overlapping, undefined, now)).toMatchObject({ ready: false,
+      blockers: expect.arrayContaining([expect.objectContaining({ id: 'dispatch_ownership' })]) });
   });
   it('requires wake-up proof for unattended execution and exposes attended-only explicitly', () => {
     const input = document(); input.mode = 'unattended';

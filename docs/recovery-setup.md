@@ -183,7 +183,7 @@ Readiness document shape:
 
 This example intentionally cannot pass. Required check IDs are exported as
 `SPRINT_CHECKS`: intent, scope, ticket_reconciliation, dependencies, ready_queue,
-shared_files, execution_environment, jira, github, slack, review_policy,
+shared_files, dispatch_ownership, execution_environment, jira, github, slack, review_policy,
 merge_owner, staging_access, foreman_goal, completion_transport, manager_wakeup,
 builder_goal and builder_artifacts. Every applicable check needs `state`,
 `revision`, `owner`, `source`, `evidence`, `observedAt` and `validUntil`.
@@ -193,6 +193,14 @@ platform evidence and exact task correlation. Builder checks also bind
 workItemId and threadId. Foreman goal binds managerThreadId through threadId.
 Source labels describe the retained evidence; the evaluator is not a platform
 signature verifier and must never receive worker-controlled records.
+
+`dispatch_ownership` requires a current controller observation of existing
+schedulers, queued jobs and surviving workers, with the agreed single dispatch
+owner for this sprint. In particular, inspect live Triforge Actions runs before
+enabling Faktori admission. A quiet Console or an old lock is not proof that the
+old scheduler stopped. An active job must be reconciled, not restarted or
+cancelled by setup. Record the authorized cutover or non-overlapping work scope;
+do not manufacture a passing observation from a checklist assertion.
 
 `unattended` additionally requires verified manager_wakeup. Attended mode does
 not claim automatic wake-up. Every bound artifact is hashed again at admission;

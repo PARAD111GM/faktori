@@ -4,7 +4,7 @@ import { open } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 
 export const SPRINT_CHECKS = ['intent', 'scope', 'ticket_reconciliation', 'dependencies', 'ready_queue',
-  'shared_files', 'execution_environment', 'jira', 'github', 'slack', 'review_policy', 'merge_owner',
+  'shared_files', 'dispatch_ownership', 'execution_environment', 'jira', 'github', 'slack', 'review_policy', 'merge_owner',
   'staging_access', 'foreman_goal', 'completion_transport', 'manager_wakeup', 'builder_goal', 'builder_artifacts'] as const;
 type CheckId = typeof SPRINT_CHECKS[number];
 export interface SprintAdmissionTarget { workItemId: string; threadId: string; managerThreadId?: string; }
@@ -24,6 +24,7 @@ function stamp(value: unknown): number { return typeof value === 'string' ? Date
 const LABELS: Record<CheckId, string> = {
   intent: 'Approved project intent', scope: 'Bounded sprint outcome and acceptance', ticket_reconciliation: 'Reconciled sprint tickets',
   dependencies: 'Verified dependencies', ready_queue: 'Eligible replacement work', shared_files: 'Shared-file ownership',
+  dispatch_ownership: 'Exclusive dispatch ownership and existing-worker reconciliation',
   execution_environment: 'Executable tools and environment', jira: 'Ticket management capability', github: 'Repository and PR capability',
   slack: 'Notification delivery capability', review_policy: 'Substantive reviewer and approved policy', merge_owner: 'Merge authority',
   staging_access: 'Staging verification access', foreman_goal: 'Active Foreman native goal', completion_transport: 'Verified completion transport',

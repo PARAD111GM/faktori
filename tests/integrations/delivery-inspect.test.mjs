@@ -5,6 +5,30 @@ import { inspectDeliveryConnections, parseDeliveryConnections } from '../../src/
 const configuration = { format: 'faktori.delivery-connections/v1', jira: { baseUrl: 'https://jira.example.test', boardId: '7', authorizationEnv: 'JIRA_AUTH' }, connections: [{ ticketKey: 'OPS-1', repository: 'acme/repo', pullRequest: 3 }] };
 
 describe('read-only delivery inspection', () => {
+  it('bounds setup observation concurrency and prevents credential-bearing Jira redirects', async () => {
+    let active = 0;
+    let peak = 0;
+    const options = [];
+    const requests = [];
+    const connections = Array.from({ length: 9 }, (_, index) => ({ ticketKey: `OPS-${index + 1}`, repository: 'acme/repo', pullRequest: index + 1 }));
+    const result = await inspectDeliveryConnections({ ...configuration, connections }, {
+      environment: { JIRA_AUTH: 'Bearer private-value' },
+      fetcher: async (_url, init) => { requests.push(init); throw new Error('redirect refused'); },
+      gh: async (_argv, _input, option) => {
+        options.push(option); active++; peak = Math.max(peak, active);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        active--;
+        return { exitCode: 1, stdout: '', stderr: 'unavailable' };
+      },
+    });
+    expect(peak).toBeLessThanOrEqual(4);
+    expect(options.every(option => option?.timeoutMs === 10000)).toBe(true);
+    expect(requests.every(init => init.redirect === 'error' && init.signal instanceof AbortSignal)).toBe(true);
+    expect(result.pullRequests).toHaveLength(9);
+    expect(result.pullRequests.every(item => item.state === 'unknown')).toBe(true);
+    expect(JSON.stringify(result)).not.toContain('private-value');
+  });
+
   it('strictly accepts only credential-free configured identities', () => {
     expect(parseDeliveryConnections(configuration)).toEqual(configuration);
     expect(() => parseDeliveryConnections({ ...configuration, jira: { ...configuration.jira, authorization: 'secret' } })).toThrow('unsupported fields');

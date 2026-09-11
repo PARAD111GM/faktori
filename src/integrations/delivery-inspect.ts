@@ -100,10 +100,19 @@ export async function inspectDeliveryConnections(value: unknown, dependencies: D
   const configuration = parseDeliveryConnections(value);
   const environment = dependencies.environment ?? process.env;
   const authorization = environment[configuration.jira.authorizationEnv];
+  const boundedFetch: typeof fetch = (input, init) => (dependencies.fetcher ?? fetch)(input, {
+    ...init, redirect: 'error', signal: AbortSignal.timeout(10_000),
+  });
+  const boundedGh: GitHubCommand = (argv, input, options) => (dependencies.gh ?? spawnGh)(argv, input, { ...options, timeoutMs: 10_000 });
   const jira = authorization === undefined || authorization.trim().length === 0
     ? { sprint: { state: 'unknown' as const, reason: 'jira_authorization_unavailable' }, transitionsByTicket: Object.fromEntries(configuration.connections.map((connection) => [connection.ticketKey, undefined])) }
-    : await inspectJira(configuration, authorization, dependencies.fetcher ?? fetch);
-  const pullRequests = await Promise.all(configuration.connections.map((connection) => inspectPullRequest(connection, dependencies.gh ?? spawnGh)));
+    : await inspectJira(configuration, authorization, boundedFetch);
+  const pullRequests: InspectedPullRequest[] = [];
+  // Each PR performs sequential reads. Bound the whole inspection to four
+  // subprocesses rather than launching every configured repository at once.
+  for (let offset = 0; offset < configuration.connections.length; offset += 4) {
+    pullRequests.push(...await Promise.all(configuration.connections.slice(offset, offset + 4).map(connection => inspectPullRequest(connection, boundedGh))));
+  }
   return { format: 'faktori.delivery-inspection/v1', sprint: jira.sprint, transitionsByTicket: jira.transitionsByTicket, pullRequests };
 }
 

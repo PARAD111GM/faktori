@@ -260,6 +260,13 @@ from writes. Independent review is retained only for its exact head; deployment
 and staging acceptance receipts remain separate and must match the observed
 merge revision. GitHub review summaries never become an independent review.
 
+The standalone `faktori delivery inspect <connections.json>` setup command
+uses the same bounded read path: at most four PR observations at a time,
+ten-second limits on individual Jira/GitHub calls, and no Jira redirects.
+Timeouts or refused redirects remain unavailable observations, not successful
+capability checks. A complete scan can take longer than ten seconds because
+it includes multiple reads; this is a per-call bound, not a whole-scan deadline.
+
 `createDeliveryTransitionController` is the production composition entry point.
 It constructs the Jira executor and required final evidence hook together; do
 not manually assemble a composer with an unguarded executor. Supply the existing

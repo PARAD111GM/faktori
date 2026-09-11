@@ -267,3 +267,13 @@ consumer are cleaned up by the verifier; this is not a published download.
 These checks establish package usability and regression evidence, not the live
 connected release gate. In particular they do not establish installed grants,
 native-task wake-up, Jira/Slack access, or an accepted staging journey.
+
+### Bounded setup inspection
+
+The standalone delivery inspection command previously launched all configured
+PR observations together and used an unbounded default Jira fetch. A behavior
+regression measured nine simultaneous PR reads before the fix. Inspection now
+limits that fan-out to four, forces ten-second Jira/GitHub call timeouts, and
+rejects Jira redirects. Fourteen targeted inspection/observation/runtime tests
+passed after the fix, as did typecheck. These are simulated transport tests,
+not proof of any installation's Jira credentials.

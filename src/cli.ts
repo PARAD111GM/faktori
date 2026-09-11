@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
 import { readSprintReadiness } from './sprint/readiness.ts';
+import { observeCodexGoal } from './sprint/codex-goal.ts';
 import { inspectDeliveryConnections } from './integrations/delivery-inspect.ts';
 import { planGraphDelivery, type GraphDeliveryInput } from './integrations/delivery-graph.ts';
 import { callManagerRelay } from './console/manager-relay.ts';
@@ -57,6 +58,7 @@ const HELP = `Usage:
   faktori loop publication publish <request.json>
   faktori preflight <request.json>
   faktori sprint readiness <private-readiness.json>
+  faktori sprint goal <codex-task-id>
   faktori delivery inspect <connections.json>
   faktori delivery plan <graph-delivery.json>
   faktori readiness report <local-console.json>
@@ -114,6 +116,13 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'sprint' && action === 'goal') {
+    if (!source || argv.length !== 3) throw new Error('sprint goal requires one explicitly registered Codex task ID');
+    const report = await observeCodexGoal(source);
+    print(report);
+    if (report.status !== 'active') process.exitCode = 1;
+    return;
+  }
   if (group === 'delivery' && action === 'plan') {
     if (!source || argv.length !== 3) throw new Error('delivery plan requires one controller graph/evidence packet');
     print(planGraphDelivery(await json(source, 'graph delivery') as GraphDeliveryInput));

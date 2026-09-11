@@ -201,6 +201,36 @@ missing or changed content blocks. A failed check has no browser override.
 and exits nonzero when blocked. Registered recovery tickets cannot bypass the
 relay through the Console's native Start work control.
 
+## Read native goal evidence without starting work
+
+Run `faktori sprint goal <codex-task-id>` for each explicitly registered task.
+This starts a short-lived vendor `codex app-server` transport and sends only
+initialization and `thread/goal/get`. It does not resume a task, start inference,
+set a goal, scan history, or copy authentication. Codex may initialize its own
+local state database; the operating-system account must have access to that
+vendor-managed directory. Do not bypass this by copying subscription tokens.
+
+The JSON result distinguishes active, inactive, missing and unavailable. Only
+active exits successfully. Retain the observation privately and bind it to the
+approved sprint revision and exact task when preparing the goal readiness check.
+The diagnostic does not approve the sprint or update its readiness file. An
+active goal does not prove a live worker, matching approved objective, desktop
+visibility, callback delivery or idle-Foreman wake-up. Those require separate
+evidence; the objective text is deliberately not exported by this diagnostic.
+
+The method is documented in the
+[official Codex app-server goal documentation](https://learn.chatgpt.com/docs/app-server#manage-a-thread-goal).
+Unsupported CLI versions and inaccessible local state fail closed. Fix that
+boundary or collect the native observation in the authorized task environment;
+do not substitute an agent's assertion that `/goal` was requested.
+
+For `unavailable`, `invalid_task_id` means use the actual registered task UUID;
+`process_failed` means check the vendor CLI/PATH and local-state access;
+`timeout` means the query did not complete (not that the worker stopped);
+`protocol_error` or `output_limit` means the response could not be trusted.
+Verify the supported CLI in that environment rather than replacing a goal or
+weakening validation. No automatic retries or model probes are performed.
+
 ## Notification and delivery authority
 
 Wire Slack through `SlackRouterActionExecutor` and the existing signed

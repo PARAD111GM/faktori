@@ -77,7 +77,7 @@ credentials must not be copied into the construction task.
 
 The installed automatic observer-to-signed-action composition and desktop task
 launch remain incomplete. A
-platform-native goal observation producer and verified idle-Foreman wake-up are
+verified idle-Foreman wake-up is
 also not supplied by a readiness document. These remain implementation/integration
 work; granting access alone will not make this release complete. The connected
 staging exercise remains the release gate after those seams are finished.
@@ -92,3 +92,28 @@ The same private packet, catalog and readiness bindings apply. Build, typecheck
 and 52 Console/relay/graph regression tests passed. This advances automatic queue
 replenishment only: a queued request is not a launched desktop task, a native goal,
 a delivered notification, or accepted product work.
+
+### Native goal capability probe
+
+On 2026-09-11, vendor CLI `codex-cli 0.146.0` answered a read-only
+`thread/goal/get` for the explicitly named Foreman task
+`01a08469-997a-7070-a2dc-677638594579`: an active goal with a nonempty objective
+was observed. No objective text or credentials were exported. The probe sent
+only initialize, initialized and goal/get; it did not resume the task, start a
+turn or set a goal. Its initial sandboxed attempt could not initialize Codex's
+local SQLite runtime; the authorized local retry returned the observation.
+
+The default managed app-server control socket was absent. A short-lived stdio
+server nevertheless read the persisted goal. This proves native goal observation,
+not a shared desktop connection, matching approved sprint objective, live worker,
+task launch or wake-up. The bounded `sprint goal` diagnostic exposes this seam;
+other readiness checks and the connected delivery release gate remain separate.
+
+The implemented source CLI was then exercised against the same named task at
+`2026-09-11T17:22:53.924Z` and returned `status: active`, exit 0. Its focused
+behavior tests passed (three cases covering the read-only protocol, transport
+failure and evidence classification), and strict typecheck passed. This is
+read-only native-goal integration proof, not proof of the complete sprint.
+The final goal/admission regression run passed eight tests across two files;
+build passed and independent read-only review cleared the repaired protocol,
+redaction and process-cleanup boundary.

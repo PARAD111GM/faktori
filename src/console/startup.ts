@@ -52,6 +52,8 @@ export interface LocalConsoleConfiguration {
   /** Read-only tracker sources; credentials remain in server environment. */
   jiraSources?: JiraSource[];
   managerConnected?: ManagerConnectedConfig;
+  /** Opt-in private graph packet for owner-triggered frontier enqueue. */
+  graphDispatchPath?: string;
   /** Optional owner-maintained JSON catalog; its path is never sent to the browser. */
   workCatalog?: WorkCatalogConfiguration;
 }
@@ -406,11 +408,13 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
   const jiraSources = parseJiraSources(input.jiraSources, factoryConfiguration);
   const workCatalog = workCatalogConfiguration(input.workCatalog);
   const managerConnected = input.managerConnected === undefined ? undefined : parseManagerConnectedConfig(input.managerConnected);
+  const graphDispatchPath = input.graphDispatchPath === undefined ? undefined : absolutePath(input.graphDispatchPath, 'graphDispatchPath');
+  if (graphDispatchPath && (!managerConnected?.sprintReadinessPath || !workCatalog)) throw new Error('graphDispatchPath requires Manager-connected sprint readiness and a work catalog');
   if (managerConnected && factoryConfiguration) for (const session of managerConnected.sessions) {
     if (!factoryConfiguration.products.some((product) => product.id === session.productId)) throw new Error('managerConnected session must reference a configured product');
     if (session.podId && !factoryConfiguration.pods.some((pod) => pod.id === session.podId && pod.productId === session.productId)) throw new Error('managerConnected session pod must belong to its product');
   }
-  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: configuredLimits, managerLoops, ...(registry === undefined ? {} : { managerLoopRegistry: registry }), jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(workCatalog ? { workCatalog } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight === undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
+  return { factoryId, journalPath, projectionPath, port: Number(input.port), commandToken, allowedOrigins: [...new Set(input.allowedOrigins)], limits: configuredLimits, managerLoops, ...(registry === undefined ? {} : { managerLoopRegistry: registry }), jiraSources, ...(managerConnected ? { managerConnected } : {}), ...(graphDispatchPath ? { graphDispatchPath } : {}), ...(workCatalog ? { workCatalog } : {}), ...(factoryConfiguration === undefined ? {} : { factoryConfiguration }), ...(preflight ===undefined ? {} : { preflight }), ...(configuredRuntime === undefined ? {} : { runtime: configuredRuntime }) };
 }
 
 export interface StartedConsole {
@@ -873,7 +877,9 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     const nightlyConfig = configuration.runtime?.gm?.mode === 'nightly' ? configuration.runtime.gm : undefined;
     nightlyGM = nightlyConfig?.schedule && configured?.nightlyReview ? new NightlyGM({ schedule: nightlyConfig.schedule, instructions: nightlyConfig.instructions, store: new CoordinatorGMNightlyStore(coordinator), review: configured.nightlyReview, ownerDecisions: nightlyConfig.ownerDecisions, snapshot: refreshFactoryObservation }) : undefined;
     const relayToken = newManagerRelayToken();
-    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(workCatalogObserver ? { workCatalogObserver } : {}), ...(githubWorkObserver ? { githubWorkObserver } : {}), ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
+    const graphDispatch = configuration.graphDispatchPath && configuration.managerConnected?.sprintReadinessPath
+      ? { path: configuration.graphDispatchPath, readinessPath: configuration.managerConnected.sprintReadinessPath } : undefined;
+    app = createConsoleService({ coordinator, commandToken: configuration.commandToken ?? consoleCommandToken(), allowedOrigins: configuration.allowedOrigins, ownerActions: configured?.ownerActions ?? ownerActions, hierarchy: consoleHierarchy(configuration), preflight: configuration.preflight, settings: createConsoleSettings(configuration), settingsEditor: dependencies.settingsEditor, managerLoopObserver, ...(managerLoopRegistry ? { managerLoopRegistry } : {}), jiraObserver, ...(workCatalogObserver ? { workCatalogObserver } : {}), ...(githubWorkObserver ? { githubWorkObserver } : {}), ...(graphDispatch ? { graphDispatch } : {}), ...(managerStore ? { managerConnected: { store: managerStore, relayToken } } : {}), factoryGM: () => ({ ...coordinatorGMState(coordinator), ...(nightlyConfig ? { nightly: projectGMNightlyState(coordinatorGMNightlyAttempts(coordinator), nightlyConfig.schedule) } : {}), efficiency: factoryObservation.metrics }), ...(nightlyGM ? { requestGMReview: (requestId: string) => nightlyGM!.run({ type: 'owner_requested', requestId }), runScheduledGMReview: () => nightlyGM!.run({ type: 'scheduled' }) } : {}) });
     const listeningApp = app;
     pollInterval = setInterval(() => { void observer?.poll(); void refreshFactoryObservation(); }, dependencies.healthPollIntervalMs ?? 250);
     pollInterval?.unref();

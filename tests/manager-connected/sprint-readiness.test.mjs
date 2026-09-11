@@ -54,6 +54,12 @@ describe('sprint admission', () => {
       await writeFile(path, JSON.stringify(input));
       await expect(store.operate({ type: 'claim', id: 'test-request' })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
       expect(store.snapshot().requests[0].status).toBe('queued');
+      // Fresh passing evidence cannot retroactively approve the queued context.
+      input.checks.find(c => c.id === 'slack').state = 'passed';
+      input.checks[0].validUntil = new Date(Date.now() + 120000).toISOString();
+      await writeFile(path, JSON.stringify(input));
+      expect((await store.sprintReadiness()).ready).toBe(true);
+      await expect(store.operate({ type: 'claim', id: 'test-request' })).rejects.toMatchObject({ code: 'sprint_admission_blocked' });
       await store.operate({ type: 'cancel', id: 'test-request' });
     } finally { await store.close(); await rm(root, { recursive: true, force: true }); }
   });

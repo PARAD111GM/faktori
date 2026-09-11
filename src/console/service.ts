@@ -22,6 +22,7 @@ import type { ManagerConnectedStore } from '../manager-connected/index.ts';
 import { registerManagerRelay } from './manager-relay.ts';
 import { validateWorkScope, type WorkCatalogObserver, type WorkManagementDailyEvent } from './work-management.ts';
 import type { GitHubWorkObserver } from './github-observer.ts';
+import { enqueueGraphFrontier, type GraphDispatchConfiguration } from './graph-dispatch.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -70,6 +71,8 @@ export interface ConsoleServiceOptions {
   managerLoopRegistry?: ManagerLoopRegistry;
   jiraObserver?: JiraObserver;
   managerConnected?: { store: ManagerConnectedStore; relayToken: string };
+  /** Private controller-owned graph packet; owner can trigger one bounded frontier step. */
+  graphDispatch?: GraphDispatchConfiguration;
   workCatalogObserver?: WorkCatalogObserver;
   githubWorkObserver?: GitHubWorkObserver;
   factoryGM?: () => ReturnType<typeof coordinatorGMState> & { nightly?: GMNightlyState; efficiency: FactoryEfficiencyMetrics };
@@ -562,8 +565,16 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     app.post('/api/console/manager-connected', async (request, reply) => {
       if (!commandAuthorized(request, reply)) return reply;
       const action = object(request.body);
-      if (!action || !['enqueue', 'cancel'].includes(String(action.type))) return reply.code(400).send({ error: 'unsupported_owner_action' });
+      if (!action || !['enqueue', 'cancel', 'enqueue_frontier'].includes(String(action.type))) return reply.code(400).send({ error: 'unsupported_owner_action' });
       try {
+        if (action.type === 'enqueue_frontier') {
+          if (Object.keys(action).length !== 1 || options.graphDispatch === undefined || options.workCatalogObserver === undefined) return reply.code(409).send({ error: 'graph_dispatch_unavailable' });
+          const catalog = options.workCatalogObserver.catalog();
+          const current = options.workCatalogObserver.snapshot();
+          if (!catalog || current.status !== 'available' || typeof current.revision !== 'string') return reply.code(409).send({ error: 'work_catalog_stale', state: state() });
+          const result = await enqueueGraphFrontier(options.graphDispatch, catalog, current.revision, store);
+          return { result, state: state() };
+        }
         if (action.type === 'enqueue') {
           const catalog = options.workCatalogObserver?.catalog();
           if (catalog) {

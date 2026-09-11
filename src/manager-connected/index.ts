@@ -76,7 +76,7 @@ export interface ManagerConnectedDecisionSnapshot {
 }
 
 export type ManagerConnectedAction =
-  | { type: 'enqueue'; id: string; sessionId: string; title: string; instruction: string; catalogRevision?: string; scope?: ScopedWorkAssignment }
+  | { type: 'enqueue'; id: string; sessionId: string; title: string; instruction: string; catalogRevision?: string; scope?: ScopedWorkAssignment; expectedSprintBinding?: string }
   | { type: 'claim'; id: string }
   | { type: 'submitted'; id: string }
   | { type: 'complete'; id: string; threadId: string; summary: string }
@@ -165,6 +165,7 @@ export class ManagerConnectedError extends Error {
 type InputRecord = Record<string, unknown>;
 
 interface DurableRequest {
+  sprintBinding?: string;
   id: string;
   sessionId: string;
   title: string;
@@ -414,11 +415,13 @@ function parseAction(value: unknown): ManagerConnectedAction {
   const input = record(value, 'action');
   const type = input.type;
   if (type === 'enqueue') {
-    exactKeys(input, ['type', 'id', 'sessionId', 'title', 'instruction', 'catalogRevision', 'scope'], 'action');
+    exactKeys(input, ['type', 'id', 'sessionId', 'title', 'instruction', 'catalogRevision', 'scope', 'expectedSprintBinding'], 'action');
+    const expectedSprintBinding = input.expectedSprintBinding;
+    if (expectedSprintBinding !== undefined && (typeof expectedSprintBinding !== 'string' || !/^[a-f0-9]{64}$/.test(expectedSprintBinding))) fail('invalid_input', 'expectedSprintBinding must identify exact readiness evidence');
     const catalogRevision = input.catalogRevision === undefined ? undefined : boundedText(input.catalogRevision, 'action.catalogRevision', 128);
     const scope = input.scope === undefined ? undefined : parseScopedWorkAssignment(input.scope, 'action.scope');
     if ((catalogRevision === undefined) !== (scope === undefined)) fail('invalid_input', 'action.catalogRevision and action.scope must be supplied together');
-    return { type, id: requestIdentity(input.id, 'action.id'), sessionId: slug(input.sessionId, 'action.sessionId'), title: boundedText(input.title, 'action.title', 256), instruction: boundedText(input.instruction, 'action.instruction', SAFE_TEXT_LIMIT), ...(catalogRevision === undefined ? {} : { catalogRevision }), ...(scope === undefined ? {} : { scope }) };
+    return { type, id: requestIdentity(input.id, 'action.id'), sessionId: slug(input.sessionId, 'action.sessionId'), title: boundedText(input.title, 'action.title', 256), instruction: boundedText(input.instruction, 'action.instruction', SAFE_TEXT_LIMIT), ...(catalogRevision === undefined ? {} : { catalogRevision }), ...(scope === undefined ? {} : { scope }), ...(expectedSprintBinding === undefined ? {} : { expectedSprintBinding: expectedSprintBinding as string }) };
   }
   if (type === 'claim' || type === 'submitted' || type === 'cancel') {
     exactKeys(input, ['type', 'id'], 'action');
@@ -567,11 +570,13 @@ function parseReport(value: unknown, path: string): ManagerConnectedCompletionRe
 
 function parseDurableRequest(value: unknown, path: string): DurableRequest {
   const input = record(value, path);
-  exactKeys(input, ['id', 'sessionId', 'title', 'instruction', 'status', 'assignment', 'callbackManager', 'createdAt', 'claimedAt', 'submittedAt', 'completedAt', 'cancelledAt', 'uncertainAt', 'uncertaintyReason', 'report', 'catalogRevision', 'scope'], path);
+  exactKeys(input, ['id', 'sessionId', 'title', 'instruction', 'status', 'assignment', 'callbackManager', 'createdAt', 'claimedAt', 'submittedAt', 'completedAt', 'cancelledAt', 'uncertainAt', 'uncertaintyReason', 'report', 'catalogRevision', 'scope', 'sprintBinding'], path);
+  if (input.sprintBinding !== undefined && (typeof input.sprintBinding !== 'string' || !/^[a-f0-9]{64}$/.test(input.sprintBinding))) fail('journal_corrupt', 'Invalid sprint binding');
   if (typeof input.status !== 'string' || !REQUEST_STATUSES.has(input.status as ManagerConnectedRequestStatus)) fail('journal_corrupt', `${path}.status is invalid`);
   const status = input.status as ManagerConnectedRequestStatus;
   const optionalTimestamp = (key: 'claimedAt' | 'submittedAt' | 'completedAt' | 'cancelledAt' | 'uncertainAt'): string | undefined => input[key] === undefined ? undefined : timestamp(input[key], `${path}.${key}`);
   const request: DurableRequest = {
+    ...(input.sprintBinding === undefined ? {} : { sprintBinding: input.sprintBinding as string }),
     id: requestIdentity(input.id, `${path}.id`),
     sessionId: slug(input.sessionId, `${path}.sessionId`),
     title: boundedText(input.title, `${path}.title`, 256),
@@ -634,6 +639,7 @@ function parseEvent(value: unknown, expectedSequence: number): ManagerConnectedE
 
 function immutableRequest(request: DurableRequest): unknown {
   return {
+    ...(request.sprintBinding === undefined ? {} : { sprintBinding: request.sprintBinding }),
     id: request.id,
     sessionId: request.sessionId,
     title: request.title,
@@ -819,10 +825,10 @@ export class ManagerConnectedStore {
     }
   }
 
-  private async checkSprint(assignment: ManagerConnectedSessionAssignment): Promise<void> {
+  private async checkSprint(assignment: ManagerConnectedSessionAssignment): Promise<string | undefined> {
     if (!this.#config.sprintReadinessPath) return;
     if (!assignment.ticketId) fail('sprint_admission_blocked', 'Sprint dispatch requires an explicit ticket assignment.');
-    try { await requireSprintReadiness(this.#config.sprintReadinessPath, { workItemId: assignment.ticketId, threadId: assignment.threadId, managerThreadId: this.#config.manager.threadId }); }
+    try { return await requireSprintReadiness(this.#config.sprintReadinessPath, { workItemId: assignment.ticketId, threadId: assignment.threadId, managerThreadId: this.#config.manager.threadId }); }
     catch { fail('sprint_admission_blocked', 'Sprint readiness or builder bootstrap is incomplete. Open Sprint readiness for the required evidence and next actions.'); }
   }
 
@@ -976,12 +982,15 @@ export class ManagerConnectedStore {
       };
       const existing = this.#requests.get(action.id);
       if (existing !== undefined) {
+        if (action.expectedSprintBinding !== undefined && action.expectedSprintBinding !== existing.sprintBinding) fail('request_identity_conflict', 'Request was admitted against different sprint evidence; cancel and enqueue fresh work.');
         const bound = { id: existing.id, sessionId: existing.sessionId, title: existing.title, instruction: existing.instruction, assignment: existing.assignment, callbackManager: existing.callbackManager, ...(existing.catalogRevision === undefined ? {} : { catalogRevision: existing.catalogRevision }), ...(existing.scope === undefined ? {} : { scope: existing.scope }) };
         if (!same(candidate, bound)) fail('request_identity_conflict', `request identity ${action.id} already binds different content or assignments`);
         return { type: 'enqueue', duplicate: true, request: publicRequest(existing) };
       }
       const request: DurableRequest = { ...candidate, status: 'queued', createdAt: new Date().toISOString() };
-      await this.checkSprint(assignment);
+      const sprintBinding = await this.checkSprint(assignment);
+      if (action.expectedSprintBinding !== undefined && action.expectedSprintBinding !== sprintBinding) fail('sprint_admission_blocked', 'Sprint evidence changed before enqueue. Recompute the frontier.');
+      if (sprintBinding !== undefined) request.sprintBinding = sprintBinding;
       this.checkSprintCapacity(assignment);
       await this.append('queued', request);
       return { type: 'enqueue', duplicate: false, request: publicRequest(request) };
@@ -1061,7 +1070,8 @@ export class ManagerConnectedStore {
     const request = this.currentRequest(action.id);
     if (action.type === 'claim') {
       const assignment = this.currentAssignment(request);
-      await this.checkSprint(assignment);
+      const sprintBinding = await this.checkSprint(assignment);
+      if (sprintBinding !== request.sprintBinding) fail('sprint_admission_blocked', 'Sprint evidence changed after enqueue. Cancel and enqueue fresh work; old context cannot inherit new approval.');
       this.checkSprintCapacity(assignment, request.id);
       if (request.status !== 'queued') fail('claim_not_available', `request ${request.id} is ${request.status}; claimed work is never retried automatically`);
       const claimedAt = new Date().toISOString();

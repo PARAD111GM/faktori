@@ -82,10 +82,39 @@ says Done: its retained contract evidence is required. A digest binds evidence;
 it never manufactures it.
 
 The command is deterministic and read-only. Automatic frontier dispatch still
-requires the installed signed-action/relay wiring and exclusive scheduler owner.
+requires the installed controller/relay wiring and exclusive scheduler owner.
 Include the graph and required artifact revisions in sprint artifactBindings so
 queued work cannot silently start on a different graph. No new graph database,
 LLM graph traversal, or separate workflow engine is introduced.
+
+### Owner-triggered graph enqueue
+
+The optional Console `graphDispatchPath` names one private controller-owned graph
+packet. It requires both a work catalog and Manager-connected sprint readiness.
+The Console derives the readiness path from that same relay configuration; the
+browser cannot select a file or provide its own graph or passing observations.
+
+The owner-authenticated Manager-connected endpoint accepts
+`{ "type": "enqueue_frontier" }`. It recomputes eligibility from the packet,
+checks current catalog/session scope, and queues bounded context through the
+existing durable relay. The packet itself must be hash-bound in readiness
+`artifactBindings`, so changing it after enqueue prevents claim until the new
+inputs are reviewed. Identical requests retain stable identities; they do not
+create duplicate builders. Enqueue is not task launch, native-goal verification,
+or permission to merge.
+
+The packet uses `format: "faktori.graph-dispatch/v1"`, `sprintRevision`,
+`catalogRevision`, `graph` (the delivery-plan input described above), and
+`assignments`. Each assignment names `nodeId`, a preconfigured `sessionId`,
+catalog `scope` (productId, planId, phaseId, ticketId), `title` and bounded
+`instruction`. The graph hierarchy revision must match `sprintRevision`, and
+the catalog revision must still be current. The controller appends only the
+selected node's scoped context to its instruction, not the entire graph.
+
+This owner-triggered route is not an autonomous sprint scheduler. It does not
+observe Jira on a timer, mint signed external actions or wake an idle Foreman.
+The installed end-to-end test must still prove those capabilities before
+unattended operation is enabled. Existing Console configurations remain unchanged.
 
 1. Register one canonical project `artifactHome` in the existing work catalog,
    outside installation/update directories. Register the approved intent with

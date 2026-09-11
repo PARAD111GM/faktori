@@ -11,6 +11,8 @@ export interface SprintAdmissionTarget { workItemId: string; threadId: string; m
 export interface SprintReadinessReport {
   ready: boolean; mode: 'attended' | 'unattended' | 'unconfigured'; sprintId?: string; revision?: string;
   validUntil?: string;
+  /** Exact private readiness observation used for admission; not an approval token. */
+  bindingDigest?: string;
   blockers: Array<{ id: string; owner: string; problem: string; nextAction: string }>;
 }
 type RecordValue = Record<string, unknown>;
@@ -88,8 +90,10 @@ export async function readSprintReadiness(path: string, target?: SprintAdmission
     const stat = await handle.stat();
     if (!stat.isFile() || stat.size > 1024 * 1024 || (stat.mode & 0o077) !== 0
       || (typeof process.getuid === 'function' && stat.uid !== process.getuid())) throw new Error('Sprint readiness requires a private owner-owned bounded file');
-    const input = JSON.parse(await handle.readFile('utf8')) as unknown;
+    const bytes = await handle.readFile();
+    const input = JSON.parse(bytes.toString('utf8')) as unknown;
     const report = evaluateSprintReadiness(input, target);
+    report.bindingDigest = createHash('sha256').update(bytes).digest('hex');
     if (expectedManagerThreadId !== undefined && record(input)?.managerThreadId !== expectedManagerThreadId) {
       report.ready = false;
       report.blockers.push({ id: 'foreman_identity', owner: 'Foreman', problem: 'The readiness record belongs to a different Foreman task.',
@@ -120,7 +124,8 @@ export async function readSprintReadiness(path: string, target?: SprintAdmission
   } finally { await handle.close(); }
 }
 
-export async function requireSprintReadiness(path: string, target: SprintAdmissionTarget): Promise<void> {
+export async function requireSprintReadiness(path: string, target: SprintAdmissionTarget): Promise<string> {
   const report = await readSprintReadiness(path, target);
   if (!report.ready) throw new Error(`Sprint admission blocked: ${report.blockers.map(b => b.problem).join(' ')}`);
+  return report.bindingDigest!;
 }

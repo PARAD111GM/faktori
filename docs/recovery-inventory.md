@@ -228,3 +228,24 @@ No active installation was changed. Installed signed bindings, actual approved
 Jira/Slack capabilities, native-task completion transport and the connected
 staging journey remain unproven. Tool discovery in this task still exposes no
 Jira or n8n management connector. This is not a release-acceptance claim.
+
+### Live publication recovery observation — 2026-09-11
+
+Read-only GitHub inspection now confirms the retained TWZ-81 candidate
+`24a33286f98cb3998665abea0fedf5bbd44f2082` is published as
+[Twinzy web PR #341](https://github.com/Twinzy-app/twinzy-web/pull/341), open
+against `app/main`. This clears the previously observed workflow-permission
+publication boundary for that candidate, not the delivery release gate.
+
+The current-head Cursor review requests changes. Direct inspection of
+[run 34645034484](https://github.com/Twinzy-app/twinzy-web/actions/runs/34645034484),
+playtest job `103413650498`, confirms step 2 remained on `/` instead of reaching
+`/account-type`; steps 3–5 were not reached. The sixth step was explicitly not
+browser-drivable. Green `verify` and reporting-only `playtest` checks do not
+override this result. `staging-e2e` was skipped, and the PR was not merged.
+
+The exact evidence was handed to the existing Twinzy Foreman for reconciliation
+with its current repair owner. No new builder, product edit, merge, or live
+notification was initiated by the construction task. This observation verifies
+publication and locates the next repair gate; it does not prove a goal-driven
+builder bootstrap, successful review, Slack receipt, or staging acceptance.

@@ -249,3 +249,21 @@ with its current repair owner. No new builder, product edit, merge, or live
 notification was initiated by the construction task. This observation verifies
 publication and locates the next repair gate; it does not prove a goal-driven
 builder bootstrap, successful review, Slack receipt, or staging acceptance.
+
+### Package and compatibility verification — 2026-09-11
+
+At recovery source revision `d82bdb2`, the pinned Node 24.20.0/npm 12.0.2
+full test command (`npm test -- --maxWorkers=4`) passed 602 tests across 83
+files in 77.59 seconds. Temporary loopback/subprocess test access was allowed;
+no active installation or provider was changed.
+
+The packed CLI verification passed from an offline clean temporary consumer.
+The verifier now additionally checks recovery runtime/docs inclusion, imports
+the delivery composition and observation APIs through public package exports,
+and parses the opt-in Console configuration from the installed package without
+starting it. The strengthened verifier also passed. Its temporary package and
+consumer are cleaned up by the verifier; this is not a published download.
+
+These checks establish package usability and regression evidence, not the live
+connected release gate. In particular they do not establish installed grants,
+native-task wake-up, Jira/Slack access, or an accepted staging journey.

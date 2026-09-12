@@ -118,6 +118,8 @@ export interface ManagerLoopStageReceipt {
   outcome: string;
   sessionId?: string;
   response?: RecordValue;
+  /** Controller-owned input identity, separate from the provider's judgment. */
+  binding?: { format: 'faktori.loop-stage-binding/v1'; actor: 'controller'; evidenceDigest: string; reviewStageId?: string };
   /** Exact provider-reported terminal telemetry; unavailable remains unavailable. */
   usage: UsageTelemetry;
   evidence: ManagerLoopWorkspaceEvidence;
@@ -712,14 +714,25 @@ function validatedStageResponse(kind: StageKind, result: ProviderRunResult): Rec
   } else if (kind === 'implement' || kind === 'repair') {
     if ((value.status !== 'implemented' && value.status !== 'blocked') || typeof value.summary !== 'string' || value.summary.trim().length === 0) throw new Error('provider_response_schema_invalid');
   } else if (kind === 'review') {
-    if ((value.verdict !== 'pass' && value.verdict !== 'repair') || typeof value.summary !== 'string' || !Array.isArray(value.findings) || value.findings.some((item) => typeof item !== 'string') || typeof value.evidenceDigest !== 'string') throw new Error('provider_response_schema_invalid');
+    if ((value.verdict !== 'pass' && value.verdict !== 'repair') || typeof value.summary !== 'string' || !Array.isArray(value.findings) || value.findings.some((item) => typeof item !== 'string') || ('evidenceDigest' in value && typeof value.evidenceDigest !== 'string')) throw new Error('provider_response_schema_invalid');
     if ((value.verdict === 'repair' && value.findings.length === 0) || (value.verdict === 'pass' && value.findings.length !== 0)) throw new Error('provider_response_schema_invalid');
-  } else if (typeof value.accepted !== 'boolean' || typeof value.summary !== 'string' || typeof value.evidenceDigest !== 'string' || typeof value.reviewStageId !== 'string') throw new Error('provider_response_schema_invalid');
+  } else if (typeof value.accepted !== 'boolean' || typeof value.summary !== 'string' || ('evidenceDigest' in value && typeof value.evidenceDigest !== 'string') || ('reviewStageId' in value && typeof value.reviewStageId !== 'string')) throw new Error('provider_response_schema_invalid');
   return value;
 }
 
 function responseText(value: unknown, key: string): string | undefined {
   return record(value) && typeof value[key] === 'string' && (value[key] as string).trim().length > 0 ? value[key] as string : undefined;
+}
+
+/** Read new controller bindings or untouched legacy receipts; contradictions fail closed. */
+export function managerLoopReceiptReference(receipt: unknown, key: 'evidenceDigest' | 'reviewStageId'): string | undefined {
+  if (!record(receipt)) return undefined;
+  if (receipt.binding === undefined) return responseText(receipt.response, key);
+  const binding = receipt.binding;
+  if (!record(binding) || binding.format !== 'faktori.loop-stage-binding/v1' || binding.actor !== 'controller') return undefined;
+  const value = responseText(binding, key);
+  if (record(receipt.response) && key in receipt.response && receipt.response[key] !== value) return undefined;
+  return value;
 }
 
 function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase: ManagerLoopPhase, evidence: ManagerLoopWorkspaceEvidence, verification: ManagerLoopVerificationReceipt[], prior?: { stageId?: string; response?: RecordValue }): string {
@@ -734,15 +747,15 @@ function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase:
       nextAction: kind === 'review' ? 'Independently inspect the exact candidate and return a fixed-head verdict.' : kind === 'repair' ? 'Repair only the stated findings within approved scope.' : 'Implement the approved brief within approved scope.',
     };
     if (kind === 'implement' || kind === 'repair') return `Act as the implementation owner for this bounded Faktori lean loop. Do not commit, merge, push, deploy, publish, change authority, or work outside the approved workspace. Compact packet: ${JSON.stringify(packet)} Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
-    if (kind === 'review') return `CANONICAL_CANDIDATE_EVIDENCE_DIGEST=${evidence.contentDigest}\nThis exact literal is Faktori's canonical candidate digest. Copy it unchanged into the response field named evidenceDigest. Never recompute a digest and never substitute a context digest, verifier output digest, file hash, Git hash, or any other digest. Act as an independent read-only reviewer for this bounded Faktori lean loop. Do not edit, commit, merge, push, deploy, publish, or change authority. Compact packet: ${JSON.stringify(packet)} Return only strict JSON with exactly these fields: {"verdict":"pass"|"repair","summary":"...","findings":[],"evidenceDigest":"${evidence.contentDigest}"}. The findings array is defects-only. When verdict is pass, findings MUST be the literal empty array []; put all positive observations in summary. When verdict is repair, findings MUST contain one or more actionable defects. A pass requires direct inspection and all configured verification receipts to pass against this exact candidate.`;
+    if (kind === 'review') return `Act as an independent read-only reviewer for this bounded Faktori lean loop. Do not edit, commit, merge, push, deploy, publish, or change authority. Compact packet: ${JSON.stringify(packet)} The controller binds your judgment to this candidate; do not return hashes or stage identifiers. Return only strict JSON with exactly these fields: {"verdict":"pass"|"repair","summary":"...","findings":[]}. The findings array is defects-only. When verdict is pass, findings MUST be the literal empty array []; put all positive observations in summary. When verdict is repair, findings MUST contain one or more actionable defects. A pass requires direct inspection and all configured verification receipts to pass against this exact candidate.`;
     throw new Error('lean_loop_does_not_launch_manager_roles');
   }
   const common = `You are participating in a bounded Faktori Manager Loop phase. Do not commit, merge, push, deploy, change authority, or work outside the approved workspace. Phase: ${phase.id}. Objective: ${phase.objective}\nAcceptance criteria:\n${phase.acceptanceCriteria.map((item) => `- ${item}`).join('\n')}\nCurrent workspace evidence: ${JSON.stringify(evidence)}.`;
   if (kind === 'manager_brief') return `${common}\nAccepted prior phase summaries: ${JSON.stringify(prior?.response ?? {})}. Act as build manager. During this planning turn, do not edit files; the next implementer turn is explicitly authorized to edit files inside the approved workspace. Missing functionality requested by this phase is expected and is not a blocker. Report blocked only when the accepted objective is contradictory, unsafe, or impossible with the supplied scope. Return only strict JSON: {"status":"ready"|"blocked","brief":"..."}.`;
   if (kind === 'implement') return `${common}\nAccepted manager brief: ${JSON.stringify(prior?.response ?? {})}. Act as the phase implementer. Make the smallest workspace changes that satisfy the accepted phase. Do not assume or require subagent fanout; if the runtime makes specialized native subagents available, use them only for independently useful bounded work. Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
   if (kind === 'repair') return `${common}\nContinue as the same implementer session. Repair only these configured verification or independent review findings: ${JSON.stringify(prior?.response ?? {})}. Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
-  if (kind === 'review') return `${common}\nConfigured verification receipts: ${JSON.stringify(verification)}. Act as an independent reviewer. Inspect actual workspace evidence. During this review turn, do not edit files; a later repair implementer turn is authorized to address findings inside the approved workspace. Return only strict JSON: {"verdict":"pass"|"repair","summary":"...","findings":["..."],"evidenceDigest":"${evidence.contentDigest}"}. A pass requires the configured verification receipts and direct workspace evidence.`;
-  return `${common}\nIndependent review receipt: ${JSON.stringify(prior?.response ?? {})}. Configured verification receipts: ${JSON.stringify(verification)}. Act as build manager. During this acceptance turn, do not edit files; this restriction applies only to this manager turn. Accept only if the review passed against this exact evidence. Return only strict JSON: {"accepted":true|false,"summary":"...","evidenceDigest":"${evidence.contentDigest}","reviewStageId":"${prior?.stageId ?? ''}"}.`;
+  if (kind === 'review') return `${common}\nConfigured verification receipts: ${JSON.stringify(verification)}. Act as an independent reviewer. Inspect actual workspace evidence. During this review turn, do not edit files; a later repair implementer turn is authorized to address findings inside the approved workspace. The controller binds your judgment to this candidate; do not return hashes or stage identifiers. Return only strict JSON: {"verdict":"pass"|"repair","summary":"...","findings":[]}. A pass requires the configured verification receipts and direct workspace evidence. Pass findings must be empty; repair findings must contain actionable defects.`;
+  return `${common}\nIndependent review receipt: ${JSON.stringify(prior?.response ?? {})}. Configured verification receipts: ${JSON.stringify(verification)}. Act as build manager. During this acceptance turn, do not edit files; this restriction applies only to this manager turn. Accept only if the review passed against this exact evidence. The controller binds your judgment to this candidate and independent review; do not return hashes or stage identifiers. Return only strict JSON: {"accepted":true|false,"summary":"..."}.`;
 }
 
 function contextFor(stageId: string, prompt: string, evidence: ManagerLoopWorkspaceEvidence, kind: StageKind): ProviderCurrentContext {
@@ -896,6 +909,10 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
       stageId: id, phaseId: phase.id, kind, round, outcome: providerResult.final.outcome,
       ...(providerResult.sessionId === undefined ? {} : { sessionId: providerResult.sessionId }),
       ...(response === undefined ? {} : { response }), usage: providerResult.final.usage,
+      ...((kind === 'review' || kind === 'manager_accept') ? { binding: {
+        format: 'faktori.loop-stage-binding/v1' as const, actor: 'controller' as const, evidenceDigest: before.contentDigest,
+        ...(kind === 'manager_accept' && previous?.stageId !== undefined ? { reviewStageId: previous.stageId } : {}),
+      } } : {}),
       evidence: after, ...(verification.length === 0 ? {} : { verification }), completedAt: now().toISOString(),
     });
     const persist = async (value: ManagerLoopStageReceipt): Promise<void> => {
@@ -961,7 +978,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
             const expected = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
             const review = await executeStage(phase, 'review', repairRound * 10 + pass, receipts, pass === 0 ? implementation : passingReviews.at(-1));
             if ('status' in review) return review;
-            if (responseText(review.response, 'evidenceDigest') !== expected.contentDigest || review.evidence.contentDigest !== expected.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
+            if (managerLoopReceiptReference(review, 'evidenceDigest') !== expected.contentDigest || review.evidence.contentDigest !== expected.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
             if (responseText(review.response, 'verdict') === 'repair') { findingReview = review; break; }
             if (responseText(review.response, 'verdict') !== 'pass') return fail('failed', `${phase.id}:invalid_review_verdict`);
             passingReviews.push(review);
@@ -1038,7 +1055,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
         const evidence = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
         const review = await executeStage(phase, 'review', round, receipts, round === 0 ? implementation : lastReview);
         if ('status' in review) return review;
-        if (responseText(review.response, 'evidenceDigest') !== evidence.contentDigest || review.evidence.contentDigest !== evidence.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
+        if (managerLoopReceiptReference(review, 'evidenceDigest') !== evidence.contentDigest || review.evidence.contentDigest !== evidence.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
         lastReview = review;
         if (responseText(review.response, 'verdict') === 'pass') break;
         if (responseText(review.response, 'verdict') !== 'repair') return fail('failed', `${phase.id}:invalid_review_verdict`);
@@ -1049,9 +1066,10 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
       }
       if (lastReview === undefined || responseText(lastReview.response, 'verdict') !== 'pass') return fail('failed', `${phase.id}:review_not_passed`);
       const acceptanceEvidence = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
+      if (lastReview.evidence.contentDigest !== acceptanceEvidence.contentDigest) return fail('failed', `${phase.id}:manager_acceptance_evidence_mismatch`);
       const accepted = await executeStage(phase, 'manager_accept', 0, receipts, lastReview);
       if ('status' in accepted) return accepted;
-      if (accepted.response?.accepted !== true || responseText(accepted.response, 'evidenceDigest') !== acceptanceEvidence.contentDigest || responseText(accepted.response, 'reviewStageId') !== lastReview.stageId || accepted.evidence.contentDigest !== acceptanceEvidence.contentDigest) return fail('failed', `${phase.id}:manager_acceptance_invalid`);
+      if (accepted.response?.accepted !== true || managerLoopReceiptReference(accepted, 'evidenceDigest') !== acceptanceEvidence.contentDigest || managerLoopReceiptReference(accepted, 'reviewStageId') !== lastReview.stageId || accepted.evidence.contentDigest !== acceptanceEvidence.contentDigest) return fail('failed', `${phase.id}:manager_acceptance_invalid`);
       state.completedPhases.push(phase.id); await save();
     }
     state.status = 'succeeded'; state.reason = undefined; await save();

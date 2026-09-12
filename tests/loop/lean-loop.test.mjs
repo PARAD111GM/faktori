@@ -39,7 +39,7 @@ function result(response, sessionId = 'lean-session') {
 }
 
 function evidenceFrom(prompt) {
-  return prompt.match(/CANONICAL_CANDIDATE_EVIDENCE_DIGEST=(sha256:[a-f0-9]{64})/)?.[1];
+  return prompt.match(/"canonicalCandidateDigest":"(sha256:[a-f0-9]{64})"/)?.[1];
 }
 
 describe('opt-in lean manager loop', () => {
@@ -82,7 +82,7 @@ describe('opt-in lean manager loop', () => {
     const adapterFactory = (route) => ({
       async start(intent, context) {
         launches.push({ role: intent.workItem.role, route, prompt: context.prompt });
-        return result({ verdict: 'pass', summary: 'exact candidate passed', findings: [], evidenceDigest: evidenceFrom(context.prompt) });
+        return result({ verdict: 'pass', summary: 'exact candidate passed', findings: [] });
       },
       async resume() { throw new Error('validation-only must not resume an implementer'); },
     });
@@ -139,7 +139,7 @@ describe('opt-in lean manager loop', () => {
       expect(calls[0].route).toMatchObject({ routeId: 'build-terra', escalation: { fromRouteIds: ['build-luna'], reason: 'owner_declared_route_unavailable' } });
       const reviewPrompts = calls.filter(({ role }) => role === 'reviewer').map(({ prompt }) => prompt);
       expect(reviewPrompts).toHaveLength(2);
-      expect(reviewPrompts.every((prompt) => prompt.startsWith('CANONICAL_CANDIDATE_EVIDENCE_DIGEST=sha256:') && prompt.includes('Copy it unchanged') && prompt.includes('findings MUST be the literal empty array []') && prompt.includes('positive observations in summary') && !prompt.includes('outputDigest'))).toBe(true);
+      expect(reviewPrompts.every((prompt) => prompt.includes('do not return hashes or stage identifiers') && prompt.includes('findings MUST be the literal empty array []') && prompt.includes('positive observations in summary') && !prompt.includes('outputDigest'))).toBe(true);
       expect(verifications).toBe(2);
       const state = JSON.parse(await readFile(join(artifacts, 'state.json'), 'utf8'));
       expect(state.stages.map(({ kind }) => kind)).toEqual(['implement', 'review', 'repair', 'review', 'deterministic_accept']);

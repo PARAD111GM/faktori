@@ -2,9 +2,11 @@ import { chmod, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { captureManagerLoopWorkspaceEvidence, parseManagerLoopConfiguration, runManagerLoop } from '../../src/loop/index.ts';
+import { prepareLoopPublicationHandoff } from '../../src/loop/publication.ts';
 
 function initializeRepository(path) {
   execFileSync('git', ['init', '-q', path]);
@@ -29,6 +31,75 @@ function providerResult(response, sessionId = 'session-1') {
 }
 
 describe('manager loop proof of concept', () => {
+  it('binds judgment-only receipts to the controller candidate and preserves terminal evidence on restart', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-controller-binding-'));
+    const workspace = join(root, 'workspace'); const artifacts = join(root, 'records');
+    await mkdir(workspace); initializeRepository(workspace);
+    const responses = [{ status: 'ready', brief: 'brief' }, { status: 'implemented', summary: 'done' },
+      { verdict: 'pass', summary: 'inspected', findings: [] }, { accepted: true, summary: 'accepted' }];
+    const adapterFactory = () => ({ async start() { return providerResult(responses.shift()); }, async resume() { throw new Error('unexpected'); } });
+    try {
+      const config = configuration(workspace, artifacts);
+      expect(await runManagerLoop(config, { adapterFactory })).toMatchObject({ status: 'succeeded' });
+      const original = await readFile(join(artifacts, 'state.json'), 'utf8');
+      const state = JSON.parse(original);
+      const review = state.stages.find(({ kind }) => kind === 'review');
+      const acceptance = state.stages.at(-1);
+      expect(review.binding).toMatchObject({ actor: 'controller', evidenceDigest: review.evidence.contentDigest });
+      expect(acceptance.binding).toMatchObject({ actor: 'controller', evidenceDigest: review.evidence.contentDigest, reviewStageId: review.stageId });
+      expect(review.response).not.toHaveProperty('evidenceDigest');
+      expect(acceptance.response).not.toHaveProperty('reviewStageId');
+      expect(await runManagerLoop(config, { adapterFactory })).toMatchObject({ status: 'succeeded' });
+      expect(await readFile(join(artifacts, 'state.json'), 'utf8')).toBe(original);
+      const handoff = await prepareLoopPublicationHandoff({ format: 'faktori.loop-publication-prepare/v1', approved: true, workspace, loopArtifactsDirectory: artifacts, bundleDirectory: join(root, 'bundle') });
+      expect(handoff.loop).toMatchObject({ acceptedEvidenceDigest: review.evidence.contentDigest, reviewStageId: review.stageId });
+      const reportPath = join(artifacts, 'report.json');
+      const report = JSON.parse(await readFile(reportPath, 'utf8'));
+      report.stages.find(({ kind }) => kind === 'review').response.evidenceDigest = 'sha256:contradictory';
+      await writeFile(reportPath, JSON.stringify(report));
+      await expect(prepareLoopPublicationHandoff({ format: 'faktori.loop-publication-prepare/v1', approved: true, workspace, loopArtifactsDirectory: artifacts, bundleDirectory: join(root, 'rejected-bundle') })).rejects.toThrow('publication_exact_review_evidence_missing');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it.each(['review-write', 'post-review-write', 'acceptance-write', 'wrong-digest', 'wrong-review', 'denied', 'repair'])(
+    'does not convert %s into acceptance or replay a failed run', async (scenario) => {
+      const root = await mkdtemp(join(tmpdir(), 'faktori-binding-rejection-'));
+      const workspace = join(root, 'workspace'); const artifacts = join(root, 'records');
+      await mkdir(workspace); initializeRepository(workspace);
+      let mutateAfterReview = false;
+      const adapterFactory = () => ({
+        async start(intent, context) {
+          if (intent.workItem.role === 'builder') return providerResult({ status: 'implemented', summary: 'done' });
+          if (intent.workItem.role === 'reviewer') {
+            expect(context.nativeSandbox).toBe('read-only');
+            if (scenario === 'review-write') await writeFile(join(workspace, 'drift.txt'), 'unreviewed');
+            mutateAfterReview = scenario === 'post-review-write';
+            return providerResult(scenario === 'repair' ? { verdict: 'repair', summary: 'defect', findings: ['fix it'] } : { verdict: 'pass', summary: 'inspected', findings: [] });
+          }
+          if (context.prompt.includes('Independent review receipt')) {
+            if (scenario === 'acceptance-write') await writeFile(join(workspace, 'drift.txt'), 'unreviewed');
+            return providerResult({ accepted: scenario !== 'denied', summary: 'decision',
+              ...(scenario === 'wrong-digest' ? { evidenceDigest: 'sha256:wrong' } : {}),
+              ...(scenario === 'wrong-review' ? { reviewStageId: 'unrelated-review' } : {}) });
+          }
+          return providerResult({ status: 'ready', brief: 'brief' });
+        },
+        async resume() { throw new Error('unexpected repair launch'); },
+      });
+      try {
+        const config = configuration(workspace, artifacts, { limits: { maxRuntimeMinutes: 1, maxTokens: 0, maxRepairRounds: 0 } });
+        const result = await runManagerLoop(config, { adapterFactory, now() {
+          if (mutateAfterReview) { mutateAfterReview = false; writeFileSync(join(workspace, 'drift.txt'), 'changed after inspection'); }
+          return new Date();
+        } });
+        expect(result.status).toBe('failed');
+        expect(result.reason).toMatch(/read_only_role_changed_workspace|manager_acceptance_evidence_mismatch|manager_acceptance_invalid|repair_limit_exceeded/);
+        const original = await readFile(join(artifacts, 'state.json'), 'utf8');
+        expect(await runManagerLoop(config, { adapterFactory: () => { throw new Error('must not relaunch'); } })).toMatchObject({ status: 'failed', reason: result.reason });
+        expect(await readFile(join(artifacts, 'state.json'), 'utf8')).toBe(original);
+      } finally { await rm(root, { recursive: true, force: true }); }
+    }, 15_000);
+
   it('retains provider-reported stage usage when a failed response cannot be accepted', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-manager-usage-failure-'));
     const workspace = join(root, 'workspace'); const artifacts = join(root, 'records');

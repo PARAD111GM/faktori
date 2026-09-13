@@ -1,5 +1,10 @@
 # Recovery setup and operator handoff
 
+This page describes the existing Twinzy integration profile, not mandatory
+vendors for Faktori. Onboarding selects capabilities (track work, execute,
+review, communicate, deliver), verifies the user's chosen tools, and binds them
+to the graph. See [runtime verification and witnessed-delivery setup](runtime-verification.md).
+
 Jira owns tickets. GitHub owns PR and delivery evidence. The Codex Foreman
 coordinates visible tasks. Slack carries actionable notifications. Console
 projects these records. Do not create a parallel work board or manually copy

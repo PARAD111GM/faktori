@@ -6,6 +6,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { planGraphDelivery, type GraphDeliveryInput } from '../integrations/delivery-graph.ts';
 import type { ManagerConnectedStore } from '../manager-connected/index.ts';
 import { readSprintReadiness } from '../sprint/readiness.ts';
+import { evaluateWitnessedDelivery } from '../sprint/witnessed-delivery.ts';
 import { validateWorkScope, type ScopedWorkAssignment, type WorkCatalog } from './work-management.ts';
 
 const MAX_PACKET_BYTES = 1024 * 1024;
@@ -153,6 +154,12 @@ export async function enqueueGraphFrontier(configuration: GraphDispatchConfigura
   if (!readinessReport.ready || readinessReport.revision !== input.sprintRevision) throw new Error('sprint_admission_blocked');
   const readinessDigest = createHash('sha256').update(readinessFile.bytes).digest('hex');
   if (readinessReport.bindingDigest !== readinessDigest) throw new Error('sprint_readiness_changed');
+  // Manager completion reports only prove a callback was observed. Unattended
+  // fan-out additionally needs one current, configuration-bound witnessed
+  // journey with independent candidate/runtime/acceptance evidence and an
+  // explicit owner acceptance. This does not alter any signed-effect authority.
+  const witnessedDelivery = evaluateWitnessedDelivery(readiness, store.snapshot().requests, input.catalogRevision);
+  if (!witnessedDelivery.ready) throw new Error(`witnessed_delivery_blocked:${witnessedDelivery.blockers.map(blocker => blocker.id).join(',')}`);
   // Reject a packet replacement racing readiness validation; its changed digest
   // must be issued through a new readiness revision rather than selecting old work.
   const afterReadiness = await privateJson(configuration.path, 'graph_dispatch_packet');

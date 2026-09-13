@@ -1,6 +1,10 @@
 # Install Faktori — instructions for coding agents
 
 For a delivery-recovery upgrade, also read [Recovery setup](docs/recovery-setup.md).
+Before enabling unattended graph admission, follow [Runtime verification and
+witnessed delivery](docs/runtime-verification.md). Start attended, retain a
+real healthy/negative-control result and explicit owner acceptance, and preserve
+active workers. A configured connector or completion message is not delivery proof.
 Verify the connected Jira/GitHub/Codex/Slack/Console journey; saved settings and
 source tests alone do not establish an operational factory. Never replace an
 active installation or its credentials merely to satisfy a readiness checkbox.

@@ -30,6 +30,10 @@
     "README.md"
   ],
   "exports": {
+    "./verification": {
+      "types": "./dist/verification/index.d.ts",
+      "import": "./dist/verification/index.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"

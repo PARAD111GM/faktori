@@ -31,6 +31,9 @@ try {
   const tarball = join(scratch, packed.filename);
   const entries = run('tar', ['-tf', tarball], scratch).split('\n').filter(Boolean);
   const requiredEntries = [
+    'package/dist/verification/index.js',
+    'package/docs/runtime-verification.md',
+    'package/dist/sprint/witnessed-delivery.js',
     'package/dist/console/delivery-synchronization.js',
     'package/dist/integrations/delivery-composer.js',
     'package/dist/integrations/delivery-observation.js',
@@ -73,6 +76,8 @@ try {
   // actual package. This reads configuration only; it never starts a controller.
   const recoveryResult = spawnSync(process.execPath, ['--input-type=module', '-e', `
     const integrations = await import('faktori/integrations');
+    const verification = await import('faktori/verification');
+    if (typeof verification.verifyCandidateRuntime !== 'function' || typeof verification.captureCandidateSnapshot !== 'function') process.exit(4);
     const consoleKit = await import('faktori/console');
     if (typeof integrations.createDeliveryTransitionController !== 'function'
       || typeof integrations.observeDeliveryForSynchronization !== 'function') process.exit(2);

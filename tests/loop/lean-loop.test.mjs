@@ -139,6 +139,12 @@ describe('opt-in lean manager loop', () => {
       expect(calls[0].route).toMatchObject({ routeId: 'build-terra', escalation: { fromRouteIds: ['build-luna'], reason: 'owner_declared_route_unavailable' } });
       const reviewPrompts = calls.filter(({ role }) => role === 'reviewer').map(({ prompt }) => prompt);
       expect(reviewPrompts).toHaveLength(2);
+      // Repairs carry prior findings into one new independent exact-candidate
+      // review instead of paying for another context-free review cycle.
+      expect(reviewPrompts[0]).toContain('full_candidate');
+      expect(reviewPrompts[1]).toContain('repair_followup');
+      expect(reviewPrompts[1]).toContain('result is not fixed');
+      expect(reviewPrompts[1]).toContain('previousCandidateDigest');
       expect(reviewPrompts.every((prompt) => prompt.includes('do not return hashes or stage identifiers') && prompt.includes('findings MUST be the literal empty array []') && prompt.includes('positive observations in summary') && !prompt.includes('outputDigest'))).toBe(true);
       expect(verifications).toBe(2);
       const state = JSON.parse(await readFile(join(artifacts, 'state.json'), 'utf8'));
@@ -180,6 +186,26 @@ describe('opt-in lean manager loop', () => {
         environment: { PATH: process.env.PATH },
       });
       expect(dependencyChanged).toMatchObject({ status: 'failed', reason: 'work:deterministic_acceptance_preflight_changed' });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('blocks a no-op repair instead of paying for another verdict on the rejected candidate', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-lean-noop-'));
+    const workspace = join(root, 'workspace'); await mkdir(workspace); const base = repository(workspace);
+    let reviews = 0;
+    try {
+      const completed = await runLeanLoop(config(workspace, join(root, 'records'), base, {
+        profile: 'implementation', implementationBrief: { approved: true, objective: 'Fix the candidate.', constraints: ['Stay in approved scope.'] },
+      }), { environment: { PATH: process.env.PATH }, adapterFactory: () => ({
+        async start(intent) {
+          if (intent.workItem.role === 'builder') return result({ status: 'implemented', summary: 'initial candidate' });
+          reviews += 1;
+          return result({ verdict: 'repair', summary: 'defect remains', findings: ['repair the defect'] });
+        },
+        async resume() { return result({ status: 'implemented', summary: 'claimed repair without a change' }); },
+      }) });
+      expect(completed).toMatchObject({ status: 'blocked', reason: 'work:repair_candidate_unchanged' });
+      expect(reviews).toBe(1);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 

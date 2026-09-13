@@ -256,7 +256,9 @@ dt { color: var(--secondary); }dd { margin: 0; text-align: right; font-weight: 6
   box-sizing: border-box; width: 100%; min-width: 0; padding: 16px;
   background: var(--section-surface); color: var(--ink); border-radius: var(--card-radius);
 }
-.token-tracker-overview { min-width: 0; }
+.token-tracker-overview { grid-column: 1 / -1; min-width: 0; }
+.token-tracker-overview .metric-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.token-tracker-overview .metric strong { white-space: nowrap; }
 .token-tracker { display: grid; gap: 16px; }
 .token-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .token-summary > div, .token-role-section, .token-runs { min-width: 0; }

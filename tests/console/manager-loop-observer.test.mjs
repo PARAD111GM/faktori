@@ -154,9 +154,9 @@ describe('Manager Loop Console observer', () => {
     await writeFile(join(artifacts, 'publication.json'), JSON.stringify({ format: 'faktori.loop-publication-receipt/v1', status: 'published', loop: { loopId: 'two-phase-math-proof', acceptedEvidenceDigest: digest }, binding: { repository: 'example/product', branch: 'feature', baseRefName: 'main', expectedRevision: commit }, pr: { number: 1, url: 'https://github.com/example/product/pull/1', headRefName: 'feature', baseRefName: 'main', headRefOid: commit } }));
     const delivery = (staging) => ({ format: 'faktori.loop-delivery/v1', loopId: 'two-phase-math-proof', acceptedEvidenceDigest: digest, reviewedCommit: commit, gates: [
       { id: 'review', status: 'passed', evidenceUrl: 'https://example.com/review', recordedBy: 'owner', observedAt: '2026-09-09T12:02:00Z' },
-      { id: 'merge', status: 'passed', evidenceUrl: 'https://example.com/merge', recordedBy: 'owner', observedAt: '2026-09-09T12:03:00Z' },
-      { id: 'deployment', status: 'passed', evidenceUrl: 'https://example.com/deploy', recordedBy: 'owner', observedAt: '2026-09-09T12:04:00Z' },
-      { id: 'staging_verification', status: staging, evidenceUrl: 'https://example.com/staging', recordedBy: 'owner', observedAt: '2026-09-09T12:05:00Z' },
+      { id: 'merge', status: 'passed', mergeCommit: commit, evidenceUrl: 'https://example.com/merge', recordedBy: 'owner', observedAt: '2026-09-09T12:03:00Z' },
+      { id: 'deployment', status: 'passed', deployedRevision: commit, evidenceUrl: 'https://example.com/deploy', recordedBy: 'owner', observedAt: '2026-09-09T12:04:00Z' },
+      { id: 'staging_verification', status: staging, acceptedRevision: commit, evidenceUrl: 'https://example.com/staging', recordedBy: 'owner', observedAt: '2026-09-09T12:05:00Z' },
     ] });
     await writeFile(join(artifacts, 'delivery.json'), JSON.stringify(delivery('pending')));
     const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: artifacts, references: { pullRequest: 'pr-1', feature: 'feature-1' } }] });

@@ -8,6 +8,8 @@ import { createConsoleService } from '../../src/console/service.ts';
 import { ManagerConnectedStore } from '../../src/manager-connected/index.ts';
 import { DurableCoordinator } from '../../src/runtime/coordinator.ts';
 import { SPRINT_CHECKS } from '../../src/sprint/readiness.ts';
+import * as nativeGoals from '../../src/sprint/codex-goal.ts';
+import { witnessedDeliveryConfigurationDigest } from '../../src/sprint/witnessed-delivery.ts';
 import { WorkCatalogObserver } from '../../src/console/work-management.ts';
 import { enqueueGraphFrontier } from '../../src/console/graph-dispatch.ts';
 
@@ -19,6 +21,40 @@ const catalog = { format: 'faktori.work-catalog/v1', projects: [{ productId: 'fa
 function graph() { const source = id => ({ id, text: id, revision: 'r1' }); const node = id => ({ id, kind: 'executable', label: id, objective: source(`${id}-objective`), criteria: [source(`${id}-criteria`)], designReferences: [], artifacts: [source(`${id}-artifact`)], commands: [], authority: [], evidenceRequirements: [] }); return { hierarchy: { revision: 'r1', globalConstraints: [], nodes: [node('node-1'), node('node-2')], dependencies: [] }, registrations: ['CWM-006', 'CWM-007'].map((key, index) => ({ nodeId: `node-${index + 1}`, delivery: { ticket: { key, rank: index, status: 'To Do', workState: 'idle', dependencies: [] }, repository: { repository: 'owner/repo', branch: 'main', registered: true } } })), observations: [], transitionsByTicket: {}, policy: { eligibleCodingStatuses: ['To Do'], protectedStatuses: [], maxConcurrentCoding: 1 } }; }
 
 describe('owner graph frontier enqueue', () => {
+  it('blocks unattended graph fan-out until a retained witnessed journey is accepted, then preserves duplicate protection after restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'faktori-unattended-graph-')); roots.push(directory); await chmod(directory, 0o700);
+    const catalogPath = join(directory, 'catalog.json'); const packetPath = join(directory, 'graph.json'); const readinessPath = join(directory, 'readiness.json');
+    await writeFile(catalogPath, JSON.stringify(catalog), { mode: 0o600 });
+    const observer = await WorkCatalogObserver.open({ path: catalogPath });
+    const packet = { format: 'faktori.graph-dispatch/v1', sprintRevision: 'r1', catalogRevision: observer.snapshot().revision, graph: graph(), assignments: [{ nodeId: 'node-1', sessionId: 'builder', scope: { productId: 'faktori', planId: 'console-plan', phaseId: 'batch-one', ticketId: 'CWM-006' }, title: 'Implement graph ticket A', instruction: 'Implement the assigned ticket.' }] };
+    // The graph policy permits one coding slot, so only the first node needs an assignment for this boundary test.
+    packet.graph.registrations = packet.graph.registrations.slice(0, 1); packet.graph.hierarchy.nodes = packet.graph.hierarchy.nodes.slice(0, 1);
+    await writeFile(packetPath, JSON.stringify(packet), { mode: 0o600 });
+    const now = new Date(); const checks = SPRINT_CHECKS.flatMap(id => id.startsWith('builder_') ? [{ id, state: 'passed', revision: 'r1', owner: 'Foreman', evidence: 'receipt:current', source: id.endsWith('_goal') ? 'platform' : 'controller', observedAt: new Date(now - 1_000).toISOString(), validUntil: new Date(now.getTime() + 60_000).toISOString(), workItemId: 'CWM-006', threadId: ids.builder }] : [{ id, state: 'passed', revision: 'r1', owner: 'Foreman', evidence: 'receipt:current', source: id.endsWith('_goal') ? 'platform' : 'controller', observedAt: new Date(now - 1_000).toISOString(), validUntil: new Date(now.getTime() + 60_000).toISOString(), ...(id === 'foreman_goal' ? { threadId: ids.manager } : {}) }]);
+    const readiness = { format: 'faktori.sprint-readiness/v1', sprintId: 'sprint', revision: 'r1', mode: 'unattended', managerThreadId: ids.manager, targets: [{ workItemId: 'CWM-006', threadId: ids.builder }], artifactBindings: [{ path: packetPath, sha256: createHash('sha256').update(await readFile(packetPath)).digest('hex') }, { path: catalogPath, sha256: packet.catalogRevision }], checks };
+    readiness.witnessedDelivery = { format: 'faktori.witnessed-delivery/v1', sprintRevision: 'r1', catalogRevision: packet.catalogRevision, configurationDigest: witnessedDeliveryConfigurationDigest(readiness), journey: { requestId: 'witness-request', state: 'completed', completedAt: now.toISOString() }, validations: [{ kind: 'candidate', state: 'passed', evidence: 'receipt:candidate', observedAt: now.toISOString() }, { kind: 'runtime', state: 'passed', evidence: 'receipt:runtime', observedAt: now.toISOString() }, { kind: 'staging', state: 'passed', evidence: 'receipt:staging', observedAt: now.toISOString() }], ownerAcceptance: { state: 'accepted', owner: 'owner', evidence: 'decision:accepted', observedAt: now.toISOString() }, validUntil: new Date(now.getTime() + 60_000).toISOString() };
+    await writeFile(readinessPath, JSON.stringify(readiness), { mode: 0o600 });
+    const config = { directory: join(directory, 'manager'), sprintReadinessPath: readinessPath, manager: { threadId: ids.manager, title: 'Foreman' }, sessions: [{ id: 'builder', threadId: ids.builder, title: 'Builder', role: 'implementer', productId: 'faktori', planId: 'console-plan', phaseId: 'batch-one', ticketId: 'CWM-006' }] };
+    let store = await ManagerConnectedStore.open(config);
+    try {
+      await expect(enqueueGraphFrontier({ path: packetPath, readinessPath }, observer.catalog(), observer.snapshot().revision, store, catalogPath)).rejects.toThrow('witnessed_delivery_blocked:witness_completion_unverified');
+      await store.operate({ type: 'enqueue', id: 'witness-request', sessionId: 'builder', title: 'Witnessed delivery', instruction: 'Exercise the bounded journey.' });
+      const probe = vi.spyOn(nativeGoals, 'observeCodexGoal').mockImplementation(async threadId => ({ format: 'faktori.codex-goal-observation/v1', threadId, observedAt: new Date().toISOString(), status: 'active', goal: { status: 'active', objectivePresent: true } }));
+      try {
+        await store.operate({ type: 'claim', id: 'witness-request' });
+        await store.operate({ type: 'submitted', id: 'witness-request' });
+        await store.operate({ type: 'complete', id: 'witness-request', threadId: ids.builder, summary: 'Candidate, runtime, and staging evidence retained.' });
+      } finally { probe.mockRestore(); }
+      readiness.witnessedDelivery.journey.completedAt = store.snapshot().requests.find(request => request.id === 'witness-request').completedAt;
+      await writeFile(readinessPath, JSON.stringify(readiness), { mode: 0o600 });
+      await expect(enqueueGraphFrontier({ path: packetPath, readinessPath }, observer.catalog(), observer.snapshot().revision, store, catalogPath)).resolves.toMatchObject({ enqueued: 1, duplicate: 0 });
+      await expect(enqueueGraphFrontier({ path: packetPath, readinessPath }, observer.catalog(), observer.snapshot().revision, store, catalogPath)).resolves.toMatchObject({ enqueued: 0, duplicate: 1 });
+      await store.close();
+      store = await ManagerConnectedStore.open(config);
+      await expect(enqueueGraphFrontier({ path: packetPath, readinessPath }, observer.catalog(), observer.snapshot().revision, store, catalogPath)).resolves.toMatchObject({ enqueued: 0, duplicate: 1 });
+    } finally { await store.close(); }
+  });
+
   it('queues only the configured packet frontier idempotently and claim rechecks its packet binding', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'faktori-graph-dispatch-')); roots.push(directory); await chmod(directory, 0o700);
     const catalogPath = join(directory, 'catalog.json'); const packetPath = join(directory, 'graph.json'); const readinessPath = join(directory, 'readiness.json');

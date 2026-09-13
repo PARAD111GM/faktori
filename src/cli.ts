@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
+import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
 import { inspectDeliveryConnections } from './integrations/delivery-inspect.ts';
@@ -61,6 +62,8 @@ const HELP = `Usage:
   faktori sprint goal <codex-task-id>
   faktori delivery inspect <connections.json>
   faktori delivery plan <graph-delivery.json>
+  faktori verification snapshot <absolute-candidate-directory>
+  faktori verification run <owner-runtime-contract.json>
   faktori readiness report <local-console.json>
   faktori backup create <request.json> <backup-directory>
   faktori backup inspect-lock <absolute-journal-path>
@@ -116,6 +119,18 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'verification' && action === 'snapshot') {
+    if (!source || argv.length !== 3) throw new Error('verification snapshot requires one approved candidate directory');
+    print(await captureCandidateSnapshot(source));
+    return;
+  }
+  if (group === 'verification' && action === 'run') {
+    if (!source || argv.length !== 3) throw new Error('verification run requires one owner-approved runtime contract');
+    const report = await verifyCandidateRuntime(await json(source, 'runtime verification'));
+    print(report);
+    if (!report.passed) process.exitCode = 1;
+    return;
+  }
   if (group === 'sprint' && action === 'goal') {
     if (!source || argv.length !== 3) throw new Error('sprint goal requires one explicitly registered Codex task ID');
     const report = await observeCodexGoal(source);

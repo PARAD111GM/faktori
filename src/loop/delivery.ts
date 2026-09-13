@@ -94,9 +94,24 @@ export function projectLoopDelivery(state: unknown, publication?: unknown, deliv
       issue = 'Delivery evidence is missing or belongs to another revision; reconciliation is required.';
     } else {
       for (const gate of gates.slice(2)) {
-        const entry = data(evidence.gates.find((candidate) => data(candidate).id === gate.id));
+        const matching = evidence.gates.filter((candidate) => data(candidate).id === gate.id);
+        const entry = data(matching.length === 1 ? matching[0] : undefined);
         const url = safeUrl(entry.evidenceUrl);
         if (['pending', 'failed', 'passed'].includes(String(entry.status)) && url && typeof entry.recordedBy === 'string' && ID.test(entry.recordedBy) && typeof entry.observedAt === 'string' && Number.isFinite(Date.parse(entry.observedAt))) {
+          if (entry.status === 'passed' && ['merge', 'deployment', 'staging_verification'].includes(gate.id)) {
+            const mergeEntries = evidence.gates.filter((candidate) => data(candidate).id === 'merge');
+            const merged = data(mergeEntries.length === 1 ? mergeEntries[0] : undefined);
+            const mergeCommit = merged.mergeCommit;
+            const validMerge = typeof mergeCommit === 'string' && SHA.test(mergeCommit);
+            const precedingPassed = gates.slice(0, gates.indexOf(gate)).every((previous) => previous.status === 'passed');
+            const matchesRevision = gate.id === 'merge' ? validMerge
+              : validMerge && (gate.id === 'deployment' ? entry.deployedRevision : entry.acceptedRevision) === mergeCommit;
+            if (!precedingPassed) continue;
+            if (!matchesRevision) {
+              issue = 'Delivery evidence needs an observed merge revision and matching deployment/acceptance revision; health alone is insufficient.';
+              continue;
+            }
+          }
           gate.status = entry.status as DeliveryGateStatus;
           gate.evidenceUrl = url;
           gate.observedAt = new Date(entry.observedAt as string).toISOString();
@@ -130,8 +145,12 @@ export async function recordLoopDeliveryEvidence(value: unknown): Promise<LoopDe
     const prior = data(existing);
     if (existing !== undefined && (prior.format !== 'faktori.loop-delivery/v1' || prior.loopId !== data(state).loopId || prior.reviewedCommit !== binding.commit || prior.acceptedEvidenceDigest !== binding.digest || !Array.isArray(prior.gates))) throw new Error('existing delivery evidence needs reconciliation');
     const gates = (Array.isArray(prior.gates) ? prior.gates : []).filter((entry) => data(entry).id !== input.gate);
-    gates.push({ id: input.gate, status: input.status, evidenceUrl: safeUrl(input.evidenceUrl), recordedBy: input.recordedBy, observedAt: new Date().toISOString(), basis: 'owner_recorded' });
+    const revisionKey = input.gate === 'merge' ? 'mergeCommit' : input.gate === 'deployment' ? 'deployedRevision' : input.gate === 'staging_verification' ? 'acceptedRevision' : undefined;
+    if (input.status === 'passed' && revisionKey && (typeof input[revisionKey] !== 'string' || !SHA.test(input[revisionKey] as string))) throw new Error(`passed ${input.gate} requires ${revisionKey}`);
+    gates.push({ id: input.gate, status: input.status, evidenceUrl: safeUrl(input.evidenceUrl), recordedBy: input.recordedBy, observedAt: new Date().toISOString(), basis: 'owner_recorded', ...(revisionKey && input[revisionKey] !== undefined ? { [revisionKey]: input[revisionKey] } : {}) });
     const document = { format: 'faktori.loop-delivery/v1', loopId: data(state).loopId, acceptedEvidenceDigest: binding.digest, reviewedCommit: binding.commit, gates };
+    const projected = projectLoopDelivery(state, publication, document);
+    if (input.status === 'passed' && projected.gates.find((gate) => gate.id === input.gate)?.status !== 'passed') throw new Error(projected.issue ?? 'preceding delivery evidence is incomplete');
     const file = await open(temporary, 'wx', 0o600);
     try { await file.writeFile(`${JSON.stringify(document, null, 2)}\n`); await file.sync(); } finally { await file.close(); }
     await rename(temporary, join(input.artifactsDirectory, 'delivery.json'));

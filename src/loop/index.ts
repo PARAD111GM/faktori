@@ -735,14 +735,21 @@ export function managerLoopReceiptReference(receipt: unknown, key: 'evidenceDige
   return value;
 }
 
-function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase: ManagerLoopPhase, evidence: ManagerLoopWorkspaceEvidence, verification: ManagerLoopVerificationReceipt[], prior?: { stageId?: string; response?: RecordValue }): string {
+function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase: ManagerLoopPhase, evidence: ManagerLoopWorkspaceEvidence, verification: ManagerLoopVerificationReceipt[], prior?: { stageId?: string; response?: RecordValue; evidence?: ManagerLoopWorkspaceEvidence }): string {
   if (config.format === 'faktori.lean-loop/v1') {
     const reviewerVerification = verification.map(({ outputDigest: _outputDigest, evidenceDigest: _evidenceDigest, ...receipt }) => receipt);
     const packet = {
       format: 'faktori.lean-agent-packet/v1', objective: phase.objective,
       constraints: config.implementationBrief?.constraints ?? ['Do not change the validation-only candidate.'],
       requirements: config.requirements, acceptanceCriteria: config.acceptanceCriteria,
-      changedFacts: kind === 'repair' ? prior?.response ?? {} : {},
+      changedFacts: kind === 'repair' || kind === 'review' ? prior?.response ?? {} : {},
+      ...(kind === 'review' ? { reviewScope: {
+        mode: !config.review.sensitive && prior?.response?.verdict === 'repair' ? 'repair_followup' : 'full_candidate',
+        ...(prior?.response?.verdict === 'repair' ? { previousCandidateDigest: prior.evidence?.contentDigest, priorFindings: prior.response.findings } : {}),
+        instruction: !config.review.sensitive && prior?.response?.verdict === 'repair'
+          ? 'Verify each prior finding against the current candidate, inspect corrections and affected behavior, and widen inspection when needed. A previous verdict never approves this head.'
+          : 'Independently inspect the full current candidate; sensitive changes retain every required exact-head pass.',
+      } } : {}),
       evidence: { canonicalCandidateDigest: evidence.contentDigest, candidate: { head: evidence.head, branch: evidence.branch, dirty: evidence.dirty }, verification: reviewerVerification },
       nextAction: kind === 'review' ? 'Independently inspect the exact candidate and return a fixed-head verdict.' : kind === 'repair' ? 'Repair only the stated findings within approved scope.' : 'Implement the approved brief within approved scope.',
     };
@@ -949,6 +956,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
         }
         let repairRound = 0;
         let passingReviews: ManagerLoopStageReceipt[] = [];
+        let priorFindingReview: ManagerLoopStageReceipt | undefined;
         let receipts: ManagerLoopVerificationReceipt[] = [];
         while (repairRound <= config.limits.maxRepairRounds) {
           const verificationEvidence = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
@@ -976,7 +984,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
           let findingReview: ManagerLoopStageReceipt | undefined;
           for (let pass = 0; pass < config.review.requiredPasses; pass += 1) {
             const expected = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
-            const review = await executeStage(phase, 'review', repairRound * 10 + pass, receipts, pass === 0 ? implementation : passingReviews.at(-1));
+            const review = await executeStage(phase, 'review', repairRound * 10 + pass, receipts, pass === 0 ? priorFindingReview ?? implementation : passingReviews.at(-1));
             if ('status' in review) return review;
             if (managerLoopReceiptReference(review, 'evidenceDigest') !== expected.contentDigest || review.evidence.contentDigest !== expected.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
             if (responseText(review.response, 'verdict') === 'repair') { findingReview = review; break; }
@@ -984,11 +992,13 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
             passingReviews.push(review);
           }
           if (findingReview === undefined) break;
+          priorFindingReview = findingReview;
           if (config.profile === 'validation_only' && config.repairApproval?.approved !== true) return fail('blocked', `${phase.id}:validation_repair_not_approved`);
           if (repairRound >= config.limits.maxRepairRounds) return fail('failed', `${phase.id}:repair_limit_exceeded`);
           const repair = await executeStage(phase, 'repair', repairRound + 1, receipts, findingReview);
           if ('status' in repair) return repair;
           if (responseText(repair.response, 'status') !== 'implemented') return fail('blocked', `${phase.id}:repair_blocked`);
+          if ((await captureManagerLoopWorkspaceEvidence(config.workspace.path)).contentDigest === findingReview.evidence.contentDigest) return fail('blocked', `${phase.id}:repair_candidate_unchanged`);
           repairRound += 1;
         }
         if (passingReviews.length !== config.review.requiredPasses) return fail('failed', `${phase.id}:review_not_passed`);

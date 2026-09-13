@@ -140,6 +140,12 @@ const sections: Record<string, SectionHelp> = {
     'Coordinator resource records and provider-reported measurements; unavailable values stay unavailable.',
     'Inspect the affected run or capacity policy before changing limits or drawing a cost conclusion.',
   ),
+  'token tracker': help(
+    'A lower-bound view of provider token telemetry from registered Manager Loop observations: stage receipts plus any explicitly registered usage export. Input, cached input, uncached input, and output remain distinct; cached input is part of input, not additional spend.',
+    'The existing Manager Loop observer and shared normalized usage accounting. It updates when a saved stage receipt is observed; a running stage may be unmeasured. Coverage applies only to registered observations, not all factory or Foreman work.',
+    'Open a run to inspect its recorded phase receipts and scope. Treat missing counters, model labels, and stage roles as unavailable rather than filling them in. Budgets remain advisory only when separately configured.',
+    'Controlling Codex-task and Foreman overhead stay excluded unless an explicit registered usage export supplies them. This is telemetry, not an invoice, savings calculation, or delivery-acceptance signal.',
+  ),
   'queue age': help(
     'How long currently visible runs have waited in the queue. It distinguishes human wait from evidence of actual execution.',
     'Observed queued run records in the current scope.',

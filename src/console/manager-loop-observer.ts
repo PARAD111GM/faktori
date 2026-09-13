@@ -37,6 +37,8 @@ export interface ManagerLoopStageSummary {
   completedAt: string;
   decision?: 'ready' | 'implemented' | 'blocked' | 'pass' | 'repair' | 'accepted' | 'rejected';
   verification?: 'passed' | 'failed';
+  /** A route label only when the persisted receipt explicitly carries one. */
+  model?: string;
   usage: { availability: 'reported' | 'partially_reported' | 'unavailable'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; reasoningTokens?: number };
   actor: 'provider' | 'deterministic';
 }
@@ -67,6 +69,11 @@ export interface ManagerLoopEfficiencySnapshot {
   summaries: ManagerLoopSummary[];
 }
 
+export interface ManagerLoopTokenTrackerSummary {
+  usage: ReturnType<typeof summarizeUsage>['actual'] & { unknownMeasurements: number };
+  coverage: { registeredObservations: number; usableObservations: number; ratio: number | null };
+}
+
 export interface ManagerLoopObserverOptions {
   sources: readonly ManagerLoopSource[];
   pollIntervalMs?: number;
@@ -82,6 +89,10 @@ const MAX_USAGE_EXPORT_BYTES = 1024 * 1024;
 const DEFAULT_POLL_INTERVAL_MS = 500;
 const DEFAULT_STALE_AFTER_MS = 5 * 60_000;
 const ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+// Stage IDs are generated as `${loopId}-${phaseId}-${kind}-${round}`. Loop
+// and phase IDs each allow 64 chars; the longest kind is 20 chars and rounds
+// are constrained to 0..5. Keep the ordinary 64-char ID limit elsewhere.
+const GENERATED_STAGE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?-[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?-(?:manager_brief|implement|repair|review|manager_accept|deterministic_accept)-[0-5]$/;
 const STAGE_KINDS = new Set<ManagerLoopStageSummary['kind']>(['manager_brief', 'implement', 'repair', 'review', 'manager_accept', 'deterministic_accept']);
 const STATUSES = new Set<Exclude<ManagerLoopStatus, 'unavailable'>>(['running', 'succeeded', 'failed', 'blocked', 'interrupted_uncertain']);
 const OUTCOMES = new Set(['completed', 'unchanged_verified', 'denied', 'authentication_required', 'quota_exhausted', 'failed', 'cancelled', 'interrupted_uncertain', 'unavailable']);
@@ -111,6 +122,10 @@ function inside(root: string, candidate: string): boolean {
 
 function identifier(value: unknown): string | undefined {
   return typeof value === 'string' && ID.test(value) ? value : undefined;
+}
+
+function stageIdentifier(value: unknown): string | undefined {
+  return typeof value === 'string' && (ID.test(value) || GENERATED_STAGE_ID.test(value)) ? value : undefined;
 }
 
 function timestamp(value: unknown): string | undefined {
@@ -183,6 +198,7 @@ function stage(value: unknown): ManagerLoopStageSummary | undefined {
   if (phaseId === undefined || typeof kind !== 'string' || !STAGE_KINDS.has(kind as ManagerLoopStageSummary['kind'])
     || !Number.isInteger(round) || Number(round) < 0 || typeof outcome !== 'string' || !OUTCOMES.has(outcome) || completedAt === undefined) return undefined;
   const response = record(input?.response);
+  const model = identifier(input?.model);
   let decision: ManagerLoopStageSummary['decision'];
   if (kind === 'manager_brief' && (response?.status === 'ready' || response?.status === 'blocked')) decision = response.status;
   else if ((kind === 'implement' || kind === 'repair') && (response?.status === 'implemented' || response?.status === 'blocked')) decision = response.status;
@@ -200,21 +216,42 @@ function stage(value: unknown): ManagerLoopStageSummary | undefined {
     completedAt,
     ...(decision === undefined ? {} : { decision }),
     ...(verification === undefined ? {} : { verification }),
+    ...(model === undefined ? {} : { model }),
     usage: usage(input?.usage),
     actor: kind === 'deterministic_accept' ? 'deterministic' : 'provider',
   };
 }
 
+function ambiguousResumedStages(rawStages: unknown[]): Set<number> {
+  const priorSessionByPhase = new Map<string, string>();
+  const ambiguous = new Set<number>();
+  rawStages.forEach((raw, index) => {
+    const input = record(raw);
+    const phaseId = identifier(input?.phaseId);
+    const kind = input?.kind;
+    const round = input?.round;
+    const sessionId = typeof input?.sessionId === 'string' ? input.sessionId : undefined;
+    if (phaseId === undefined || typeof kind !== 'string' || sessionId === undefined) return;
+    // A repair (and legacy implement retry) can resume the preceding provider
+    // session. Adapter telemetry has no cumulative-vs-delta marker, so the
+    // later lifetime snapshot cannot safely be added without a baseline.
+    if ((kind === 'repair' || (kind === 'implement' && Number(round) > 0)) && priorSessionByPhase.get(phaseId) === sessionId) ambiguous.add(index);
+    if (kind === 'implement' || kind === 'repair') priorSessionByPhase.set(phaseId, sessionId);
+  });
+  return ambiguous;
+}
+
 function stageUsageRecords(source: ManagerLoopSource, rawStages: unknown[], current?: RecordValue): Record<string, unknown>[] {
   const result: Record<string, unknown>[] = [];
-  for (const raw of rawStages) {
+  const ambiguousResumes = ambiguousResumedStages(rawStages);
+  for (const [index, raw] of rawStages.entries()) {
     const input = record(raw);
     if (input?.kind === 'deterministic_accept') continue;
-    const stageId = identifier(input?.stageId);
+    const stageId = stageIdentifier(input?.stageId);
     const phaseId = identifier(input?.phaseId);
     const completedAt = timestamp(input?.completedAt);
     if (stageId === undefined || phaseId === undefined || completedAt === undefined) continue;
-    const telemetry = usage(input?.usage);
+    const telemetry = ambiguousResumes.has(index) ? { availability: 'unavailable' as const } : usage(input?.usage);
     const counters = telemetry.availability === 'unavailable' ? undefined : {
       ...(telemetry.inputTokens === undefined ? {} : { input: telemetry.inputTokens }),
       ...(telemetry.cachedInputTokens === undefined ? {} : { cached: telemetry.cachedInputTokens }),
@@ -228,7 +265,7 @@ function stageUsageRecords(source: ManagerLoopSource, rawStages: unknown[], curr
       phase: phaseId, ticket: source.references?.ticket ?? 'unknown', source: `loop:${source.id}`,
       agentId: `${source.id}:${stageId}`, sessionId: typeof input?.sessionId === 'string' ? input.sessionId : stageId,
       registeredSessionId: `${source.id}:${typeof input?.sessionId === 'string' ? input.sessionId : stageId}`,
-      at: completedAt, cumulative: true, coverageScope: 'exclusive', responseId: stageId,
+      at: completedAt, cumulative: false, coverageScope: 'exclusive', responseId: stageId,
       ...(counters === undefined ? { telemetry: 'unknown' } : { counters }),
       ...(source.references === undefined ? {} : { references: source.references }),
       ...(typeof input?.outcome === 'string' ? { attemptOutcome: input.outcome } : {}),
@@ -290,7 +327,11 @@ function projection(source: ManagerLoopSource, value: unknown, modifiedAtMs: num
     || !STATUSES.has(status as Exclude<ManagerLoopStatus, 'unavailable'>) || updatedAt === undefined
     || !Array.isArray(completedPhases) || completedPhases.some((item) => identifier(item) === undefined)
     || !Array.isArray(rawStages)) return undefined;
-  const stages = rawStages.map(stage);
+  const ambiguousResumes = ambiguousResumedStages(rawStages);
+  const stages = rawStages.map((raw, index) => {
+    const value = stage(raw);
+    return value === undefined || !ambiguousResumes.has(index) ? value : { ...value, usage: { availability: 'unavailable' as const } };
+  });
   if (stages.some((item) => item === undefined)) return undefined;
   const current = input.currentStage === undefined ? undefined : record(input.currentStage);
   if (input.currentStage !== undefined && current === undefined) return undefined;
@@ -451,6 +492,19 @@ export class ManagerLoopObserver {
 
   efficiencySnapshot(): ManagerLoopEfficiencySnapshot {
     return { records: structuredClone(this.#records), summaries: this.summaries() };
+  }
+
+  tokenTracker(): ManagerLoopTokenTrackerSummary {
+    const usage = summarizeUsage(this.#records, 0);
+    const registeredObservations = this.#records.length;
+    const usableObservations = this.#records.filter((entry) => {
+      const counters = record(entry.counters);
+      return entry.telemetry !== 'unknown' && nonNegative(counters?.total) !== undefined;
+    }).length;
+    return {
+      usage: { ...usage.actual, unknownMeasurements: usage.unknown.length },
+      coverage: { registeredObservations, usableObservations, ratio: registeredObservations === 0 ? null : usableObservations / registeredObservations },
+    };
   }
 
   /** Registration changes the cached source set; it never starts or controls a loop worker. */

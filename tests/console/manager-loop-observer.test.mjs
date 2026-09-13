@@ -108,6 +108,42 @@ describe('Manager Loop Console observer', () => {
     } finally { observer.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
   });
 
+  it('excludes an ambiguous same-session repair lifetime counter without inventing a delta', async () => {
+    const { root, artifacts, coordinator } = await fixture();
+    await writeFile(join(artifacts, 'state.json'), JSON.stringify(loopState({
+      status: 'failed', currentStage: undefined,
+      stages: [
+        { stageId: 'implement-one', phaseId: 'arithmetic', kind: 'implement', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:00:00Z', evidence: {}, sessionId: 'same-provider-session', usage: { availability: 'reported', inputTokens: 100, cachedInputTokens: 40, outputTokens: 10 } },
+        { stageId: 'repair-one', phaseId: 'arithmetic', kind: 'repair', round: 1, outcome: 'completed', completedAt: '2026-09-09T12:01:00Z', evidence: {}, sessionId: 'same-provider-session', usage: { availability: 'reported', inputTokens: 200, cachedInputTokens: 80, outputTokens: 20 } },
+      ],
+    })));
+    const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: artifacts }] });
+    try {
+      await observer.poll();
+      const summary = observer.summaries()[0];
+      expect(summary.usage).toMatchObject({ input: 100, cached: 40, uncachedInput: 60, output: 10, total: 110, unknownMeasurements: 1 });
+      expect(summary.stages.find((stage) => stage.kind === 'repair')?.usage).toEqual({ availability: 'unavailable' });
+      expect(observer.tokenTracker()).toMatchObject({ usage: { total: 110, unknownMeasurements: 1 }, coverage: { registeredObservations: 2, usableObservations: 1, ratio: 0.5 } });
+    } finally { observer.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('accepts the bounded composite stage IDs emitted for long loop and phase slugs', async () => {
+    const { root, artifacts, coordinator } = await fixture();
+    const loopId = 'l'.repeat(64), phaseId = 'p'.repeat(64);
+    const stageId = `${loopId}-${phaseId}-manager_brief-0`;
+    expect(stageId.length).toBeGreaterThan(64);
+    await writeFile(join(artifacts, 'state.json'), JSON.stringify(loopState({
+      loopId: 'two-phase-math-proof', currentStage: undefined,
+      stages: [{ stageId, phaseId, kind: 'manager_brief', round: 0, outcome: 'completed', completedAt: '2026-09-09T12:00:00Z', evidence: {}, usage: { availability: 'reported', inputTokens: 100, cachedInputTokens: 25, outputTokens: 10 } }],
+    })));
+    const observer = new ManagerLoopObserver({ sources: [{ id: 'two-phase-math-proof', artifactsDirectory: artifacts }] });
+    try {
+      await observer.poll();
+      expect(observer.summaries()[0].usage).toMatchObject({ input: 100, cached: 25, uncachedInput: 75, output: 10, total: 110 });
+      expect(observer.tokenTracker()).toMatchObject({ usage: { total: 110 }, coverage: { registeredObservations: 1, usableObservations: 1 } });
+    } finally { observer.close(); await coordinator.release(); coordinator.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
   it('uses validated delivery receipts for merged and product-accepted cohorts, never a deployment receipt alone', async () => {
     const { root, artifacts, coordinator } = await fixture();
     const digest = `sha256:${'a'.repeat(64)}`;

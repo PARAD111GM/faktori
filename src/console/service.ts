@@ -394,6 +394,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       .reduce((sum, snapshot) => sum + snapshot.reservation.estimatedTokens, 0);
     const waiting = snapshots.filter((snapshot) => snapshot.state === 'blocked' || snapshot.state === 'reconciling');
     const managerLoops = options.managerLoopObserver?.summaries() ?? [];
+    const tokenTracker = options.managerLoopObserver?.tokenTracker();
     const jiraBoards = options.jiraObserver?.snapshot() ?? [];
     const managerConnected = options.managerConnected?.store.snapshot();
     const dailyEvents = retainedWorkManagementDailyEvents(options.coordinator.journal.events(), snapshots, managerConnected, managerLoops);
@@ -402,6 +403,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       admissionPaused: currentPause(records()),
       runs: snapshots.map((snapshot) => publicRun(options.coordinator, snapshot)),
       managerLoops,
+      ...(tokenTracker === undefined ? {} : { tokenTracker }),
       ...(managerConnected ? { managerConnected } : {}),
       workManagement: options.workCatalogObserver
         ? options.workCatalogObserver.snapshot(managerConnected, options.githubWorkObserver?.snapshot(), dailyEvents)

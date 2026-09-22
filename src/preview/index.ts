@@ -150,6 +150,8 @@ type Entry = {
   state: PreviewState;
   evidence: PreviewSnapshot['evidence'];
   process?: PreviewProcessIdentity;
+  /** A launch PID without a trusted process-start/group identity is never signalable. */
+  unverifiedLaunch?: { pid: number; nonce: string };
   runtimeRevision?: string;
   detail?: string;
   feedback: Map<string, PreviewFeedbackItem>;
@@ -404,13 +406,16 @@ export class PersistentPreviewService {
     const configuredLimits = limits(registered.limits);
     const launched = await this.commands.start({ command: registered.startup.command, args: registered.startup.args, cwd: entry.worktree, env: this.#environment(entry, nonce), timeoutMs: 24 * 60 * 60 * 1_000, stdoutMaxBytes: configuredLimits.outputMaxBytes, stderrMaxBytes: configuredLimits.outputMaxBytes, detached: true });
     if (launched.pid < 1) { entry.state = 'failed'; entry.detail = 'preview startup failed'; return; }
+    entry.unverifiedLaunch = { pid: launched.pid, nonce };
     const probe = this.#identityProbeFor(entry.worktree);
     const observed = await probe.inspect(launched.pid);
     if (observed === undefined || !('pid' in observed) || !observed.running || observed.pid !== launched.pid) {
-      entry.state = 'failed'; entry.detail = 'preview process did not remain observable after launch';
+      entry.state = 'uncertain'; entry.evidence = 'not_observed'; entry.detail = 'preview launch pid could not be safely identified; restart and cleanup require reconciliation';
+      await this.#event(entry, 'preview.observation.uncertain', entry.detail, { pid: launched.pid, nonce });
       return;
     }
     entry.process = { pid: observed.pid, processStartedAt: observed.processStartedAt, processGroupId: observed.processGroupId, nonce };
+    entry.unverifiedLaunch = undefined;
     await this.#event(entry, 'preview.started', undefined, { pid: observed.pid, processGroupId: observed.processGroupId, processStartedAt: observed.processStartedAt, nonce });
     void launched.completion.then(() => this.#observedExit(entry, nonce)).catch(() => undefined);
     const verified = await this.#identity(entry);
@@ -451,8 +456,32 @@ export class PersistentPreviewService {
     return this.#snapshot(entry);
   }
   async #observeForRestart(entry: Entry): Promise<boolean> {
-    if (entry.process === undefined) { entry.state = 'stopped'; entry.evidence = 'not_observed'; return true; }
     const probe = this.#identityProbeFor(entry.worktree);
+    if (entry.process === undefined && entry.unverifiedLaunch !== undefined) {
+      const launched = entry.unverifiedLaunch;
+      const observed = await probe.inspect(launched.pid);
+      if (observed !== undefined && 'status' in observed && observed.status === 'absent') {
+        entry.unverifiedLaunch = undefined;
+        await this.#stopped(entry, 'unverified_launch_absent_before_restart');
+        return true;
+      }
+      if (observed !== undefined && 'pid' in observed && observed.running && observed.pid === launched.pid) {
+        entry.process = { pid: observed.pid, processStartedAt: observed.processStartedAt, processGroupId: observed.processGroupId, nonce: launched.nonce };
+        const recovered = entry.process;
+        entry.unverifiedLaunch = undefined;
+        if (await this.#identity(entry)) {
+          entry.state = 'running'; entry.evidence = 'current'; entry.runtimeRevision = entry.registration.candidateRevision; entry.detail = 'unverified launch reconciled through runtime identity';
+          await this.#event(entry, 'preview.identity.verified', entry.detail, { pid: recovered.pid });
+          return false;
+        }
+        entry.process = undefined;
+        entry.unverifiedLaunch = launched;
+      }
+      entry.state = 'uncertain'; entry.evidence = 'not_observed'; entry.detail = 'unverified launch pid remains present or unknown; it was not restarted or signaled';
+      await this.#event(entry, 'preview.observation.uncertain', entry.detail, { pid: launched.pid, nonce: launched.nonce });
+      return false;
+    }
+    if (entry.process === undefined) { entry.state = 'stopped'; entry.evidence = 'not_observed'; return true; }
     const observed = await probe.inspect(entry.process.pid);
     if (observed !== undefined && 'status' in observed && observed.status === 'absent') { await this.#stopped(entry, 'absence_observed_before_restart'); return true; }
     if (sameProcess(entry.process, observed)) {
@@ -486,7 +515,7 @@ export class PersistentPreviewService {
     return 'members' in group && group.members.some(member => member.running && member.pid === entry.process?.pid
       && member.processStartedAt === entry.process.processStartedAt && member.processGroupId === entry.process.processGroupId);
   }
-  async #stopped(entry: Entry, detail: string): Promise<void> { entry.state = 'stopped'; entry.evidence = 'not_observed'; entry.process = undefined; entry.runtimeRevision = undefined; entry.detail = detail; await this.#event(entry, 'preview.stopped', detail); }
+  async #stopped(entry: Entry, detail: string): Promise<void> { entry.state = 'stopped'; entry.evidence = 'not_observed'; entry.process = undefined; entry.unverifiedLaunch = undefined; entry.runtimeRevision = undefined; entry.detail = detail; await this.#event(entry, 'preview.stopped', detail); }
   async #observedExit(entry: Entry, nonce: string): Promise<void> {
     if (entry.process?.nonce !== nonce || entry.state === 'stopped') return;
     const observed = await this.#identityProbeFor(entry.worktree).inspect(entry.process.pid);
@@ -495,6 +524,7 @@ export class PersistentPreviewService {
   #hydrate(entry: Entry): void {
     const history = this.journal.events().filter(record => record.previewId === entry.registration.id);
     let process: PreviewProcessIdentity | undefined;
+    let unverifiedLaunch: Entry['unverifiedLaunch'];
     let state: PreviewState = 'stopped';
     let evidence: PreviewSnapshot['evidence'] = 'not_observed';
     for (const record of history) {
@@ -509,6 +539,7 @@ export class PersistentPreviewService {
       } else if (record.kind === 'preview.identity.invalidated' && process !== undefined) {
         state = 'invalidated'; evidence = 'invalidated';
       } else if (record.kind === 'preview.observation.uncertain') {
+        if (process === undefined && typeof record.data?.pid === 'number' && typeof record.data.nonce === 'string') unverifiedLaunch = { pid: record.data.pid, nonce: record.data.nonce };
         state = 'uncertain'; evidence = process === undefined ? 'not_observed' : 'invalidated';
       } else if (record.kind === 'preview.feedback.requested' && typeof record.data?.itemId === 'string' && typeof record.data.revision === 'string'
         && typeof record.data.summary === 'string' && typeof record.data.featureId === 'string' && typeof record.data.implementerId === 'string'
@@ -519,10 +550,11 @@ export class PersistentPreviewService {
       } else if (record.kind === 'preview.feedback.confirmed' && typeof record.data?.itemId === 'string' && typeof record.data.revision === 'string') {
         const item = entry.feedback.get(record.data.itemId); if (item) { item.confirmedRevision = record.data.revision; item.confirmedAt = record.occurredAt; }
       } else if (record.kind === 'preview.stopped' || record.kind === 'preview.process.exited') {
-        process = undefined; state = 'stopped'; evidence = 'not_observed';
+        process = undefined; unverifiedLaunch = undefined; state = 'stopped'; evidence = 'not_observed';
       }
     }
     entry.process = process;
+    entry.unverifiedLaunch = unverifiedLaunch;
     entry.state = process === undefined && state === 'invalidated' ? 'invalidated' : state;
     entry.evidence = evidence;
     if (state === 'running') entry.runtimeRevision = entry.registration.candidateRevision;

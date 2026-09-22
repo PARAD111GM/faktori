@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import {
   ROLE_QUEUE_STAGES,
+  queueReadinessIsFresh,
   type AuthoritativeQueueSnapshot,
   type AuthoritativeWorkCandidate,
   type LaunchInspection,
@@ -225,7 +226,7 @@ export class RoleQueueController {
           blockers.push({ workItemId: item.workItemId, code: 'human_or_release_authority_required', detail: stage.stageId });
           continue;
         }
-        if (automaticBlocked) continue;
+        if (automaticBlocked || (options.mode === 'automatic' && !this.#automaticReady(snapshot, blockers))) continue;
         if (excluded.has(this.#candidate(snapshot, item.workItemId).executionScope)) {
           blockers.push({ workItemId: item.workItemId, code: 'execution_scope_owned_by_legacy_dispatch', detail: this.#candidate(snapshot, item.workItemId).executionScope });
           continue;
@@ -248,7 +249,11 @@ export class RoleQueueController {
         await this.#append('claim', { assignment: next });
         await this.#append('launch_intended', { assignmentId: next.assignmentId, operationId: next.operationId, assignment: next });
         let observation: LaunchObservation;
-        try { observation = await this.#executor.launch(next); }
+        try {
+          observation = options.mode === 'automatic' && !queueReadinessIsFresh(snapshot.readiness, this.#now())
+            ? { status: 'blocked', reason: 'automatic_readiness_stale_or_future' }
+            : await this.#executor.launch(next);
+        }
         catch (error) { observation = { status: 'uncertain', reason: error instanceof Error ? error.message : 'launch_failed_without_receipt' }; }
         await this.#append('launch_observed', { assignmentId: next.assignmentId, observation });
         states.set(next.assignmentId, { assignment: next, launchIntended: true, launch: observation });
@@ -294,7 +299,7 @@ export class RoleQueueController {
     const durableStates = [...states.values()].sort((left, right) => left.assignment.assignmentId.localeCompare(right.assignment.assignmentId)).map((state) => ({
       assignment: state.assignment, launchIntended: state.launchIntended, launch: state.launch, receipt: state.receipt,
     }));
-    return digest({ sourceRevision: snapshot.revision, candidates: snapshot.candidates, readiness: snapshot.readiness, mode, excludedScopes, durableStates });
+    return digest({ sourceRevision: snapshot.revision, candidates: snapshot.candidates, readiness: snapshot.readiness, readinessFresh: queueReadinessIsFresh(snapshot.readiness, this.#now()), mode, excludedScopes, durableStates });
   }
 
   #queue(snapshot: AuthoritativeQueueSnapshot, states: Map<string, AssignmentState>, blockers: QueueBlocker[]): QueueItem[] {
@@ -336,6 +341,10 @@ export class RoleQueueController {
   }
 
   #automaticReady(snapshot: AuthoritativeQueueSnapshot, blockers: QueueBlocker[]): boolean {
+    if (!queueReadinessIsFresh(snapshot.readiness, this.#now())) {
+      blockers.push({ code: 'automatic_readiness_stale_or_future', detail: snapshot.readiness.authorityRevision });
+      return false;
+    }
     const facets: Array<[string, { ready: boolean; blockers: readonly string[] }]> = [
       ['automatic', snapshot.readiness.automatic], ['transport', snapshot.readiness.transport], ['witness', snapshot.readiness.witness],
     ];

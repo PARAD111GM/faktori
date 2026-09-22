@@ -38,6 +38,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 const endpoint = readFileSync(join(process.env.FAKTORI_VERIFY_DIRECTORY, 'endpoint'), 'utf8');
 const identity = await (await fetch(endpoint + '/identity')).json();
+if (process.argv[2] === 'identity' && process.env.IDENTITY_DELAY_MS) await new Promise(resolve => setTimeout(resolve, Number(process.env.IDENTITY_DELAY_MS)));
 if (process.argv[2] === 'identity') { console.log(JSON.stringify(identity)); } else {
   if (process.env.FAULT === 'check-crash') { console.log(JSON.stringify({format:'faktori.runtime-check/v1',runId:identity.runId,candidateDigest:identity.candidateDigest,variant:identity.variant,status:'failed',failureCode:'arithmetic'})); process.exit(7); }
   if (process.env.FAULT === 'overflow') { console.log('a'.repeat(100000)); setInterval(()=>{},1000); } else {
@@ -102,8 +103,13 @@ describe('candidate runtime verification', () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30000);
 
-  it('observes healthy and deliberate broken behavior on the exact disposable runtime, then removes both process trees', async () => {
+  it('honors configured identity deadlines, observes healthy and broken behavior, and removes both process trees', async () => {
     const { root, candidate, snapshot, config } = await fixture();
+    // Prevents the verifier's former hidden one-second identity cap from
+    // rejecting an owner-approved probe that fits its configured deadline.
+    config.environment.IDENTITY_DELAY_MS = '1100';
+    config.limits.startupTimeoutMs = 6000;
+    config.limits.checkTimeoutMs = 4000;
     try {
       const result = await verifyCandidateRuntime(config);
       expect(result).toMatchObject({ passed: true, status: 'passed', candidateDigest: snapshot.candidateDigest, executionBoundary: 'owner_trusted_native' });
@@ -118,7 +124,7 @@ describe('candidate runtime verification', () => {
       expect(pids).toHaveLength(4);
       for (const pid of pids) expect(running(pid)).toBe(false);
     } finally { await rm(root, { recursive: true, force: true }); }
-  }, 15000);
+  }, 30000);
 
   // Prevents a dead app, stale deployment, crashed checker, or insensitive test
   // from being accepted as evidence that the deliberate defect was detected.

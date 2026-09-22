@@ -31,7 +31,7 @@ function snapshot(overrides = {}) {
   };
 }
 
-function fixture(initial = snapshot(), builderWip = 3) {
+function fixture(initial = snapshot(), builderWip = 3, clock = () => new Date(now)) {
   let current = structuredClone(initial);
   const events = [];
   const launches = [];
@@ -42,12 +42,32 @@ function fixture(initial = snapshot(), builderWip = 3) {
       launch: async (assignment) => { launches.push(assignment); return { status: 'running', workerId: `worker-${assignment.attempt}` }; },
       inspect: async () => ({ status: 'unknown', reason: 'transport did not return a durable receipt' }),
     },
-    now: () => new Date(now), eventId: (() => { let id = 0; return () => `event-${++id}`; })(),
+    now: clock, eventId: (() => { let id = 0; return () => `event-${++id}`; })(),
   });
   return { controller, events, launches, set(value) { current = structuredClone(value); } };
 }
 
 describe('role queue controller', () => {
+  it('expires cached readiness and rejects future attestations without launching work', async () => {
+    let time = Date.parse(now);
+    const state = fixture(snapshot(), 3, () => new Date(time));
+    const options = { mode: 'automatic', excludedScopes: ['faktori-test-project'] };
+    await state.controller.evaluate(options);
+    time += 120_000;
+    const expired = await state.controller.evaluate(options);
+    expect(expired.changed).toBe(true);
+    expect(expired.blockers).toContainEqual(expect.objectContaining({ code: 'automatic_readiness_stale_or_future' }));
+    expect(state.launches).toEqual([]);
+    const future = snapshot();
+    future.readiness.observedAt = new Date(time + 1).toISOString();
+    state.set(future);
+    expect((await state.controller.evaluate({ mode: 'automatic' })).blockers).toContainEqual(expect.objectContaining({ code: 'automatic_readiness_stale_or_future' }));
+    expect(state.events).toEqual([]);
+    future.readiness.observedAt = new Date(time).toISOString();
+    state.set(future);
+    expect((await state.controller.evaluate({ mode: 'automatic' })).launches).toHaveLength(1);
+  });
+
   it('does not let completed tickets consume downstream WIP', async () => {
     const initial = snapshot();
     initial.candidates.push({ ...initial.candidates[0], workItemId: 'done-work', trackerStatusId: 'done',

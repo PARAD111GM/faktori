@@ -51,17 +51,21 @@ describe('Console workflow runtime', () => {
   it('uses the coordinator journal for duplicate-safe launch and restart replay, while binding only configured runtime work', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-workflow-runtime-'));
     const path = join(root, 'workflow.json'); const launched = [];
+    let clock = Date.parse(now);
     try {
       await writeFile(path, JSON.stringify(source()), { mode: 0o600 });
       const firstCoordinator = await coordinator(root, 'one');
       const options = { configuration: { sourcePath: path, executionScopes: ['faktori-sandbox'], legacyExecutionScopes: [] }, workItems: [{ workItemId: 'configured-builder', intent: intent() }],
-        executor: { launch: async assignment => { launched.push(assignment); return { status: 'running', workerId: 'worker-1' }; }, inspect: async () => ({ status: 'unknown', reason: 'not used' }) }, trustedReadiness: trustedReadiness(), now: () => new Date(now) };
+        executor: { launch: async assignment => { launched.push(assignment); return { status: 'running', workerId: 'worker-1' }; }, inspect: async () => ({ status: 'unknown', reason: 'not used' }) }, trustedReadiness: trustedReadiness(), now: () => new Date(clock) };
       const runtime = new ConsoleWorkflowRuntime({ coordinator: firstCoordinator, ...options });
       const [first, duplicate] = await Promise.all([runtime.evaluate({ mode: 'automatic' }), runtime.evaluate({ mode: 'automatic' })]);
       expect(first.launches).toHaveLength(1); expect(duplicate.launches).toEqual([]);
       expect(runtime.snapshot()).toMatchObject({ status: 'automatic', mode: 'automatic', automaticReady: true, capabilityBlockers: [] });
       expect(first.launches[0]).toMatchObject({ workItemId: 'ticket-1', runtime: { workItemId: 'configured-builder', runId: 'configured-run' } });
       expect(launched).toHaveLength(1);
+      clock += 120_000;
+      expect(runtime.snapshot()).toMatchObject({ status: 'blocked', automaticReady: false,
+        capabilityBlockers: expect.arrayContaining([expect.objectContaining({ code: 'automatic_readiness_stale_or_future' })]) });
       expect(firstCoordinator.journal.events().filter(event => event.kind === 'factory.delivery').map(event => event.data.record.kind)).toEqual(['claim', 'launch_intended', 'launch_observed']);
       await firstCoordinator.release(); firstCoordinator.close();
 

@@ -74,10 +74,11 @@ describe('managed runtime update assembly', () => {
       expect(rebuilt.status).toBe(0);
       expect(JSON.parse(rebuilt.stdout)).toEqual(expect.objectContaining({ eventCount: 0, snapshots: [] }));
     } finally { await rm(root, { recursive: true, force: true }); }
-  // This intentionally copies and activates two complete built kits. Under the
-  // full parallel suite it can exceed 30 seconds even though the isolated test
-  // passes, so keep a bounded ceiling that includes suite-level I/O contention.
-  }, 60_000);
+  // This intentionally copies, hashes, packs, installs, and executes two
+  // complete built kits. Keep the bounded fixture ceiling above parallel local
+  // I/O and native-install contention; update validation assertions and source
+  // execution deadlines are unchanged.
+  }, 120_000);
 
   it('rejects a candidate altered after preview without activation, plus rollback, prerelease, and unsupported operational state', async () => {
     const root = await mkdtemp(join(tmpdir(), 'faktori-update-reject-'));
@@ -98,5 +99,7 @@ describe('managed runtime update assembly', () => {
       await amendCandidatePackage(next, { version: '1.0.2', faktoriStateFormatVersion: 2 });
       await expect(previewRuntimeUpdate(request(installation, next))).rejects.toBeInstanceOf(MaintenanceValidationError);
     } finally { await rm(root, { recursive: true, force: true }); }
-  }, 60_000);
+  // This initializes a complete built kit before exercising rejection paths;
+  // retain the same bounded fixture ceiling under parallel local I/O pressure.
+  }, 120_000);
 });

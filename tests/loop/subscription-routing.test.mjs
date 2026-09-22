@@ -28,4 +28,24 @@ describe('lean-loop subscription routing port', () => {
     const result = await runLeanLoop(config(workspace, join(root, 'records'), base), { environment: { PATH: process.env.PATH }, adapterFactory: () => ({ async start() { calls += 1; return providerResult(); }, async resume() { throw new Error('unexpected'); } }) });
     expect(result).toMatchObject({ status: 'blocked', reason: 'subscription_routing_requires_console_controller' }); expect(calls).toBe(0);
   });
+
+  it('releases a selected unsupported provider reservation without starting a model turn', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-loop-routing-unsupported-')); roots.push(root); const workspace = join(root, 'workspace'); await mkdir(workspace); const base = repository(workspace); const terminals = []; let adapterCalls = 0;
+    const result = await runLeanLoop(config(workspace, join(root, 'records'), base), { environment: { PATH: process.env.PATH }, routing: {
+      async select(intent) { return { ...intent, execution: { ...intent.execution, providerId: 'unsupported-provider' } }; },
+      async terminal(runId, outcome) { terminals.push({ runId, outcome }); },
+    }, adapterFactory: () => { adapterCalls += 1; throw new Error('adapter_must_not_start'); } });
+    expect(result).toMatchObject({ status: 'blocked', reason: 'routing-proof-work-review-0:subscription_routing_provider_unsupported' });
+    expect(terminals).toEqual([{ runId: 'routing-proof-work-review-0', outcome: 'denied' }]); expect(adapterCalls).toBe(0);
+  });
+
+  it('marks a selected reservation uncertain when adapter construction fails before model invocation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'faktori-loop-routing-adapter-failure-')); roots.push(root); const workspace = join(root, 'workspace'); await mkdir(workspace); const base = repository(workspace); const terminals = []; let adapterCalls = 0;
+    const result = await runLeanLoop(config(workspace, join(root, 'records'), base), { environment: { PATH: process.env.PATH }, routing: {
+      async select(intent) { return intent; },
+      async terminal(runId, outcome) { terminals.push({ runId, outcome }); },
+    }, adapterFactory: () => { adapterCalls += 1; throw new Error('adapter_unavailable'); } });
+    expect(result).toMatchObject({ status: 'interrupted_uncertain', reason: 'routing-proof-work-review-0:provider_turn_uncertain' });
+    expect(terminals).toEqual([{ runId: 'routing-proof-work-review-0', outcome: 'interrupted_uncertain' }]); expect(adapterCalls).toBe(1);
+  });
 });

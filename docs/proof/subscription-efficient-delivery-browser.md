@@ -20,4 +20,15 @@ node node_modules/vite/bin/vite.js build --config console/vite.config.ts
 node run.js playwright-test-faktori-delivery.js
 ```
 
-The preview suite passed 8/8 and typecheck/build passed. Browser instrumentation found no application JavaScript error, but did record two explicit `404` requests for the Console's missing `/favicon.ico` (one per browser context). This is not hidden as a clean browser run; the Console static asset owner must supply the existing favicon asset or route before the no-console-error gate is clear.
+The preview suite passed 8/8 and typecheck/build passed. The first browser run
+reported two missing-favicon requests. The Console now declares the packaged
+brand SVG as its favicon. The complete browser drill was rerun against a fresh
+isolated Console on 2026-09-22: both viewports, two persisted feedback items,
+revision verification and final-review readiness passed with **no browser
+console errors or application exceptions**. The proof server and its owned
+preview were stopped afterward.
+
+The two applied operations exercise feedback bookkeeping, not actual product
+code edits or human acceptance. Browser context declarations are capability
+contracts, not evidence that a real human reviewed the candidate. Live provider,
+deployment and acceptance gates remain separate.

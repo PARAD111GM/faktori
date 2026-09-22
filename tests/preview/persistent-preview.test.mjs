@@ -107,6 +107,39 @@ describe('persistent human preview lifecycle', () => {
     await service.stop('preview-1');
   }, 15_000);
 
+  it('retains an unverified launch PID as durable uncertainty and never launches or signals a duplicate before reconciliation', async () => {
+    let observation = 'unknown';
+    let launches = 0;
+    let signals = 0;
+    const commands = {
+      start: async () => ({ pid: 71234, completion: new Promise(() => {}) }),
+      run: async ({ env }) => ({ exitCode: 0, signal: null, stdout: JSON.stringify({ format: 'faktori.persistent-preview-identity/v1', previewId: env.FAKTORI_PREVIEW_ID, candidateRevision: env.FAKTORI_PREVIEW_REVISION, nonce: env.FAKTORI_PREVIEW_NONCE, endpoint: env.PREVIEW_URL }), stderr: '', timedOut: false, outputLimitExceeded: false }),
+      killProcessGroup: () => { signals += 1; },
+    };
+    const identityProbeFor = () => ({
+      inspect: async pid => observation === 'unknown' ? { status: 'unknown' } : { pid, processStartedAt: 'known-start', processGroupId: pid, running: true },
+      inspectProcessGroup: async group => observation === 'unknown' ? { status: 'unknown' } : { processGroupId: group, members: [{ pid: group, processStartedAt: 'known-start', processGroupId: group, running: true }] },
+    });
+    const originalStart = commands.start;
+    commands.start = async input => { launches += 1; return originalStart(input); };
+    const { service, records } = await fixture({}, { commands, identityProbeFor });
+    const uncertain = await service.start('preview-1');
+    expect(uncertain).toMatchObject({ state: 'uncertain', evidence: 'not_observed' });
+    const launchPid = records.find(record => record.kind === 'preview.observation.uncertain')?.data?.pid;
+    expect(typeof launchPid).toBe('number');
+    expect(launches).toBe(1);
+    expect((await service.stop('preview-1')).state).toBe('uncertain');
+    expect(signals).toBe(0);
+    expect((await service.start('preview-1')).state).toBe('uncertain');
+    expect(launches).toBe(1);
+    expect(records.some(record => record.kind === 'preview.stopped')).toBe(false);
+
+    observation = 'known';
+    const reconciled = await service.start('preview-1');
+    expect(reconciled).toMatchObject({ state: 'running', evidence: 'current', process: { pid: launchPid } });
+    expect(launches).toBe(1);
+  }, 15_000);
+
   it('hydrates a persisted process as uncertain, then observes its identity before avoiding a duplicate restart', async () => {
     const { service, records, identityProbeFor, registration } = await fixture();
     const started = await service.start('preview-1');

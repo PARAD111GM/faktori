@@ -7,6 +7,7 @@ import type { DurableCoordinator } from '../runtime/coordinator.ts';
 import type { RunIntent } from '../runtime/contracts.ts';
 import {
   RoleQueueController,
+  queueReadinessIsFresh,
   type AuthoritativeQueueSnapshot,
   type AuthoritativeWorkCandidate,
   type EntryGuardEvidence,
@@ -206,18 +207,18 @@ function unavailableReadiness(revision: string, now: Date): AuthoritativeQueueSn
   return { authorityRevision: `unavailable:${revision}`, observedAt: now.toISOString(), automatic: unavailable, transport: unavailable, witness: unavailable };
 }
 
-function automaticCapabilityBlockers(readiness: AuthoritativeQueueSnapshot['readiness']): QueueBlocker[] {
+function automaticCapabilityBlockers(readiness: AuthoritativeQueueSnapshot['readiness'], now: Date): QueueBlocker[] {
   const facets: Array<[string, { ready: boolean; blockers: readonly string[] }]> = [
     ['automatic', readiness.automatic], ['transport', readiness.transport], ['witness', readiness.witness],
   ];
-  return facets.flatMap(([facet, value]) => value.ready ? [] : [{
+  return [...(queueReadinessIsFresh(readiness, now) ? [] : [{ code: 'automatic_readiness_stale_or_future', detail: readiness.authorityRevision }]), ...facets.flatMap(([facet, value]) => value.ready ? [] : [{
     code: `automatic_${facet}_capability_missing`,
     detail: value.blockers.join(',') || readiness.authorityRevision,
-  }]);
+  }])];
 }
 
-function automaticReady(readiness: AuthoritativeQueueSnapshot['readiness']): boolean {
-  return readiness.automatic.ready && readiness.transport.ready && readiness.witness.ready;
+function automaticReady(readiness: AuthoritativeQueueSnapshot['readiness'], now: Date): boolean {
+  return queueReadinessIsFresh(readiness, now) && readiness.automatic.ready && readiness.transport.ready && readiness.witness.ready;
 }
 
 /**
@@ -250,15 +251,23 @@ export class ConsoleWorkflowRuntime {
     this.#now = options.now ?? (() => new Date());
   }
 
-  snapshot(): ConsoleWorkflowRuntimeSnapshot { return structuredClone(this.#state); }
+  snapshot(): ConsoleWorkflowRuntimeSnapshot {
+    const state = structuredClone(this.#state);
+    if (this.#lastReadiness && !queueReadinessIsFresh(this.#lastReadiness, this.#now())) {
+      state.automaticReady = false;
+      state.capabilityBlockers = automaticCapabilityBlockers(this.#lastReadiness, this.#now());
+      if (state.mode === 'automatic') state.status = 'blocked';
+    }
+    return state;
+  }
 
   async evaluate(options: { mode: QueueMode }): Promise<QueueEvaluation> {
     try {
       const controller = await this.#controllerForCurrentPolicy();
       const result = await controller.evaluate({ mode: options.mode, excludedScopes: this.#configuration.legacyExecutionScopes });
       const readiness = this.#lastReadiness ?? unavailableReadiness(result.sourceRevision, this.#now());
-      const ready = automaticReady(readiness);
-      const capabilityBlockers = automaticCapabilityBlockers(readiness);
+      const ready = automaticReady(readiness, this.#now());
+      const capabilityBlockers = automaticCapabilityBlockers(readiness, this.#now());
       this.#state = {
         status: options.mode === 'shadow' ? 'shadow' : options.mode === 'attended' ? 'attended' : ready ? 'automatic' : 'blocked',
         mode: options.mode, automaticReady: ready, capabilityBlockers, sourceRevision: result.sourceRevision,
@@ -267,7 +276,7 @@ export class ConsoleWorkflowRuntime {
       return result;
     } catch (error) {
       const blocker = { code: 'workflow_evaluation_unavailable', detail: error instanceof Error ? error.message : 'unknown' };
-      this.#state = { status: 'blocked', mode: options.mode, automaticReady: false, capabilityBlockers: this.#lastReadiness ? automaticCapabilityBlockers(this.#lastReadiness) : [], lastEvaluatedAt: this.#now().toISOString(), blockers: [blocker], reason: blocker.detail };
+      this.#state = { status: 'blocked', mode: options.mode, automaticReady: false, capabilityBlockers: this.#lastReadiness ? automaticCapabilityBlockers(this.#lastReadiness, this.#now()) : [], lastEvaluatedAt: this.#now().toISOString(), blockers: [blocker], reason: blocker.detail };
       throw error;
     }
   }
@@ -280,7 +289,7 @@ export class ConsoleWorkflowRuntime {
       return blockers;
     } catch (error) {
       const blocker = { code: 'workflow_reconcile_unavailable', detail: error instanceof Error ? error.message : 'unknown' };
-      this.#state = { status: 'blocked', automaticReady: false, capabilityBlockers: this.#lastReadiness ? automaticCapabilityBlockers(this.#lastReadiness) : [], lastEvaluatedAt: this.#now().toISOString(), blockers: [blocker], reason: blocker.detail };
+      this.#state = { status: 'blocked', automaticReady: false, capabilityBlockers: this.#lastReadiness ? automaticCapabilityBlockers(this.#lastReadiness, this.#now()) : [], lastEvaluatedAt: this.#now().toISOString(), blockers: [blocker], reason: blocker.detail };
       throw error;
     }
   }
@@ -289,7 +298,7 @@ export class ConsoleWorkflowRuntime {
     try { return await (await this.#controllerForCurrentPolicy()).recordReceipt(receipt); }
     catch (error) {
       const blocker = { code: 'workflow_receipt_unavailable', detail: error instanceof Error ? error.message : 'unknown' };
-      this.#state = { status: 'blocked', automaticReady: false, capabilityBlockers: this.#lastReadiness ? automaticCapabilityBlockers(this.#lastReadiness) : [], lastEvaluatedAt: this.#now().toISOString(), blockers: [blocker], reason: blocker.detail };
+      this.#state = { status: 'blocked', automaticReady: false, capabilityBlockers: this.#lastReadiness ? automaticCapabilityBlockers(this.#lastReadiness, this.#now()) : [], lastEvaluatedAt: this.#now().toISOString(), blockers: [blocker], reason: blocker.detail };
       throw error;
     }
   }

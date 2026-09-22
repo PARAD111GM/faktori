@@ -952,18 +952,22 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
       if (taskClass === undefined || dependencies.routing === undefined) return fail('blocked', `${id}:subscription_routing_requires_console_controller`);
       try { intent = await dependencies.routing.select(intent, context.packetRevision, taskClass); }
       catch (error) { return fail('blocked', `${id}:subscription_routing_blocked:${error instanceof Error ? error.message : 'unavailable'}`); }
-      if (intent.execution.providerId !== 'codex') return fail('blocked', `${id}:subscription_routing_provider_unsupported`);
+      if (intent.execution.providerId !== 'codex') {
+        try { await dependencies.routing.terminal(intent.runId, 'denied'); }
+        catch { return fail('interrupted_uncertain', `${id}:subscription_routing_terminal_unrecorded`); }
+        return fail('blocked', `${id}:subscription_routing_provider_unsupported`);
+      }
     }
     const adapterRoute: LeanRouteDecision | undefined = subscription?.enabled === true && leanRole !== undefined
       ? { role: leanRole, routeId: 'subscription-controller', provider: 'codex' as const, model: intent.execution.model, ...(intent.execution.reasoning === undefined ? {} : { reasoning: intent.execution.reasoning }), suitability: 'bounded' as const, availability: 'unknown' as const, order: 0 }
       : route;
-    const adapter = dependencies.adapterFactory?.(adapterRoute) ?? defaultAdapter(config, environment, createId, dependencies.nativeIdentityProbe, adapterRoute);
     const lifecycle = {
       onStarted: async (worker: WorkerIdentity): Promise<void> => { await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: now().toISOString(), kind: 'worker.started', stageId: id, worker }); },
       onTerminationRequired: async (_worker: WorkerIdentity, reason: string): Promise<void> => { await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: now().toISOString(), kind: 'worker.termination.intended', stageId: id, reason }); },
     };
     let providerResult: ProviderRunResult;
     try {
+      const adapter = dependencies.adapterFactory?.(adapterRoute) ?? defaultAdapter(config, environment, createId, dependencies.nativeIdentityProbe, adapterRoute);
       if (kind === 'repair') {
         const stored = state.implementerSessions[phase.id];
         if (stored === undefined) {

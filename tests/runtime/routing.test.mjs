@@ -47,6 +47,20 @@ describe('subscription-aware routing', () => {
     expect(left.reservation).toMatchObject({ kind: 'native-estimate', nativeUnit: 'credits', units: 1, capacitySnapshotId: 'capacity@1' });
   });
 
+  it('serializes an estimated admission behind an untranslatable slot hold and replays the block', async () => {
+    const port = journal(); const controller = new SubscriptionRoutingController({ journal: port, clock });
+    const first = await controller.admit(request('unestimated-first'), policy, routes, capacity('mixed@1', 10));
+    expect(first.reservation).toMatchObject({ kind: 'concurrency-slot', status: 'held' });
+
+    const estimated = request('estimated-second', 1, { nativeCapacityEstimate: { value: 1, nativeUnit: 'credits' } });
+    const blocked = await controller.admit(estimated, policy, routes, capacity('mixed@1', 10));
+    expect(blocked.decision).toMatchObject({ status: 'blocked', reason: 'untranslated_capacity_slot_limit_reached' });
+    expect(await controller.admit(estimated, policy, routes, capacity('mixed@1', 10))).toMatchObject({ replayed: true, decision: blocked.decision });
+
+    await controller.observeTerminal({ attemptId: first.decision.attemptId, outcome: 'completed' });
+    expect((await controller.admit(request('estimated-after-terminal', 1, { nativeCapacityEstimate: { value: 1, nativeUnit: 'credits' } }), policy, routes, capacity('mixed@2', 10))).decision.status).toBe('admitted');
+  });
+
   it('replays a durable admission, keeps uncertain capacity held, and stops subtracting it after a newer source snapshot', async () => {
     const port = journal(); const controller = new SubscriptionRoutingController({ journal: port, clock });
     const input = request('one', 1, { nativeCapacityEstimate: { value: 1, nativeUnit: 'credits' } });
@@ -78,6 +92,7 @@ describe('subscription-aware routing', () => {
     await controller.observeTerminal({ attemptId: first.decision.attemptId, outcome: 'completed' });
     const replacement = await controller.admit(request('slot-two'), policy, routes, []);
     expect(replacement.decision).toMatchObject({ status: 'admitted', routeId: 'economic', capacityFreshness: 'unknown' });
+    await controller.observeTerminal({ attemptId: replacement.decision.attemptId, outcome: 'completed' });
 
     const held = await controller.admit(request('native-one', 1, { nativeCapacityEstimate: { value: 1, nativeUnit: 'credits' } }), policy, routes, capacity('capacity@1', 1));
     await controller.observeTerminal({ attemptId: held.decision.attemptId, outcome: 'interrupted_uncertain' });
@@ -108,6 +123,7 @@ describe('subscription-aware routing', () => {
     const seniorOnly = { ...policy, taskClasses: { planning: { routePreference: ['senior'] } } };
     const explicitlyAllowed = await controller.admit(request('allowed-senior', 1, { taskClass: 'planning', explicitCapacityAllowance: { authorityRevision: 'owner@1', units: 1 } }), seniorOnly, [routes[1]], []);
     expect(explicitlyAllowed.decision).toMatchObject({ status: 'admitted', routeId: 'senior', capacityFreshness: 'unknown' });
+    await controller.observeTerminal({ attemptId: explicitlyAllowed.decision.attemptId, outcome: 'completed' });
 
     const reservePolicy = { ...policy, completionReserveByPool: { shared: 1 }, taskClasses: {
       routine: { routePreference: ['economic'], usesCompletionReserve: true },

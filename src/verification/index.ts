@@ -223,7 +223,10 @@ async function scenario(config: CandidateVerificationConfiguration, snapshot: st
     const readyDeadline = Date.now() + config.limits.startupTimeoutMs;
     do {
       await live();
-      identity = await readIdentity(Math.max(1, Math.min(1_000, readyDeadline - Date.now())));
+      // An identity command may need to start a language runtime. Honor the
+      // configured startup deadline instead of killing every attempt after an
+      // unrelated one-second cap, which prevents readiness on a busy host.
+      identity = await readIdentity(Math.max(1, readyDeadline - Date.now()));
       if (identity) break;
       await delay(25);
     } while (Date.now() < readyDeadline);
@@ -232,7 +235,7 @@ async function scenario(config: CandidateVerificationConfiguration, snapshot: st
     await live();
     if (!commandSucceeded(observed)) throw new Error(observed.timedOut ? 'check_timeout' : 'check_execution_failed');
     check = bound<RuntimeCheck>(evidenceJson(observed.stdout), expected, 'faktori.runtime-check/v1');
-    const after = await readIdentity(1_000);
+    const after = await readIdentity(config.limits.checkTimeoutMs);
     if (!after || digest(after) !== digest(identity)) throw new Error('runtime_identity_changed');
     if (expectedFailureCode === undefined ? check.status !== 'passed' : check.status !== 'failed' || check.failureCode !== expectedFailureCode) throw new Error(expectedFailureCode === undefined ? 'healthy_check_failed' : 'negative_control_not_detected');
     if ((await captureCandidateSnapshot(snapshot)).candidateDigest !== expected.candidateDigest) throw new Error('runtime_changed_candidate');

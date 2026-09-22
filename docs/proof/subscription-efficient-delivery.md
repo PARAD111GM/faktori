@@ -1,6 +1,7 @@
 # Subscription-efficient delivery proof ledger
 
-Status: no installed/runtime or live-product proof recorded by this document.
+Status: source implementation and an isolated local browser drill are recorded
+below; no installed-provider or live-product proof is claimed.
 Do not infer a result from a source diff, green unit test, preview URL, provider
 login, tracker row, PR, deployment receipt or model usage total.
 
@@ -8,7 +9,8 @@ login, tracker row, PR, deployment receipt or model usage total.
 
 | Gate | Required observation | Current result |
 | --- | --- | --- |
-| Source | Targeted routing, queue, Console facade and preview tests; `npm run check` on the candidate head | Pending root run |
+| Source | Routing, queue, Console facade, preview, packaging and release checks | Final assembled run pending; targeted routing/queue/Console check passed 27 cases |
+| Local browser | Registered loopback preview, revision check and two persisted feedback items, desktop and mobile | Passed; see [browser drill](subscription-efficient-delivery-browser.md); provider-free, no product edits or human acceptance implied |
 | Local attended | One Faktori-only configured work item: durable intent, observed worker/transport receipt, restart reconciliation, candidate evidence | Pending |
 | Automatic eligibility | Current transport, native goal, idle wake-up/supervision and witnessed-delivery bindings; duplicate/stale fault drills | Pending |
 | Human review | Independent exact-head verdict after the final candidate/feedback revision | Pending |
@@ -17,7 +19,7 @@ login, tracker row, PR, deployment receipt or model usage total.
 | Acceptance | Human/staging result bound to the deployed revision | Pending |
 | Efficiency | Frozen comparable cohort, complete/labeled coverage and attributable lifecycle accounting | Unavailable until completed features exist |
 
-## Commands to record after root wiring
+## Verification commands
 
 Run on the candidate head under the pinned Node 24/npm 12 toolchain:
 
@@ -35,10 +37,14 @@ tokens, prompts, workspace paths or session credentials in this file.
 Capture the Console mode plus `automaticReady` and `capabilityBlockers`; an
 attended result is not proof of automatic wake-up readiness.
 
-The root integration adds the final Console endpoint and native transport
-commands only after it has wired them and tested them locally. Until then the
-first incomplete gate is **root Console/transport integration**, followed by
-independent review, authorized merge, deployment and acceptance.
+The authenticated Console endpoint and configured runtime bridge are wired.
+Independent review of implementation revision `98c75d9` identified a preview
+launch-identity uncertainty defect; repair and final verification are in progress.
+The first operational gate remains **one owner-configured, attended Faktori-only
+transport/restart witness**. Native-goal activation and idle-Foreman wake-up must
+be observed before automatic admission; the shipped CLI does not fabricate
+those capabilities. Authorized merge, deployment and acceptance follow their
+own gates.
 
 ## Fault drills
 

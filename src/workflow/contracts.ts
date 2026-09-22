@@ -81,6 +81,13 @@ export interface QueueReadiness {
   witness: { ready: boolean; blockers: readonly string[] };
 }
 
+/** Capability attestations are short-lived, never perpetual launch authority. */
+export const QUEUE_READINESS_MAX_AGE_MS = 120_000;
+export function queueReadinessIsFresh(readiness: Pick<QueueReadiness, 'observedAt'>, now: Date): boolean {
+  const age = now.getTime() - Date.parse(readiness.observedAt);
+  return Number.isFinite(age) && age >= 0 && age < QUEUE_READINESS_MAX_AGE_MS;
+}
+
 export interface AuthoritativeQueueSnapshot {
   format: 'faktori.role-queue-source/v1';
   revision: string;

@@ -315,6 +315,12 @@ export class SubscriptionRoutingController {
         if (policy.strictBudget && observation.availabilityAccounting !== 'includes_active_faktori_reservations' && active.some(reservation => reservation.kind !== 'native-estimate' || reservation.nativeUnit !== estimate?.nativeUnit)) { blockedReason = 'strict_budget_active_consumption_unknown'; continue; }
         if (estimate !== undefined && estimate.nativeUnit !== observation?.nativeUnit) { blockedReason = 'native_capacity_unit_mismatch'; continue; }
         if (estimate !== undefined) {
+          // A slot hold from work without a native estimate cannot be debited
+          // from a native reading. Keep the pool serialized until it has a
+          // terminal receipt rather than assuming the reading accounts for it.
+          if (active.some((reservation) => reservation.kind === 'concurrency-slot')) {
+            blockedReason = 'untranslated_capacity_slot_limit_reached'; continue;
+          }
           const reserve = classPolicy.usesCompletionReserve === false ? 0 : policy.completionReserveByPool?.[route.accountPoolId] ?? 0;
           // Newer observations cannot be assumed to include still-active work.
           // Only an explicit provider accounting declaration may suppress that

@@ -9,7 +9,7 @@ login, tracker row, PR, deployment receipt or model usage total.
 
 | Gate | Required observation | Current result |
 | --- | --- | --- |
-| Source | Routing, queue, Console facade, preview, packaging and release checks | Final assembled run pending; targeted routing/queue/Console check passed 27 cases |
+| Source | Routing, queue, Console facade, preview, packaging and release checks | Passed on `5cbc29d`: `npm run check`, 692 tests / 97 files, runtime + Console typecheck/build, clean packed-CLI install |
 | Local browser | Registered loopback preview, revision check and two persisted feedback items, desktop and mobile | Passed; see [browser drill](subscription-efficient-delivery-browser.md); provider-free, no product edits or human acceptance implied |
 | Local attended | One Faktori-only configured work item: durable intent, observed worker/transport receipt, restart reconciliation, candidate evidence | Pending |
 | Automatic eligibility | Current transport, native goal, idle wake-up/supervision and witnessed-delivery bindings; duplicate/stale fault drills | Pending |
@@ -21,6 +21,16 @@ login, tracker row, PR, deployment receipt or model usage total.
 | Efficiency | Frozen comparable cohort, complete/labeled coverage and attributable lifecycle accounting | Unavailable until completed features exist |
 
 ## Verification commands
+
+Final local release check: 2026-09-22, Node 24.20.0 / npm 12.0.2, source
+`5cbc29d` (application source identical to independently reviewed `c81d814`).
+All 692 tests passed across 97 files in 262.01 seconds with two workers.
+`pack:verify` installed and verified `faktori-0.2.4.tgz` from a clean temporary
+installation. All 16 packaged skills and generated provider entry maps verified.
+Earlier failing runs exposed four review defects and short fixture startup
+deadlines; they are not counted as passing evidence. Deliberate timeout, wrong
+identity, stale/future readiness, duplicate/restart and cleanup assertions remain.
+GitHub CI and installed-provider acceptance are separate observations.
 
 Run on the candidate head under the pinned Node 24/npm 12 toolchain:
 

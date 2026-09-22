@@ -107,6 +107,48 @@ describe('persistent human preview lifecycle', () => {
     await service.stop('preview-1');
   }, 15_000);
 
+  it('keeps a live child group uncertain when the leader exits during a stop probe, then restarts only after the recorded group is absent', async () => {
+    let launches = 0; let oldLeaderExited = false; let oldGroupLive = true; let blockStopProbe = false; let releaseStopProbe; let enteredStopProbe;
+    const stopProbeEntered = new Promise(resolve => { enteredStopProbe = resolve; });
+    let resolveCompletion;
+    const completion = new Promise(resolve => { resolveCompletion = resolve; });
+    const signals = [];
+    const commands = {
+      start: async () => { launches += 1; const pid = launches === 1 ? 71234 : 81234; return { pid, completion: launches === 1 ? completion : new Promise(() => {}) }; },
+      run: async ({ env }) => ({ exitCode: 0, signal: null, stdout: JSON.stringify({ format: 'faktori.persistent-preview-identity/v1', previewId: env.FAKTORI_PREVIEW_ID, candidateRevision: env.FAKTORI_PREVIEW_REVISION, nonce: env.FAKTORI_PREVIEW_NONCE, endpoint: env.PREVIEW_URL }), stderr: '', timedOut: false, outputLimitExceeded: false }),
+      killProcessGroup: (_group, signal) => { signals.push(signal); if (signal === 'SIGTERM') blockStopProbe = true; },
+    };
+    const identityProbeFor = () => ({
+      inspect: async pid => {
+        if (blockStopProbe) { blockStopProbe = false; enteredStopProbe(); await new Promise(resolve => { releaseStopProbe = resolve; }); }
+        if (pid === 71234 && oldLeaderExited) return { status: 'absent' };
+        return { pid, processStartedAt: `start-${pid}`, processGroupId: pid, running: true };
+      },
+      inspectProcessGroup: async group => group === 71234 && (!oldLeaderExited || oldGroupLive)
+        ? { processGroupId: group, members: [{ pid: group, processStartedAt: `start-${group}`, processGroupId: group, running: true }] }
+        : { status: 'absent' },
+    });
+    const { service, records } = await fixture({}, { commands, identityProbeFor });
+    await service.start('preview-1');
+    const stopping = service.stop('preview-1');
+    await stopProbeEntered;
+    oldLeaderExited = true;
+    resolveCompletion({});
+    await new Promise(resolve => setTimeout(resolve, 0));
+    releaseStopProbe();
+    const uncertain = await stopping;
+    expect(uncertain).toMatchObject({ state: 'uncertain', process: { pid: 71234 } });
+    expect(signals).toEqual(['SIGTERM']);
+    expect(records.some(record => record.kind === 'preview.stopped')).toBe(false);
+    expect((await service.start('preview-1')).state).toBe('uncertain');
+    expect(launches).toBe(1);
+
+    oldGroupLive = false;
+    const restarted = await service.start('preview-1');
+    expect(restarted).toMatchObject({ state: 'running', process: { pid: 81234 } });
+    expect(launches).toBe(2);
+  }, 15_000);
+
   it('retains an unverified launch PID as durable uncertainty and never launches or signals a duplicate before reconciliation', async () => {
     let observation = 'unknown';
     let launches = 0;

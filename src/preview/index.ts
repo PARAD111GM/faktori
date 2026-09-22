@@ -156,6 +156,8 @@ type Entry = {
   detail?: string;
   feedback: Map<string, PreviewFeedbackItem>;
   started?: Promise<void>;
+  /** Concurrent stop callers share the same cleanup observation and signals. */
+  stopping?: Promise<PreviewSnapshot>;
 };
 
 const text = (value: unknown, max = 4_000): value is string => typeof value === 'string' && value.length > 0 && value.length <= max && !value.includes('\0');
@@ -208,6 +210,11 @@ function sameProcess(expected: PreviewProcessIdentity, observed: NativeIdentityO
     && observed.processStartedAt === expected.processStartedAt && observed.processGroupId === expected.processGroupId;
 }
 
+function sameIdentity(left: PreviewProcessIdentity | undefined, right: PreviewProcessIdentity): boolean {
+  return left?.pid === right.pid && left.processStartedAt === right.processStartedAt
+    && left.processGroupId === right.processGroupId && left.nonce === right.nonce;
+}
+
 function groupAbsent(observed: NativeProcessGroupObservation | undefined): boolean {
   return observed !== undefined && (('status' in observed && observed.status === 'absent')
     || ('members' in observed && observed.members.every(member => !member.running)));
@@ -227,7 +234,14 @@ class SystemPreviewIdentityProbe implements PreviewIdentityProbe {
   async inspect(pid: number): Promise<NativeIdentityObservation> {
     const result = await this.commands.run({ command: '/bin/ps', args: ['-o', 'pid=,lstart=,pgid=,stat=', '-p', String(pid)], cwd: this.cwd, env: probeEnvironment, timeoutMs: 1_000, stdoutMaxBytes: 16_384, stderrMaxBytes: 16_384, detached: true });
     if (result.timedOut || result.outputLimitExceeded || result.spawnError !== undefined) return { status: 'unknown' };
-    if (result.stdout.trim() === '') return { status: 'absent' };
+    if (result.stdout.trim() === '') {
+      if (result.exitCode === 0) return { status: 'absent' };
+      // `ps` reports a missing PID with a nonzero result on some hosts. Never
+      // treat an arbitrary failed probe as absence; kill(0) is a signal-free
+      // confirmation and distinguishes ESRCH from permission/probe failure.
+      try { process.kill(pid, 0); return { status: 'unknown' }; }
+      catch (error) { return (error as NodeJS.ErrnoException).code === 'ESRCH' ? { status: 'absent' } : { status: 'unknown' }; }
+    }
     const parsed = parseProcess(result.stdout);
     return result.exitCode === 0 && parsed?.pid === pid ? parsed : { status: 'unknown' };
   }
@@ -311,7 +325,7 @@ export class PersistentPreviewService {
     const entry = this.#entry(id);
     if (entry.state === 'starting') return this.#snapshot(entry);
     if (entry.state === 'running') return this.#refresh(entry);
-    if (entry.state === 'stopping') throw new Error('preview stop is in progress; observe cleanup before restarting');
+    if (entry.state === 'stopping' || entry.stopping !== undefined) throw new Error('preview stop is in progress; observe cleanup before restarting');
     if (entry.state === 'uncertain' || entry.state === 'invalidated') {
       const observed = await this.#observeForRestart(entry);
       if (!observed) return this.#snapshot(entry);
@@ -327,27 +341,39 @@ export class PersistentPreviewService {
   async stop(id: string): Promise<PreviewSnapshot> {
     const entry = this.#entry(id);
     if (entry.state === 'stopped' || entry.state === 'failed') return this.#snapshot(entry);
-    if (entry.process === undefined) { entry.state = 'uncertain'; entry.detail = 'no recorded process identity; restart requires observation'; await this.#event(entry, 'preview.observation.uncertain', entry.detail); return this.#snapshot(entry); }
+    if (entry.stopping !== undefined) return entry.stopping;
+    const stopping = this.#stop(entry);
+    entry.stopping = stopping;
+    try { return await stopping; }
+    finally { if (entry.stopping === stopping) entry.stopping = undefined; }
+  }
+  async #stop(entry: Entry): Promise<PreviewSnapshot> {
+    const process = entry.process;
+    if (process === undefined) { await this.#uncertain(entry, 'no recorded process identity; restart requires observation'); return this.#snapshot(entry); }
     const probe = this.#identityProbeFor(entry.worktree);
-    const before = await probe.inspect(entry.process.pid);
-    if (!sameProcess(entry.process, before)) {
-      if (before !== undefined && 'status' in before && before.status === 'absent') { await this.#stopped(entry, 'process_absent_before_stop'); return this.#snapshot(entry); }
-      entry.state = 'uncertain'; entry.detail = 'recorded preview process identity could not be verified; it was not signaled'; await this.#event(entry, 'preview.observation.uncertain', entry.detail); return this.#snapshot(entry);
+    const before = await probe.inspect(process.pid);
+    if (!sameIdentity(entry.process, process)) return this.#snapshot(entry);
+    if (!sameProcess(process, before)) {
+      if (before !== undefined && 'status' in before && before.status === 'absent' && await this.#groupAbsent(process, probe)) {
+        await this.#stopped(entry, 'process_group_absent_before_stop', process); return this.#snapshot(entry);
+      }
+      await this.#uncertain(entry, 'recorded preview process identity or group could not be verified; it was not signaled', process); return this.#snapshot(entry);
     }
     entry.state = 'stopping'; await this.#event(entry, 'preview.stop.requested');
-    try { this.commands.killProcessGroup(entry.process.processGroupId, 'SIGTERM'); } catch {
-      entry.state = 'uncertain'; entry.detail = 'preview signal failed; process identity requires observation'; await this.#event(entry, 'preview.observation.uncertain', entry.detail); return this.#snapshot(entry);
+    if (!sameIdentity(entry.process, process)) return this.#snapshot(entry);
+    try { this.commands.killProcessGroup(process.processGroupId, 'SIGTERM'); } catch {
+      await this.#uncertain(entry, 'preview signal failed; process identity requires observation', process); return this.#snapshot(entry);
     }
-    let stopped = await this.#waitForExit(entry, probe);
+    let stopped = await this.#waitForExit(entry, process, probe);
     // A persistent preview has no automatic restart. A final SIGKILL is only
     // permitted when the same leader identity and its recorded group are still
     // observed; a reused PID or unknown group remains an uncertainty instead.
-    if (!stopped && await this.#maySignalGroup(entry, probe)) {
-      try { this.commands.killProcessGroup(entry.process.processGroupId, 'SIGKILL'); } catch { /* observation below decides */ }
-      stopped = await this.#waitForExit(entry, probe);
+    if (!stopped && await this.#maySignalGroup(entry, process, probe)) {
+      try { this.commands.killProcessGroup(process.processGroupId, 'SIGKILL'); } catch { /* observation below decides */ }
+      stopped = await this.#waitForExit(entry, process, probe);
     }
-    if (stopped) await this.#stopped(entry, 'process_group_exit_confirmed');
-    else { entry.state = 'uncertain'; entry.detail = 'preview process-group cleanup could not be confirmed'; await this.#event(entry, 'preview.observation.uncertain', entry.detail); }
+    if (stopped) await this.#stopped(entry, 'process_group_exit_confirmed', process);
+    else await this.#uncertain(entry, 'preview process-group cleanup could not be confirmed', process);
     return this.#snapshot(entry);
   }
 
@@ -419,23 +445,25 @@ export class PersistentPreviewService {
     await this.#event(entry, 'preview.started', undefined, { pid: observed.pid, processGroupId: observed.processGroupId, processStartedAt: observed.processStartedAt, nonce });
     void launched.completion.then(() => this.#observedExit(entry, nonce)).catch(() => undefined);
     const verified = await this.#identity(entry);
-    if (!verified) return;
+    if (!verified || entry.state !== 'starting' || !sameIdentity(entry.process, { pid: observed.pid, processStartedAt: observed.processStartedAt, processGroupId: observed.processGroupId, nonce })) return;
     entry.state = 'running'; entry.evidence = 'current'; entry.runtimeRevision = registered.candidateRevision; entry.detail = undefined;
     await this.#event(entry, 'preview.identity.verified', undefined, { pid: observed.pid });
     if (this.#finalReviewReady(entry)) await this.#event(entry, 'preview.final-review.ready');
   }
   async #identity(entry: Entry): Promise<boolean> {
-    if (entry.process === undefined) return false;
+    const process = entry.process;
+    if (process === undefined) return false;
     const configuredLimits = limits(entry.registration.limits);
     let failure: unknown = new Error('preview_identity_command_failed');
     // A spawned server is observable before its loopback listener is accepting.
     // Retry only a transient probe-command failure, inside the owner-set bound;
     // an identity mismatch is terminal and is never papered over by a retry.
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const result = await this.commands.run({ command: entry.registration.identity.command, args: entry.registration.identity.args, cwd: entry.worktree, env: this.#environment(entry, entry.process.nonce), timeoutMs: configuredLimits.identityTimeoutMs, stdoutMaxBytes: configuredLimits.outputMaxBytes, stderrMaxBytes: configuredLimits.outputMaxBytes, detached: true });
+      const result = await this.commands.run({ command: entry.registration.identity.command, args: entry.registration.identity.args, cwd: entry.worktree, env: this.#environment(entry, process.nonce), timeoutMs: configuredLimits.identityTimeoutMs, stdoutMaxBytes: configuredLimits.outputMaxBytes, stderrMaxBytes: configuredLimits.outputMaxBytes, detached: true });
+      if (!sameIdentity(entry.process, process)) return false;
       try {
         if (!commandSucceeded(result)) throw new Error('preview_identity_command_failed');
-        parseIdentity(result.stdout, { previewId: entry.registration.id, candidateRevision: entry.registration.candidateRevision, nonce: entry.process.nonce, url: entry.registration.url });
+        parseIdentity(result.stdout, { previewId: entry.registration.id, candidateRevision: entry.registration.candidateRevision, nonce: process.nonce, url: entry.registration.url });
         return true;
       } catch (error) {
         failure = error;
@@ -443,15 +471,23 @@ export class PersistentPreviewService {
         await delay(50 * (attempt + 1));
       }
     }
+    if (!sameIdentity(entry.process, process)) return false;
     entry.state = 'invalidated'; entry.evidence = 'invalidated'; entry.detail = failure instanceof Error ? failure.message : 'preview identity failed';
     await this.#event(entry, 'preview.identity.invalidated', entry.detail);
     return false;
   }
   async #refresh(entry: Entry): Promise<PreviewSnapshot> {
     if (entry.process === undefined || (entry.state !== 'running' && entry.state !== 'invalidated')) return this.#snapshot(entry);
-    const observed = await this.#identityProbeFor(entry.worktree).inspect(entry.process.pid);
-    if (observed !== undefined && 'status' in observed && observed.status === 'absent') { await this.#stopped(entry, 'process_absent_observed'); return this.#snapshot(entry); }
-    if (!sameProcess(entry.process, observed)) { entry.state = 'uncertain'; entry.evidence = 'invalidated'; entry.detail = 'preview process identity is no longer safely observable'; await this.#event(entry, 'preview.observation.uncertain', entry.detail); return this.#snapshot(entry); }
+    const process = entry.process;
+    const probe = this.#identityProbeFor(entry.worktree);
+    const observed = await probe.inspect(process.pid);
+    if (!sameIdentity(entry.process, process)) return this.#snapshot(entry);
+    if (observed !== undefined && 'status' in observed && observed.status === 'absent') {
+      if (await this.#groupAbsent(process, probe)) await this.#stopped(entry, 'process_group_absent_observed', process);
+      else await this.#uncertain(entry, 'preview leader exited but its process group is not confirmed absent', process);
+      return this.#snapshot(entry);
+    }
+    if (!sameProcess(process, observed)) { entry.evidence = 'invalidated'; await this.#uncertain(entry, 'preview process identity is no longer safely observable', process); return this.#snapshot(entry); }
     if (entry.state === 'running') await this.#identity(entry);
     return this.#snapshot(entry);
   }
@@ -461,9 +497,15 @@ export class PersistentPreviewService {
       const launched = entry.unverifiedLaunch;
       const observed = await probe.inspect(launched.pid);
       if (observed !== undefined && 'status' in observed && observed.status === 'absent') {
-        entry.unverifiedLaunch = undefined;
-        await this.#stopped(entry, 'unverified_launch_absent_before_restart');
-        return true;
+        // Detached launches use their PID as the expected process group, but
+        // the PID observation alone cannot prove that a child group is gone.
+        const group = await probe.inspectProcessGroup?.(launched.pid);
+        if (entry.process === undefined && entry.unverifiedLaunch?.pid === launched.pid && entry.unverifiedLaunch.nonce === launched.nonce && group !== undefined && groupAbsent(group)) {
+          await this.#stoppedUnverified(entry, 'unverified_launch_group_absent_before_restart', launched);
+          return true;
+        }
+        await this.#uncertain(entry, 'unverified launch leader exited but its expected process group is not confirmed absent');
+        return false;
       }
       if (observed !== undefined && 'pid' in observed && observed.running && observed.pid === launched.pid) {
         entry.process = { pid: observed.pid, processStartedAt: observed.processStartedAt, processGroupId: observed.processGroupId, nonce: launched.nonce };
@@ -482,44 +524,74 @@ export class PersistentPreviewService {
       return false;
     }
     if (entry.process === undefined) { entry.state = 'stopped'; entry.evidence = 'not_observed'; return true; }
-    const observed = await probe.inspect(entry.process.pid);
-    if (observed !== undefined && 'status' in observed && observed.status === 'absent') { await this.#stopped(entry, 'absence_observed_before_restart'); return true; }
-    if (sameProcess(entry.process, observed)) {
-      const group = await probe.inspectProcessGroup?.(entry.process.processGroupId);
-      const hasRecordedLeader = group === undefined || ('members' in group && group.members.some(member => member.running && member.pid === entry.process?.pid && member.processStartedAt === entry.process.processStartedAt && member.processGroupId === entry.process.processGroupId));
+    const process = entry.process;
+    const observed = await probe.inspect(process.pid);
+    if (!sameIdentity(entry.process, process)) return entry.state === 'stopped';
+    if (observed !== undefined && 'status' in observed && observed.status === 'absent') {
+      if (await this.#groupAbsent(process, probe)) { await this.#stopped(entry, 'process_group_absent_before_restart', process); return true; }
+      await this.#uncertain(entry, 'restart blocked until the recorded process group is confirmed absent', process); return false;
+    }
+    if (sameProcess(process, observed)) {
+      const group = await probe.inspectProcessGroup?.(process.processGroupId);
+      if (!sameIdentity(entry.process, process)) return entry.state === 'stopped';
+      const hasRecordedLeader = group === undefined || ('members' in group && group.members.some(member => member.running && member.pid === process.pid && member.processStartedAt === process.processStartedAt && member.processGroupId === process.processGroupId));
       if (hasRecordedLeader && await this.#identity(entry)) {
         entry.state = 'running'; entry.evidence = 'current'; entry.runtimeRevision = entry.registration.candidateRevision; entry.detail = 'restored process identity observed';
-        await this.#event(entry, 'preview.identity.verified', entry.detail, { pid: entry.process.pid });
+        await this.#event(entry, 'preview.identity.verified', entry.detail, { pid: process.pid });
         return false;
       }
     }
-    entry.state = 'uncertain'; entry.detail = 'restart blocked until the recorded process identity is confirmed absent'; await this.#event(entry, 'preview.observation.uncertain', entry.detail); return false;
+    await this.#uncertain(entry, 'restart blocked until the recorded process identity is confirmed absent', process); return false;
   }
-  async #waitForExit(entry: Entry, probe: PreviewIdentityProbe): Promise<boolean> {
-    if (entry.process === undefined) return false;
+  async #waitForExit(entry: Entry, process: PreviewProcessIdentity, probe: PreviewIdentityProbe): Promise<boolean> {
     const endsAt = Date.now() + limits(entry.registration.limits).shutdownTimeoutMs;
     while (Date.now() <= endsAt) {
-      const leader = await probe.inspect(entry.process.pid);
-      const group = await probe.inspectProcessGroup?.(entry.process.processGroupId);
-      if ((leader !== undefined && 'status' in leader && leader.status === 'absent') && (group === undefined || groupAbsent(group))) return true;
+      if (!sameIdentity(entry.process, process)) return entry.state === 'stopped';
+      const leader = await probe.inspect(process.pid);
+      if (!sameIdentity(entry.process, process)) return entry.state === 'stopped';
+      const group = await probe.inspectProcessGroup?.(process.processGroupId);
+      if (!sameIdentity(entry.process, process)) return entry.state === 'stopped';
+      if ((leader !== undefined && 'status' in leader && leader.status === 'absent') && group !== undefined && groupAbsent(group)) return true;
       await delay(40);
     }
     return false;
   }
-  async #maySignalGroup(entry: Entry, probe: PreviewIdentityProbe): Promise<boolean> {
-    if (entry.process === undefined) return false;
-    const leader = await probe.inspect(entry.process.pid);
-    if (!sameProcess(entry.process, leader)) return false;
-    const group = await probe.inspectProcessGroup?.(entry.process.processGroupId);
+  async #maySignalGroup(entry: Entry, process: PreviewProcessIdentity, probe: PreviewIdentityProbe): Promise<boolean> {
+    if (!sameIdentity(entry.process, process)) return false;
+    const leader = await probe.inspect(process.pid);
+    if (!sameIdentity(entry.process, process) || !sameProcess(process, leader)) return false;
+    const group = await probe.inspectProcessGroup?.(process.processGroupId);
+    if (!sameIdentity(entry.process, process)) return false;
     if (group === undefined) return true;
-    return 'members' in group && group.members.some(member => member.running && member.pid === entry.process?.pid
-      && member.processStartedAt === entry.process.processStartedAt && member.processGroupId === entry.process.processGroupId);
+    return 'members' in group && group.members.some(member => member.running && member.pid === process.pid
+      && member.processStartedAt === process.processStartedAt && member.processGroupId === process.processGroupId);
   }
-  async #stopped(entry: Entry, detail: string): Promise<void> { entry.state = 'stopped'; entry.evidence = 'not_observed'; entry.process = undefined; entry.unverifiedLaunch = undefined; entry.runtimeRevision = undefined; entry.detail = detail; await this.#event(entry, 'preview.stopped', detail); }
+  async #groupAbsent(process: PreviewProcessIdentity, probe: PreviewIdentityProbe): Promise<boolean> {
+    const group = await probe.inspectProcessGroup?.(process.processGroupId);
+    return group !== undefined && groupAbsent(group);
+  }
+  async #uncertain(entry: Entry, detail: string, expected?: PreviewProcessIdentity): Promise<boolean> {
+    if (expected !== undefined && !sameIdentity(entry.process, expected)) return false;
+    entry.state = 'uncertain'; entry.detail = detail; await this.#event(entry, 'preview.observation.uncertain', detail); return true;
+  }
+  async #stopped(entry: Entry, detail: string, expected: PreviewProcessIdentity): Promise<boolean> {
+    if (!sameIdentity(entry.process, expected)) return false;
+    entry.state = 'stopped'; entry.evidence = 'not_observed'; entry.process = undefined; entry.unverifiedLaunch = undefined; entry.runtimeRevision = undefined; entry.detail = detail; await this.#event(entry, 'preview.stopped', detail); return true;
+  }
+  async #stoppedUnverified(entry: Entry, detail: string, expected: NonNullable<Entry['unverifiedLaunch']>): Promise<boolean> {
+    if (entry.process !== undefined || entry.unverifiedLaunch?.pid !== expected.pid || entry.unverifiedLaunch.nonce !== expected.nonce) return false;
+    entry.state = 'stopped'; entry.evidence = 'not_observed'; entry.unverifiedLaunch = undefined; entry.runtimeRevision = undefined; entry.detail = detail; await this.#event(entry, 'preview.stopped', detail); return true;
+  }
   async #observedExit(entry: Entry, nonce: string): Promise<void> {
-    if (entry.process?.nonce !== nonce || entry.state === 'stopped') return;
-    const observed = await this.#identityProbeFor(entry.worktree).inspect(entry.process.pid);
-    if (observed !== undefined && 'status' in observed && observed.status === 'absent') await this.#stopped(entry, 'process_exit_observed');
+    const process = entry.process;
+    if (process?.nonce !== nonce || entry.state === 'stopped') return;
+    const probe = this.#identityProbeFor(entry.worktree);
+    const observed = await probe.inspect(process.pid);
+    if (!sameIdentity(entry.process, process) || process.nonce !== nonce) return;
+    if (observed !== undefined && 'status' in observed && observed.status === 'absent') {
+      if (await this.#groupAbsent(process, probe)) await this.#stopped(entry, 'process_group_exit_observed', process);
+      else await this.#uncertain(entry, 'preview leader exited but its process group is not confirmed absent', process);
+    }
   }
   #hydrate(entry: Entry): void {
     const history = this.journal.events().filter(record => record.previewId === entry.registration.id);

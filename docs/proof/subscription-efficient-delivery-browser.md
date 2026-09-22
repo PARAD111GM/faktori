@@ -26,7 +26,10 @@ brand SVG as its favicon. The complete browser drill was rerun against a fresh
 isolated Console on 2026-09-22: both viewports, two persisted feedback items,
 revision verification and final-review readiness passed with **no browser
 console errors or application exceptions**. The proof server and its owned
-preview were stopped afterward.
+preview were stopped afterward. Following the Linux cleanup-race repair, the
+complete drill passed again, including the Console's Stop operation reaching
+observed `stopped` state, with no console errors. The focused preview lifecycle
+and Console facade checks passed 10/10; runtime and Console typechecks passed.
 
 The two applied operations exercise feedback bookkeeping, not actual product
 code edits or human acceptance. Browser context declarations are capability

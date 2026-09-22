@@ -32,6 +32,14 @@ deadlines; they are not counted as passing evidence. Deliberate timeout, wrong
 identity, stale/future readiness, duplicate/restart and cleanup assertions remain.
 GitHub CI and installed-provider acceptance are separate observations.
 
+The first Linux CI run found an exit-callback race in preview cleanup (689
+passed, three failures). The repair keeps a stable identity through shutdown,
+serializes stops, and requires leader plus group absence before clearing it.
+Independent boundary review passed this delta; local preview/facade checks
+passed 10/10 and the full browser drill passed again including Stop. A new
+Linux CI run is required for the repaired head; the earlier failure is retained
+as evidence rather than described as a pass.
+
 Run on the candidate head under the pinned Node 24/npm 12 toolchain:
 
 ```sh

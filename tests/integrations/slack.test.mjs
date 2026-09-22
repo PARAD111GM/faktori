@@ -116,30 +116,39 @@ describe('Slack router durable outbox', () => {
 
   it('serializes same PR/channel subjects across controllers and records human acknowledgement separately', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'faktori-slack-subject-'));
+    let releaseFirst;
+    let firstSend;
+    let secondSend;
     try {
       const path = join(directory, 'operations.jsonl');
       const calls = [];
-      let release;
+      let enterFirst;
+      const firstEntered = new Promise((resolve) => { enterFirst = resolve; });
       const slowRouter = { post: async (input) => {
         calls.push(input.eventId);
-        if (input.eventId === 'event-1') await new Promise((resolve) => { release = resolve; });
+        if (input.eventId === 'event-1') { enterFirst(); await new Promise((resolve) => { releaseFirst = resolve; }); }
         return { status: 200, receipt: { eventId: input.eventId, subject: input.subject, payloadDigest: input.payloadDigest, channelId: 'C1', messageTs: '1.0001' } };
       } };
       const first = controller(new FileSlackOutboxJournal(path), slowRouter);
       const second = controller(new FileSlackOutboxJournal(path), slowRouter);
-      const firstSend = first.outbox.dispatch(notification(), async () => undefined);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      const secondSend = second.outbox.dispatch(notification({ eventId: 'event-2', text: 'A later PR update' }), async () => undefined);
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      firstSend = first.outbox.dispatch(notification(), async () => undefined);
+      await firstEntered;
+      secondSend = second.outbox.dispatch(notification({ eventId: 'event-2', text: 'A later PR update' }), async () => undefined);
+      await expect(secondSend).rejects.toThrow('slack_claim_unresolved');
       expect(calls).toEqual(['event-1']);
-      release();
+      releaseFirst();
       await expect(firstSend).resolves.toEqual({ status: 'delivered', duplicate: false });
+      secondSend = second.outbox.dispatch(notification({ eventId: 'event-2', text: 'A later PR update' }), async () => undefined);
       await expect(secondSend).resolves.toEqual({ status: 'delivered', duplicate: false });
       expect(calls).toEqual(['event-1', 'event-2']);
 
       await second.outbox.acknowledge('event-1', 'human-message-ts-1');
       expect(await second.outbox.status('event-1')).toEqual(expect.objectContaining({ delivery: 'delivered', acknowledgedAt: expect.any(String) }));
-    } finally { await rm(directory, { recursive: true, force: true }); }
+    } finally {
+      releaseFirst?.();
+      await Promise.allSettled([firstSend, secondSend].filter(Boolean));
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('uses the existing controller action guard and only accepts controller-configured notifications', async () => {

@@ -13,7 +13,7 @@ login, tracker row, PR, deployment receipt or model usage total.
 | Local browser | Registered loopback preview, revision check and two persisted feedback items, desktop and mobile | Passed; see [browser drill](subscription-efficient-delivery-browser.md); provider-free, no product edits or human acceptance implied |
 | Local attended | One Faktori-only configured work item: durable intent, observed worker/transport receipt, restart reconciliation, candidate evidence | Pending |
 | Automatic eligibility | Current transport, native goal, idle wake-up/supervision and witnessed-delivery bindings; duplicate/stale fault drills | Pending |
-| Independent source review | Read-only delivery and security review of the frozen implementation | Passed for source `c81d814`; four blocking findings repaired and delta-reviewed |
+| Independent source review | Read-only delivery and security review of the frozen implementation | Passed for source `c81d814`; four blocking findings repaired and delta-reviewed; subsequent preview shutdown repair reviewed at `0f8d678` |
 | Human candidate review | Actual human feedback and acceptance bound to the final candidate revision | Pending |
 | Merge | Authorized human merge of that reviewed head | Pending |
 | Deploy | Matching environment deployment receipt | Pending |
@@ -35,10 +35,14 @@ GitHub CI and installed-provider acceptance are separate observations.
 The first Linux CI run found an exit-callback race in preview cleanup (689
 passed, three failures). The repair keeps a stable identity through shutdown,
 serializes stops, and requires leader plus group absence before clearing it.
-Independent boundary review passed this delta; local preview/facade checks
-passed 10/10 and the full browser drill passed again including Stop. A new
-Linux CI run is required for the repaired head; the earlier failure is retained
-as evidence rather than described as a pass.
+Independent boundary review passed this delta at `0f8d678`; local preview/facade
+checks passed 10/10 and the full browser drill passed again including Stop.
+The next Linux run passed all preview cases and 692 of 693 tests, but exposed a
+Slack fixture's nondeterministic assumption about which competing lock claimant
+wins. That fixture now synchronizes on actual transport entry and drains pending
+sends before cleanup. A fresh full Linux check is required on the final PR head;
+its exact-head receipt belongs with the PR. Earlier failures are retained as
+evidence rather than described as passes.
 
 Run on the candidate head under the pinned Node 24/npm 12 toolchain:
 
@@ -61,8 +65,9 @@ Independent review of implementation revision `98c75d9` identified preview
 launch uncertainty, mixed reservation units, non-expiring readiness and missing
 terminal reservation receipts. All four were repaired; the delivery and
 security reviewers bound their passing source/delta reviews to `c81d814`.
-Later changes to proof documentation and fixture deadlines do not alter that
-reviewed application source.
+The subsequent preview shutdown source delta has its own independent security
+review at `0f8d678`. Later proof documentation and Slack fixture synchronization
+changes do not alter that reviewed application source.
 The first operational gate remains **one owner-configured, attended Faktori-only
 transport/restart witness**. Native-goal activation and idle-Foreman wake-up must
 be observed before automatic admission; the shipped CLI does not fabricate

@@ -13,7 +13,8 @@ login, tracker row, PR, deployment receipt or model usage total.
 | Local browser | Registered loopback preview, revision check and two persisted feedback items, desktop and mobile | Passed; see [browser drill](subscription-efficient-delivery-browser.md); provider-free, no product edits or human acceptance implied |
 | Local attended | One Faktori-only configured work item: durable intent, observed worker/transport receipt, restart reconciliation, candidate evidence | Pending |
 | Automatic eligibility | Current transport, native goal, idle wake-up/supervision and witnessed-delivery bindings; duplicate/stale fault drills | Pending |
-| Human review | Independent exact-head verdict after the final candidate/feedback revision | Pending |
+| Independent source review | Read-only delivery and security review of the frozen implementation | Passed for source `c81d814`; four blocking findings repaired and delta-reviewed |
+| Human candidate review | Actual human feedback and acceptance bound to the final candidate revision | Pending |
 | Merge | Authorized human merge of that reviewed head | Pending |
 | Deploy | Matching environment deployment receipt | Pending |
 | Acceptance | Human/staging result bound to the deployed revision | Pending |
@@ -38,8 +39,12 @@ Capture the Console mode plus `automaticReady` and `capabilityBlockers`; an
 attended result is not proof of automatic wake-up readiness.
 
 The authenticated Console endpoint and configured runtime bridge are wired.
-Independent review of implementation revision `98c75d9` identified a preview
-launch-identity uncertainty defect; repair and final verification are in progress.
+Independent review of implementation revision `98c75d9` identified preview
+launch uncertainty, mixed reservation units, non-expiring readiness and missing
+terminal reservation receipts. All four were repaired; the delivery and
+security reviewers bound their passing source/delta reviews to `c81d814`.
+Later changes to proof documentation and fixture deadlines do not alter that
+reviewed application source.
 The first operational gate remains **one owner-configured, attended Faktori-only
 transport/restart witness**. Native-goal activation and idle-Foreman wake-up must
 be observed before automatic admission; the shipped CLI does not fabricate
@@ -55,6 +60,11 @@ and preview cleanup uncertainty. Each must leave records intact, launch no
 duplicate worker and identify the owner/next action.
 
 ## Measurement note
+
+This implementation run does not have complete model-invocation, token-category
+or human-time telemetry. Those measurements remain unavailable rather than
+estimated. Test-run durations and a provider-free UI drill are not shipped-feature
+cost measurements; no baseline improvement or subscription savings is claimed.
 
 Do not claim savings in advance. For a completed frozen-scope feature, report
 provider/model route, lifecycle input/cached-input/output/reasoning counters

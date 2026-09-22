@@ -150,6 +150,8 @@ transport, native-goal, supervision and witnessed-delivery observations. The
 facade combines native goal plus supervision into its automatic admission gate;
 transport and witness stay independent gates. A prompt containing `/goal`, a
 tracker status, a heartbeat timeout or a static config boolean is not proof.
+Readiness attestations expire after two minutes; future timestamps are rejected.
+Cached decisions and Console readiness both expire without invoking an LLM.
 Missing/expired/unavailable evidence blocks automatic admission and leaves the
 attended path explicit.
 
@@ -218,9 +220,9 @@ Then, with new admission paused, run one attended configured local work item,
 observe the durable journal through restart, and use the registered loopback
 preview in separate agent and human contexts. Record the exact source/config
 revisions, candidate revision, command output, preview identity and user result.
-The root integration must add its final Console/transport proof commands to
+Source and local browser evidence is recorded in
 [`docs/proof/subscription-efficient-delivery.md`](proof/subscription-efficient-delivery.md)
-after those tests exist.
+separately from the still-required attended provider/transport witness.
 
 Upgrade as a feature-sized batch: preserve the journal and active workers,
 install the matching package and Console assets, validate in shadow mode, then
@@ -229,8 +231,9 @@ credentials, provider subscriptions, GitHub merge authority or any live Twinzy
 surface. On failure, disable new admission and reconcile uncertain records;
 never delete records or restart an unknown worker to make the dashboard green.
 
-The first incomplete gate is independent review, authorized merge, deployment
-receipt, then human/staging acceptance in that order. A green source test,
+After source review, the first operational gate is the attended Faktori-only
+transport/restart witness. Authorized merge, deployment receipt and human/staging
+acceptance retain their own gates. A green source test,
 queue decision, preview, PR or health check does not pass a later gate.
 
 Keep one feature-sized PR per coherent delivery outcome. Batch related UI

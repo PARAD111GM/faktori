@@ -144,7 +144,9 @@ describe('candidate runtime verification', () => {
   it.each(['startup-crash', 'startup-timeout', 'mutate'])('fails a %s candidate before producing acceptance', async fault => {
     const { root, config } = await fixture();
     config.environment.FAULT = fault;
-    config.limits.startupTimeoutMs = 300;
+    // Crash/mutation cases must reach the deliberately faulty runtime; only
+    // the timeout case intentionally cuts startup short under host contention.
+    if (fault === 'startup-timeout') config.limits.startupTimeoutMs = 300;
     try {
       const result = await verifyCandidateRuntime(config);
       expect(result).toMatchObject({ passed: false, status: 'failed' });

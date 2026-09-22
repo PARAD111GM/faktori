@@ -55,7 +55,8 @@ describe('argv-only execution transports', () => {
       args: ['-e', 'process.stdout.write(`${process.cwd()}|${process.env.ONLY ?? "missing"}|${process.env.HOME ?? "absent"}`)'],
       cwd: CWD,
       env: { ONLY: 'explicit' },
-      timeoutMs: 2_000,
+      // This case proves argv/environment isolation, not startup latency.
+      timeoutMs: 5_000,
       stdoutMaxBytes: 1024,
       stderrMaxBytes: 1024,
     });
@@ -71,7 +72,7 @@ describe('argv-only execution transports', () => {
       args: ['-e', 'process.stdout.write("x".repeat(64)); process.exit(0)'],
       cwd: CWD,
       env: {},
-      timeoutMs: 2_000,
+      timeoutMs: 5_000,
       stdoutMaxBytes: 8,
       stderrMaxBytes: 8,
     });

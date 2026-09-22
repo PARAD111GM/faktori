@@ -31,6 +31,12 @@ try {
   const tarball = join(scratch, packed.filename);
   const entries = run('tar', ['-tf', tarball], scratch).split('\n').filter(Boolean);
   const requiredEntries = [
+    'package/CLAUDE.md',
+    'package/docs/releases/v0.2.4.md',
+    'package/docs/subscription-efficient-delivery.md',
+    'package/dist/preview/index.js',
+    'package/dist/workflow/index.js',
+    'package/dist/runtime/routing.js',
     'package/dist/verification/index.js',
     'package/docs/runtime-verification.md',
     'package/dist/sprint/witnessed-delivery.js',

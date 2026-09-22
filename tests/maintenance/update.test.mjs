@@ -1,4 +1,5 @@
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -7,14 +8,22 @@ import { applyRuntimeUpdate, initializeRuntimeInstallation, MaintenanceValidatio
 
 const repository = new URL('../..', import.meta.url).pathname;
 const kitPaths = ['dist', 'console/dist', 'docs', 'docker', 'examples', 'provider-entrymaps/generated', 'skills', 'templates', 'LICENSE', 'README.md'];
-const entryPaths = ['.agents/skills/faktori-update', '.claude/commands/faktori-update.md', '.cursor/commands/faktori-update.md', 'AGENTS.md', 'INSTALL.md', 'provider-entrymaps/source.json'];
+const entryPaths = ['.agents/skills/faktori-update', '.claude/commands/faktori-update.md', '.cursor/commands/faktori-update.md', 'AGENTS.md', 'CLAUDE.md', 'INSTALL.md', 'provider-entrymaps/source.json'];
 
 async function candidate(root, name, version, stateFormatVersion = 1) {
   const destination = join(root, name);
-  for (const path of [...kitPaths, ...entryPaths]) await cp(join(repository, path), join(destination, path), { recursive: true });
+  for (const path of [...kitPaths, ...entryPaths]) {
+    await cp(join(repository, path), join(destination, path), { recursive: true, mode: constants.COPYFILE_FICLONE });
+  }
   const packageJson = JSON.parse(await readFile(join(repository, 'package.json'), 'utf8'));
   await writeFile(join(destination, 'package.json'), `${JSON.stringify({ ...packageJson, version, faktoriStateFormatVersion: stateFormatVersion }, null, 2)}\n`);
   return destination;
+}
+
+async function amendCandidatePackage(candidateRoot, amendment) {
+  const packagePath = join(candidateRoot, 'package.json');
+  const packageJson = JSON.parse(await readFile(packagePath, 'utf8'));
+  await writeFile(packagePath, `${JSON.stringify({ ...packageJson, ...amendment }, null, 2)}\n`);
 }
 
 function request(installationRoot, candidateRoot) {
@@ -82,9 +91,12 @@ describe('managed runtime update assembly', () => {
       await writeFile(join(next, 'README.md'), 'candidate mutated after owner preview\n');
       await expect(applyRuntimeUpdate({ request: request(installation, next), approval: approval(preview) })).rejects.toThrow(/approval does not match/);
       expect(JSON.parse(await readFile(join(installation, '.faktori', 'runtime-installation.json'), 'utf8')).activeVersion).toBe('1.0.0');
-      await expect(previewRuntimeUpdate(request(installation, await candidate(root, 'rollback', '0.9.9')))).rejects.toBeInstanceOf(MaintenanceValidationError);
-      await expect(previewRuntimeUpdate(request(installation, await candidate(root, 'prerelease', '1.0.2-rc.1')))).rejects.toBeInstanceOf(MaintenanceValidationError);
-      await expect(previewRuntimeUpdate(request(installation, await candidate(root, 'state-v2', '1.0.2', 2)))).rejects.toBeInstanceOf(MaintenanceValidationError);
+      await amendCandidatePackage(next, { version: '0.9.9' });
+      await expect(previewRuntimeUpdate(request(installation, next))).rejects.toBeInstanceOf(MaintenanceValidationError);
+      await amendCandidatePackage(next, { version: '1.0.2-rc.1' });
+      await expect(previewRuntimeUpdate(request(installation, next))).rejects.toBeInstanceOf(MaintenanceValidationError);
+      await amendCandidatePackage(next, { version: '1.0.2', faktoriStateFormatVersion: 2 });
+      await expect(previewRuntimeUpdate(request(installation, next))).rejects.toBeInstanceOf(MaintenanceValidationError);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 60_000);
 });

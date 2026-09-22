@@ -1,5 +1,13 @@
 # Install Faktori — instructions for coding agents
 
+For v0.2.4, follow [Subscription-efficient delivery](docs/subscription-efficient-delivery.md)
+after the baseline installation checks. Ask which tools supply each capability,
+not whether the user has Jira or Slack. One subscription plus GitHub/local work
+tracking is valid. Start with one attended builder. Keep existing workers,
+credentials, journals and authority unchanged; enable new admissions only after
+their configured capability checks pass. Package installation is not proof of
+unattended execution or product acceptance.
+
 For a delivery-recovery upgrade, also read [Recovery setup](docs/recovery-setup.md).
 Before enabling unattended graph admission, follow [Runtime verification and
 witnessed delivery](docs/runtime-verification.md). Start attended, retain a

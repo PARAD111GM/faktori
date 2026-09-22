@@ -7,6 +7,7 @@ export interface FactoryEfficiencyMetrics {
   format: 'faktori.factory-efficiency/v1';
   cohort: { sourceCount: number; recordCount: number; earliestAt?: string; latestAt?: string };
   usage: ReturnType<typeof summarizeUsage>['actual'] & { unknownMeasurements: number };
+  usageByModel?: ReturnType<typeof summarizeUsage>['modelUsage'];
   coverage: { registeredSessions: number; usableSessions: number; ratio: number | null };
   quota: { status: 'available' | 'exhausted' | 'unknown'; observedSources: number };
   outcomes: {
@@ -88,6 +89,7 @@ export function summarizeFactoryEfficiency(snapshot: ManagerLoopEfficiencySnapsh
     format: 'faktori.factory-efficiency/v1',
     cohort: { sourceCount: snapshot.summaries.length, recordCount: records.length, ...(times.length === 0 ? {} : { earliestAt: new Date(Math.min(...times)).toISOString(), latestAt: new Date(Math.max(...times)).toISOString() }) },
     usage: { ...usage.actual, unknownMeasurements: usage.unknown.length },
+    usageByModel: usage.modelUsage,
     coverage: outcomes.coverage,
     quota: { status: quota.includes('exhausted') ? 'exhausted' : quota.length > 0 && quota.every((value) => value === 'available') ? 'available' : 'unknown', observedSources: quota.length },
     outcomes: {

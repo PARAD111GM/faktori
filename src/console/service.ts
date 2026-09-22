@@ -48,6 +48,7 @@ export interface ConsoleOwnerActions {
 }
 
 export interface ConsoleServiceOptions {
+  efficientDelivery?: import('./delivery-control.ts').DeliveryControlPort;
   coordinator: DurableCoordinator;
   /** A local session secret delivered only in the loopback Console document. */
   commandToken: string;
@@ -419,6 +420,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       resources: { knownUsageTokens: knownTokens, reportedUsageCount: reported.length, unavailableUsageCount: usages.length - reported.length, reservedTokens, unavailableMeasurements: usages.filter((usage) => usage.availability === 'unavailable').length, queueAge: snapshots.filter((snapshot) => snapshot.state === 'queued' || snapshot.state === 'admitted').map((snapshot) => ({ runId: snapshot.intent.runId, createdAt: snapshot.intent.createdAt })) },
       factoryGM: options.factoryGM?.() ?? coordinatorGMState(options.coordinator),
       deliverySynchronization: options.deliverySynchronization?.() ?? { status: 'not_configured' },
+      ...(options.efficientDelivery ? { efficientDelivery: options.efficientDelivery.snapshot() } : {}),
     };
   }
 
@@ -567,6 +569,14 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());
+  app.post('/api/console/efficient-delivery/commands', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (!options.efficientDelivery) return reply.code(409).send({ error: 'delivery_not_configured', nextAction: 'Enable the required capability in the owner-controlled Console configuration, then restart the Console.' });
+    const body = request.body as { commandId?: unknown; command?: unknown } | undefined;
+    if (!body || typeof body.commandId !== 'string') return reply.code(400).send({ error: 'delivery_command_id_required', nextAction: 'Refresh the Console and retry with a new command identity.' });
+    try { return reply.code(202).send(await options.efficientDelivery.submit(body.commandId, body.command)); }
+    catch { return reply.code(409).send({ error: 'delivery_command_rejected', nextAction: 'Use a registered action and a unique command identity. Do not replay an unresolved command; inspect its receipt first.' }); }
+  });
   app.get('/api/console/delivery-synchronization', async () => options.deliverySynchronization?.() ?? { status: 'not_configured' });
   app.get('/api/console/sprint-readiness', async () => {
     const report = await options.managerConnected?.store.sprintReadiness();

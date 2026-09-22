@@ -21,8 +21,8 @@
     {"skill":"factory-improvement","when":"Propose and verify a measured improvement to factory behavior or skills."}
   ],
   "providers": {
-    "codex": {"entry": "Read the public Faktori skill matching this request, then follow its linked lifecycle contract."},
-    "claude": {"entry": "Read the public Faktori skill matching this request, then follow its linked lifecycle contract."},
-    "cursor": {"entry": "Read the public Faktori skill matching this request, then follow its linked lifecycle contract."}
+    "codex": {"entry": "Read [AGENTS.md](../../AGENTS.md) and only the public Faktori skill matching this request. Keep tickets concise, PRs feature-sized and UI feedback batched; optimize attributable tokens per accepted feature, not agent activity."},
+    "claude": {"entry": "Read [CLAUDE.md](../../CLAUDE.md), [AGENTS.md](../../AGENTS.md) and only the matching public skill. Keep tickets concise, PRs feature-sized and UI feedback batched; optimize attributable tokens per accepted feature, not agent activity."},
+    "cursor": {"entry": "Read [AGENTS.md](../../AGENTS.md) and only the public Faktori skill matching this request. Keep tickets concise, PRs feature-sized and UI feedback batched; optimize attributable tokens per accepted feature, not agent activity."}
   }
 }

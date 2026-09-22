@@ -28,6 +28,7 @@ export function observeFactoryDeterministically(input: {
   coordinationAttentionShare?: number;
   now?: Date;
   excludedWorkItemIds?: ReadonlySet<string>;
+  workAttribution?: import('../console/work-attribution.ts').WorkAttribution;
 }): DeterministicFactoryObservation {
   const now = input.now ?? new Date();
   const at = now.toISOString();
@@ -41,9 +42,8 @@ export function observeFactoryDeterministically(input: {
   const gmReviewRecords: Record<string, unknown>[] = [];
   for (const snapshot of input.coordinator.snapshots()) {
     const result = snapshot.providerResult;
-    if (!result) continue;
-    const sessionId = result.sessionId ?? snapshot.intent.runId;
-    const telemetry = result.usage;
+    const sessionId = result?.sessionId ?? snapshot.intent.runId;
+    const telemetry = result?.usage ?? { availability: 'unavailable' as const, unavailableReason: 'provider_turn_not_terminal' };
     const counters = telemetry.availability === 'unavailable' ? undefined : {
       ...(telemetry.inputTokens === undefined ? {} : { input: telemetry.inputTokens }),
       ...(telemetry.cachedInputTokens === undefined ? {} : { cached: telemetry.cachedInputTokens }),
@@ -51,7 +51,9 @@ export function observeFactoryDeterministically(input: {
       ...(telemetry.reasoningTokens === undefined ? {} : { reasoning: telemetry.reasoningTokens }),
       ...(telemetry.inputTokens === undefined || telemetry.outputTokens === undefined ? {} : { total: telemetry.inputTokens + telemetry.outputTokens }),
     };
-    const record = { ticket: snapshot.intent.workItem.id, source: 'coordinator', agentId: `coordinator:${snapshot.intent.runId}`, sessionId, registeredSessionId: `coordinator:${sessionId}:${snapshot.intent.runId}`, cumulative: false, coverageScope: 'exclusive', responseId: snapshot.intent.runId, ...(usageObservedAt.has(snapshot.intent.runId) ? { at: usageObservedAt.get(snapshot.intent.runId) } : {}), ...(counters === undefined ? { telemetry: 'unknown' } : { counters }), references: { shared: true }, attemptOutcome: result.outcome, workClass: 'coordination' };
+    const attribution = input.workAttribution?.[snapshot.intent.workItem.id];
+    const accepted = attribution && input.loops.summaries.some(loop => loop.references?.feature === attribution.featureId && loop.references.deploymentAccepted === true);
+    const record = { ticket: snapshot.intent.workItem.id, source: 'coordinator', provider: snapshot.intent.execution.providerId, model: snapshot.intent.execution.model, policyRevision: snapshot.intent.authority.authorityRevision, agentId: `coordinator:${snapshot.intent.runId}`, sessionId, registeredSessionId: `coordinator:${sessionId}:${snapshot.intent.runId}`, cumulative: false, coverageScope: 'exclusive', responseId: snapshot.intent.runId, ...(usageObservedAt.has(snapshot.intent.runId) ? { at: usageObservedAt.get(snapshot.intent.runId) } : {}), ...(counters === undefined ? { telemetry: 'unknown' } : { counters }), references: attribution ? { feature: attribution.featureId, ticket: snapshot.intent.workItem.id, deploymentAccepted: accepted === true, workInProgress: accepted !== true } : { shared: true }, attemptOutcome: result?.outcome ?? 'in_progress', workClass: attribution?.workClass ?? 'coordination' };
     if (input.excludedWorkItemIds?.has(snapshot.intent.workItem.id)) gmReviewRecords.push(record);
     else if (!observedResponses.has(`${sessionId}\u0000${snapshot.intent.runId}`)) coordinatorRecords.push(record);
   }

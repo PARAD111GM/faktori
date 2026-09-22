@@ -48,6 +48,6 @@ Use the same canonical skill on every provider. Load its referenced resources on
 Read [skill kit operation](../../docs/skills.md) for installation, handoffs, and evidence limits. Resolve these links relative to this file, not the product checkout.
 
 Provider entry:
-- **codex**: Read the public Faktori skill matching this request, then follow its linked lifecycle contract.
-- **claude**: Read the public Faktori skill matching this request, then follow its linked lifecycle contract.
-- **cursor**: Read the public Faktori skill matching this request, then follow its linked lifecycle contract.
+- **codex**: Read [AGENTS.md](../../AGENTS.md) and only the public Faktori skill matching this request. Keep tickets concise, PRs feature-sized and UI feedback batched; optimize attributable tokens per accepted feature, not agent activity.
+- **claude**: Read [CLAUDE.md](../../CLAUDE.md), [AGENTS.md](../../AGENTS.md) and only the matching public skill. Keep tickets concise, PRs feature-sized and UI feedback batched; optimize attributable tokens per accepted feature, not agent activity.
+- **cursor**: Read [AGENTS.md](../../AGENTS.md) and only the public Faktori skill matching this request. Keep tickets concise, PRs feature-sized and UI feedback batched; optimize attributable tokens per accepted feature, not agent activity.

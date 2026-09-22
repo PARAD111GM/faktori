@@ -359,10 +359,31 @@ export class NativeIdentityProbe implements NativeIdentityProbeContract {
 
   async inspectProcessGroup(processGroupId: number): Promise<NativeProcessGroupObservation | undefined> {
     if (!Number.isInteger(processGroupId) || processGroupId < 1) return { status: 'unknown' };
-    const observed = await this.inspectAll();
+    // macOS supports selecting an exact process group with -g. On other
+    // platforms, selector meanings differ, so retain the complete observer.
+    const observed = process.platform === 'darwin'
+      ? await this.inspectSelectedProcessGroup(processGroupId)
+      : await this.inspectAll();
     if ('status' in observed) return observed;
     const members = observed.filter((entry) => entry.processGroupId === processGroupId);
     return members.length === 0 ? { status: 'absent' } : { processGroupId, members };
+  }
+
+  private async inspectSelectedProcessGroup(processGroupId: number): Promise<readonly NativeProcessObservation[] | { status: 'unknown' }> {
+    // Keep the PGID filter below: selector behavior is not itself identity proof.
+    const result = await this.commands.run(boundedInvocation('ps', ['-o', 'pid=,lstart=,pgid=,stat=', '-g', String(processGroupId)], this.cwd, this.env, 1_000));
+    if (result.timedOut || result.outputLimitExceeded || result.spawnError !== undefined) return { status: 'unknown' };
+    if (result.exitCode !== 0) {
+      // BSD ps uses exit 1 for a now-empty selected group. Confirm that exact
+      // zero-match state independently; never turn a selector failure itself
+      // into an absence claim.
+      const confirmation = await this.commands.run(boundedInvocation('pgrep', ['-g', String(processGroupId)], this.cwd, this.env, 1_000));
+      if (!confirmation.timedOut && !confirmation.outputLimitExceeded && confirmation.spawnError === undefined
+        && confirmation.exitCode === 1 && confirmation.stdout.trim() === '' && confirmation.stderr.trim() === '') return [];
+      return { status: 'unknown' };
+    }
+    const parsed = result.stdout.split('\n').map((line) => line.trim()).filter(Boolean).map(parseNativeProcess);
+    return parsed.some((entry) => entry === undefined) ? { status: 'unknown' } : parsed as NativeProcessObservation[];
   }
 }
 

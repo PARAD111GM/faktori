@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.3 release notes](docs/releases/v0.2.3.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.4 release notes](docs/releases/v0.2.4.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -158,6 +158,15 @@ repository; product artifacts normally live beside product code.
 **Early development. Useful foundations; release validation still in progress.**
 
 The ribbon-cutting committee has been asked to wait for evidence.
+
+v0.2.4 adds opt-in subscription-aware routing, bounded senior advice, deterministic
+role queues and persistent localhost review with feature-sized feedback batches.
+The [setup guide](docs/subscription-efficient-delivery.md) distinguishes the
+minimal attended path from transports that still need native-goal and wake-up
+proof. Measured tokens, account allowances and shipped outcomes stay separate;
+the [proof ledger](docs/proof/subscription-efficient-delivery.md) records what was
+actually exercised. Existing installations and active workers are not migrated
+or restarted automatically.
 
 v0.2.0 packages the accepted local runtime and maintenance work, the complete
 16-skill SDLC kit, operational clarity, and the Console's local work-management

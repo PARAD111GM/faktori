@@ -1,0 +1,24 @@
+.efficient-delivery { display: grid; gap: 1rem; }
+.efficient-delivery-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.efficient-card { border: 1px solid var(--line, #d7d9de); border-radius: .85rem; background: var(--panel, #fff); padding: 1rem; }
+.efficient-card > .panel-heading { margin-bottom: .8rem; }
+.efficient-list, .efficient-preview-list, .efficient-feedback-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .65rem; }
+.efficient-list > li, .efficient-preview { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line, #e5e7eb); padding-top: .7rem; }
+.efficient-list > li:first-child { border-top: 0; padding-top: 0; }
+.efficient-list p, .efficient-preview p { margin: .25rem 0; }
+.efficient-list small, .efficient-preview small { display: block; color: var(--muted, #65707c); }
+.efficient-blocker { color: var(--danger, #a12e35); }
+.efficient-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: .8rem; }
+.efficient-preview-card { display: grid; gap: .8rem; }
+.efficient-preview-list { grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
+.efficient-preview { display: grid; align-content: start; border: 1px solid var(--line, #d7d9de); border-radius: .7rem; padding: .85rem; }
+.efficient-preview-heading { display: flex; justify-content: space-between; gap: .75rem; }
+.efficient-feedback-block { border-top: 1px solid var(--line, #e5e7eb); margin-top: .8rem; padding-top: .75rem; }
+.efficient-feedback { display: flex; justify-content: space-between; gap: .75rem; font-size: .9rem; }
+.efficient-feedback-entry { display: grid; gap: .35rem; margin-top: .8rem; font-size: .9rem; font-weight: 600; }
+.efficient-feedback-entry textarea { min-height: 4.5rem; resize: vertical; }
+.efficient-command-result { border-radius: .6rem; margin: 0; padding: .7rem .85rem; }
+.efficient-command-pending, .efficient-command-accepted { background: #eef5ff; color: #164c7d; }
+.efficient-command-completed { background: #eef9f0; color: #22663a; }
+.efficient-command-failed { background: #fff0f1; color: #962a31; }
+@media (max-width: 760px) { .efficient-delivery-grid { grid-template-columns: 1fr; } .efficient-list > li { display: grid; } }

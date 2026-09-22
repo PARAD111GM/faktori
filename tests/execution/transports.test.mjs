@@ -155,6 +155,26 @@ describe('argv-only execution transports', () => {
     });
   });
 
+  it('confirms an empty macOS process group with pgrep instead of inferring absence from ps', async () => {
+    if (process.platform !== 'darwin') return;
+    const calls = [];
+    const commands = new BoundedCommandRunner({
+      spawn: (command, args) => {
+        calls.push([command, args]);
+        const child = new FakeChild(75);
+        queueMicrotask(() => child.emit('close', 1, null));
+        return child;
+      },
+    });
+    const probe = new NativeIdentityProbe({ commands, cwd: CWD, env: ENV });
+
+    expect(await probe.inspectProcessGroup(84)).toEqual({ status: 'absent' });
+    expect(calls).toEqual([
+      ['ps', ['-o', 'pid=,lstart=,pgid=,stat=', '-g', '84']],
+      ['pgrep', ['-g', '84']],
+    ]);
+  });
+
   it('reports a real missing ps executable as an unknown identity without an unhandled process error', async () => {
     const probe = new NativeIdentityProbe({
       commands: new BoundedCommandRunner(),

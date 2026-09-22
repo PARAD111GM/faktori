@@ -179,6 +179,8 @@ export type RunEventKind =
   | 'gm.finding.upserted'
   | 'gm.improvement.proposed'
   | 'gm.nightly.attempt'
+  /** Versioned routing, queue and preview receipts, backed by the existing journal. */
+  | 'factory.delivery'
   | 'recovery.required'
   | 'recovery.resolved'
   | 'reservation.released';

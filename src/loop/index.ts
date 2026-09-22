@@ -16,7 +16,7 @@ const execFileAsync = promisify(execFile);
 const ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const REASONING = new Set(['low', 'medium', 'high']);
 const CONFIG_KEYS = new Set(['format', 'loopId', 'workspace', 'artifactsDirectory', 'provider', 'limits', 'phases']);
-const LEAN_CONFIG_KEYS = new Set(['format', 'loopId', 'profile', 'workspace', 'artifactsDirectory', 'approval', 'candidate', 'provider', 'roleRoutes', 'implementationBrief', 'repairApproval', 'requirements', 'acceptanceCriteria', 'verification', 'toolchain', 'review', 'limits']);
+const LEAN_CONFIG_KEYS = new Set(['format', 'loopId', 'profile', 'workspace', 'artifactsDirectory', 'approval', 'candidate', 'provider', 'roleRoutes', 'implementationBrief', 'repairApproval', 'requirements', 'acceptanceCriteria', 'verification', 'toolchain', 'review', 'limits', 'subscriptionRouting']);
 const WORKSPACE_KEYS = new Set(['path', 'nativeAccessApproved']);
 const PROVIDER_KEYS = new Set(['kind', 'model', 'reasoning', 'contextIsolation']);
 const LEAN_PROVIDER_KEYS = new Set([...PROVIDER_KEYS, 'executable', 'knownQuota']);
@@ -86,6 +86,8 @@ export interface LeanLoopConfiguration {
   acceptanceCriteria: Array<{ id: string; requirementIds: string[]; expectedOutcome: string }>;
   toolchain: Array<{ command: string; args: string[]; expectedOutput: string }>;
   review: { sensitive: boolean; requiredPasses: number };
+  /** Optional Console-owned selection; standalone CLI retains static routes when absent. */
+  subscriptionRouting?: LoopSubscriptionRoutingConfiguration;
   limits: ManagerLoopConfiguration['limits'];
   /** Normalized single work item consumed by the shared loop executor. */
   phases: [ManagerLoopPhase];
@@ -186,6 +188,19 @@ export interface ManagerLoopDependencies {
   createId?: () => string;
   environment?: Readonly<Record<string, string>>;
   nativeIdentityProbe?: NativeIdentityProbeContract;
+  /** A Console-owned shared-account controller. This loop never creates a second coordinator. */
+  routing?: LoopRoutingPort;
+}
+
+export interface LoopRoutingPort {
+  select(intent: RunIntent, contextRevision: string, taskClass: string): Promise<RunIntent>;
+  terminal(runId: string, outcome: string): Promise<void>;
+}
+
+export interface LoopSubscriptionRoutingConfiguration {
+  enabled: true;
+  stageTaskClasses: Partial<Record<StageKind, string>>;
+  rolePrompts?: Partial<Record<'builder' | 'reviewer' | 'manager', string>>;
 }
 
 export interface LeanRouteDecision {
@@ -359,6 +374,30 @@ function parseLeanRoutes(value: unknown, role: 'implementer' | 'reviewer', issue
   });
 }
 
+function parseLoopSubscriptionRouting(value: unknown, profile: LeanLoopConfiguration['profile'], issues: string[]): LoopSubscriptionRoutingConfiguration | undefined {
+  if (value === undefined) return undefined;
+  const input = record(value) ? value : (issues.push('configuration.subscriptionRouting must be an object'), {});
+  unknownKeys(input, new Set(['enabled', 'stageTaskClasses', 'rolePrompts']), 'configuration.subscriptionRouting', issues);
+  if (input.enabled !== true) issues.push('configuration.subscriptionRouting.enabled must be true');
+  const classes = record(input.stageTaskClasses) ? input.stageTaskClasses : (issues.push('configuration.subscriptionRouting.stageTaskClasses must be an object'), {});
+  const stageKeys = new Set(['manager_brief', 'implement', 'repair', 'review', 'manager_accept']);
+  unknownKeys(classes, stageKeys, 'configuration.subscriptionRouting.stageTaskClasses', issues);
+  const required = profile === 'implementation' ? ['implement', 'repair', 'review'] : ['review'];
+  const stageTaskClasses: Partial<Record<StageKind, string>> = {};
+  for (const stage of stageKeys) {
+    const configured = classes[stage];
+    if (configured === undefined) { if (required.includes(stage)) issues.push(`configuration.subscriptionRouting.stageTaskClasses.${stage} is required`); continue; }
+    stageTaskClasses[stage as StageKind] = text(configured, `configuration.subscriptionRouting.stageTaskClasses.${stage}`, issues, 128);
+  }
+  const prompts = input.rolePrompts === undefined ? undefined : (record(input.rolePrompts) ? input.rolePrompts : (issues.push('configuration.subscriptionRouting.rolePrompts must be an object'), {}));
+  const rolePrompts: Partial<Record<'builder' | 'reviewer' | 'manager', string>> = {};
+  if (prompts !== undefined) {
+    unknownKeys(prompts, new Set(['builder', 'reviewer', 'manager']), 'configuration.subscriptionRouting.rolePrompts', issues);
+    for (const role of ['builder', 'reviewer', 'manager'] as const) if (prompts[role] !== undefined) rolePrompts[role] = text(prompts[role], `configuration.subscriptionRouting.rolePrompts.${role}`, issues, 2_000);
+  }
+  return { enabled: true, stageTaskClasses, ...(Object.keys(rolePrompts).length === 0 ? {} : { rolePrompts }) };
+}
+
 /** Parse the explicit opt-in lean profile without changing legacy Manager Loop parsing. */
 export function parseLeanLoopConfiguration(input: unknown): LeanLoopConfiguration {
   const issues: string[] = [];
@@ -369,6 +408,7 @@ export function parseLeanLoopConfiguration(input: unknown): LeanLoopConfiguratio
   if (loopId && !ID.test(loopId)) issues.push('configuration.loopId must be a lowercase slug');
   const profile = root.profile;
   if (profile !== 'implementation' && profile !== 'validation_only') issues.push('configuration.profile must be implementation or validation_only');
+  const subscriptionRouting = parseLoopSubscriptionRouting(root.subscriptionRouting, profile === 'implementation' ? 'implementation' : 'validation_only', issues);
 
   const workspace = record(root.workspace) ? root.workspace : (issues.push('configuration.workspace must be an object'), {});
   unknownKeys(workspace, WORKSPACE_KEYS, 'configuration.workspace', issues);
@@ -508,7 +548,7 @@ export function parseLeanLoopConfiguration(input: unknown): LeanLoopConfiguratio
     candidate: { baseRevision, dependencies, environmentInputs, inputCompleteness: inputCompleteness as LeanLoopConfiguration['candidate']['inputCompleteness'] },
     provider: { kind: 'codex', model, ...(reasoning === undefined ? {} : { reasoning: reasoning as 'low' | 'medium' | 'high' }), contextIsolation: 'bounded', executable, knownQuota: knownQuota as LeanLoopConfiguration['provider']['knownQuota'] },
     roleRoutes: { implementer: implementerRoutes, reviewer: reviewerRoutes }, ...(implementationBrief === undefined ? {} : { implementationBrief }), ...(repairApproval === undefined ? {} : { repairApproval: repairApproval as LeanLoopConfiguration['repairApproval'] }),
-    requirements, acceptanceCriteria, toolchain, review: { sensitive, requiredPasses }, limits: parsedLimits, phases: [verificationPhase],
+    requirements, acceptanceCriteria, toolchain, review: { sensitive, requiredPasses }, ...(subscriptionRouting === undefined ? {} : { subscriptionRouting }), limits: parsedLimits, phases: [verificationPhase],
   };
 }
 
@@ -614,7 +654,7 @@ function selectLeanRoute(config: LeanLoopConfiguration, role: 'implementer' | 'r
   return undefined;
 }
 
-async function leanPreflight(config: LeanLoopConfiguration, environment: Readonly<Record<string, string>>, now: () => Date): Promise<LeanPreflightReceipt> {
+async function leanPreflight(config: LeanLoopConfiguration, environment: Readonly<Record<string, string>>, now: () => Date, routingAvailable: boolean): Promise<LeanPreflightReceipt> {
   const checks: LeanPreflightReceipt['checks'] = [];
   const check = (id: string, passed: boolean, detail: string): void => { checks.push({ id, passed, detail }); };
   check('approval.scope', config.approval.approved, config.approval.approved ? `approved:${config.approval.scopeRevision}` : 'approval_denied');
@@ -667,11 +707,13 @@ async function leanPreflight(config: LeanLoopConfiguration, environment: Readonl
     check(`toolchain.${probe.command}`, result.exitCode === 0 && !result.timedOut && !result.outputLimitExceeded && output.includes(probe.expectedOutput), result.exitCode === 0 ? `expected:${probe.expectedOutput}` : `exit:${result.exitCode ?? 'none'}`);
   }
   const roles: Array<'implementer' | 'reviewer'> = config.profile === 'implementation' || config.repairApproval !== undefined ? ['implementer', 'reviewer'] : ['reviewer'];
-  const routes = roles.flatMap((role) => {
-    const selection = selectLeanRoute(config, role);
-    check(`route.${role}`, selection !== undefined, selection ? `${selection.routeId}:${selection.model}:${selection.reasoning ?? 'provider-default'}` : 'no_available_owner_configured_route');
-    return selection ? [selection] : [];
-  });
+  const routes = config.subscriptionRouting?.enabled === true
+    ? (() => { check('subscription.routing', routingAvailable, routingAvailable ? 'console_controller_connected' : 'requires_console_controller'); return []; })()
+    : roles.flatMap((role) => {
+      const selection = selectLeanRoute(config, role);
+      check(`route.${role}`, selection !== undefined, selection ? `${selection.routeId}:${selection.model}:${selection.reasoning ?? 'provider-default'}` : 'no_available_owner_configured_route');
+      return selection ? [selection] : [];
+    });
   const failed = checks.filter((item) => !item.passed).map(({ id, detail }) => ({ id, detail }));
   return { format: 'faktori.lean-preflight-receipt/v1', passed: failed.length === 0, causeDigest: `sha256:${digest(canonical(failed))}`, checks, environmentInputs, routes, quota: config.provider.knownQuota, consecutiveFailures: 0, launchSuppressed: false, observedAt: now().toISOString() };
 }
@@ -765,6 +807,13 @@ function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase:
   return `${common}\nIndependent review receipt: ${JSON.stringify(prior?.response ?? {})}. Configured verification receipts: ${JSON.stringify(verification)}. Act as build manager. During this acceptance turn, do not edit files; this restriction applies only to this manager turn. Accept only if the review passed against this exact evidence. The controller binds your judgment to this candidate and independent review; do not return hashes or stage identifiers. Return only strict JSON: {"accepted":true|false,"summary":"..."}.`;
 }
 
+function configuredRolePrompt(config: ExecutableLoopConfiguration, kind: StageKind): string | undefined {
+  if (config.format !== 'faktori.lean-loop/v1' || config.subscriptionRouting?.enabled !== true) return undefined;
+  const role = kind === 'implement' || kind === 'repair' ? 'builder' : kind === 'review' ? 'reviewer' : 'manager';
+  const instruction = config.subscriptionRouting.rolePrompts?.[role];
+  return instruction === undefined ? undefined : `\nAdditional owner-configured ${role} instructions: ${instruction}`;
+}
+
 function contextFor(stageId: string, prompt: string, evidence: ManagerLoopWorkspaceEvidence, kind: StageKind): ProviderCurrentContext {
   return {
     packetRevision: `${stageId}@1`,
@@ -852,7 +901,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
       }
       const current = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
       const accepted = prior.lean.acceptance.evidence.candidate;
-      const currentPreflight = await leanPreflight(config, environment, now);
+      const currentPreflight = await leanPreflight(config, environment, now, dependencies.routing !== undefined);
       if (!currentPreflight.passed || canonical(current) !== canonical(accepted) || canonical(currentPreflight.environmentInputs) !== canonical(prior.lean.acceptance.evidence.environmentInputs)) {
         return { format: 'faktori.manager-loop-result/v1', loopId: config.loopId, status: 'blocked', completedPhases: [...prior.completedPhases], reason: 'accepted_evidence_changed_fresh_validation_required' };
       }
@@ -862,7 +911,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
   }
   let initialLean: LoopState['lean'];
   if (config.format === 'faktori.lean-loop/v1' && (prior === undefined || (prior.status === 'blocked' && prior.reason?.startsWith('lean_preflight_failed:') === true))) {
-    const preflight = await leanPreflight(config, environment, now);
+    const preflight = await leanPreflight(config, environment, now, dependencies.routing !== undefined);
     const previous = prior?.lean?.preflight;
     preflight.consecutiveFailures = preflight.passed ? 0 : previous?.passed === false && previous.causeDigest === preflight.causeDigest ? previous.consecutiveFailures + 1 : 1;
     preflight.launchSuppressed = preflight.consecutiveFailures >= 2;
@@ -871,7 +920,9 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
     if (!preflight.passed) {
       const blocked: LoopState = { format: 'faktori.manager-loop-state/v1', loopId: config.loopId, configDigest, status: 'blocked', completedPhases: [], stages: [], implementerSessions: {}, lean: initialLean, reason: `lean_preflight_failed:${preflight.causeDigest}`, updatedAt: now().toISOString() };
       await atomicJson(statePath, blocked);
-      return resultFrom(blocked);
+      return config.subscriptionRouting?.enabled === true && dependencies.routing === undefined
+        ? { ...resultFrom(blocked), reason: 'subscription_routing_requires_console_controller' }
+        : resultFrom(blocked);
     }
     if (prior !== undefined) {
       prior.status = 'running'; prior.reason = undefined; prior.lean = initialLean; prior.updatedAt = now().toISOString();
@@ -886,31 +937,54 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
   const executeStage = async (phase: ManagerLoopPhase, kind: StageKind, round: number, verification: ManagerLoopVerificationReceipt[], previous?: { stageId?: string; response?: RecordValue }): Promise<ManagerLoopStageReceipt | ManagerLoopResult> => {
     const id = stageId(config.loopId, phase.id, kind, round);
     const before = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
-    const prompt = rolePrompt(config, kind, phase, before, verification, previous);
+    const prompt = `${rolePrompt(config, kind, phase, before, verification, previous)}${configuredRolePrompt(config, kind) ?? ''}`;
     const context = contextFor(id, prompt, before, kind);
     const intendedAt = now().toISOString();
     state.currentStage = { stageId: id, phaseId: phase.id, kind, round, intendedAt };
     await save();
     await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: intendedAt, kind: 'stage.intended', stage: state.currentStage });
     const leanRole = kind === 'implement' || kind === 'repair' ? 'implementer' : kind === 'review' ? 'reviewer' : undefined;
-    const route = config.format === 'faktori.lean-loop/v1' && leanRole !== undefined ? state.lean?.routes.find((item) => item.role === leanRole) : undefined;
-    const adapter = dependencies.adapterFactory?.(route) ?? defaultAdapter(config, environment, createId, dependencies.nativeIdentityProbe, route);
-    const intent = intentFor(config, phase, { stageId: id, kind, round }, context, before, intendedAt, route);
+    const subscription = config.format === 'faktori.lean-loop/v1' ? config.subscriptionRouting : undefined;
+    const route = subscription?.enabled === true ? undefined : config.format === 'faktori.lean-loop/v1' && leanRole !== undefined ? state.lean?.routes.find((item) => item.role === leanRole) : undefined;
+    let intent = intentFor(config, phase, { stageId: id, kind, round }, context, before, intendedAt, route);
+    if (subscription?.enabled === true) {
+      const taskClass = subscription.stageTaskClasses[kind];
+      if (taskClass === undefined || dependencies.routing === undefined) return fail('blocked', `${id}:subscription_routing_requires_console_controller`);
+      try { intent = await dependencies.routing.select(intent, context.packetRevision, taskClass); }
+      catch (error) { return fail('blocked', `${id}:subscription_routing_blocked:${error instanceof Error ? error.message : 'unavailable'}`); }
+      if (intent.execution.providerId !== 'codex') return fail('blocked', `${id}:subscription_routing_provider_unsupported`);
+    }
+    const adapterRoute: LeanRouteDecision | undefined = subscription?.enabled === true && leanRole !== undefined
+      ? { role: leanRole, routeId: 'subscription-controller', provider: 'codex' as const, model: intent.execution.model, ...(intent.execution.reasoning === undefined ? {} : { reasoning: intent.execution.reasoning }), suitability: 'bounded' as const, availability: 'unknown' as const, order: 0 }
+      : route;
+    const adapter = dependencies.adapterFactory?.(adapterRoute) ?? defaultAdapter(config, environment, createId, dependencies.nativeIdentityProbe, adapterRoute);
     const lifecycle = {
       onStarted: async (worker: WorkerIdentity): Promise<void> => { await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: now().toISOString(), kind: 'worker.started', stageId: id, worker }); },
       onTerminationRequired: async (_worker: WorkerIdentity, reason: string): Promise<void> => { await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: now().toISOString(), kind: 'worker.termination.intended', stageId: id, reason }); },
     };
     let providerResult: ProviderRunResult;
-    if (kind === 'repair') {
-      const stored = state.implementerSessions[phase.id];
-      if (stored === undefined) {
-        if (config.format !== 'faktori.lean-loop/v1' || config.profile !== 'validation_only' || config.repairApproval?.approved !== true) return fail('blocked', `repair_session_unavailable:${phase.id}`);
-        providerResult = await adapter.start(intent, context, lifecycle);
-      } else {
-        const binding: ProviderSessionBinding = { sessionId: stored.sessionId, sourceRunId: stored.sourceRunId, sourceContext: { packetRevision: stored.sourceContext.packetRevision, digest: stored.sourceContext.digest }, sourceScope: { factoryId: intent.target.factoryId, productId: intent.target.productId, repository: intent.target.repository, workspaceId: intent.execution.workspaceId, workspacePath: intent.execution.workspacePath, providerId: 'codex' } };
-        providerResult = await adapter.resume(intent, binding, context, lifecycle);
+    try {
+      if (kind === 'repair') {
+        const stored = state.implementerSessions[phase.id];
+        if (stored === undefined) {
+          if (config.format !== 'faktori.lean-loop/v1' || config.profile !== 'validation_only' || config.repairApproval?.approved !== true) return fail('blocked', `repair_session_unavailable:${phase.id}`);
+          providerResult = await adapter.start(intent, context, lifecycle);
+        } else {
+          const binding: ProviderSessionBinding = { sessionId: stored.sessionId, sourceRunId: stored.sourceRunId, sourceContext: { packetRevision: stored.sourceContext.packetRevision, digest: stored.sourceContext.digest }, sourceScope: { factoryId: intent.target.factoryId, productId: intent.target.productId, repository: intent.target.repository, workspaceId: intent.execution.workspaceId, workspacePath: intent.execution.workspacePath, providerId: 'codex' } };
+          providerResult = await adapter.resume(intent, binding, context, lifecycle);
+        }
+      } else providerResult = await adapter.start(intent, context, lifecycle);
+    } catch (error) {
+      if (subscription?.enabled !== true) throw error;
+      if (subscription?.enabled === true && dependencies.routing !== undefined) {
+        try { await dependencies.routing.terminal(intent.runId, 'interrupted_uncertain'); } catch { /* preserve uncertain stage evidence */ }
       }
-    } else providerResult = await adapter.start(intent, context, lifecycle);
+      return fail('interrupted_uncertain', `${id}:provider_turn_uncertain`);
+    }
+    if (subscription?.enabled === true) {
+      try { await dependencies.routing?.terminal(intent.runId, providerResult.final.outcome); }
+      catch { return fail('interrupted_uncertain', `${id}:subscription_routing_terminal_unrecorded`); }
+    }
     const after = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
     const receipt = (response?: RecordValue): ManagerLoopStageReceipt => ({
       stageId: id, phaseId: phase.id, kind, round, outcome: providerResult.final.outcome,
@@ -1004,7 +1078,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
         if (passingReviews.length !== config.review.requiredPasses) return fail('failed', `${phase.id}:review_not_passed`);
         const candidate = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
         if (passingReviews.some((review) => review.evidence.contentDigest !== candidate.contentDigest) || receipts.some((receipt) => receipt.evidenceDigest !== candidate.contentDigest || !receipt.passed)) return fail('failed', `${phase.id}:deterministic_acceptance_evidence_mismatch`);
-        const finalPreflight = await leanPreflight(config, environment, now);
+        const finalPreflight = await leanPreflight(config, environment, now, dependencies.routing !== undefined);
         const preflightEvidence = (value: LeanPreflightReceipt): unknown => ({ checks: value.checks, environmentInputs: value.environmentInputs, routes: value.routes, quota: value.quota });
         if (!finalPreflight.passed || canonical(preflightEvidence(finalPreflight)) !== canonical(preflightEvidence(state.lean!.preflight))) return fail('failed', `${phase.id}:deterministic_acceptance_preflight_changed`);
         const acceptanceStageId = stageId(config.loopId, phase.id, 'deterministic_accept', 0);

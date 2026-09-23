@@ -22,8 +22,14 @@ export class FetchJiraHttpClient implements JiraHttpClient {
     if (this.#base.protocol !== 'https:' && this.#base.protocol !== 'http:') throw new Error('Jira base URL must be http(s)');
   }
   async request(input: { method: 'GET' | 'POST' | 'PUT'; path: string; headers: Readonly<Record<string, string>>; body?: unknown }): Promise<JiraHttpResponse> {
-    if (!input.path.startsWith('/rest/api/3/')) throw new Error('Jira path escaped configured API root');
-    const response = await this.#fetcher(new URL(input.path, this.#base), { method: input.method, headers: input.headers, ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }) });
+    // The Agile API is needed only for controller-owned, read-only sprint
+    // observation.  Keep it on the configured origin alongside the core API;
+    // callers still cannot provide a URL or escape to another host.
+    const destination = new URL(input.path, this.#base);
+    const agile = destination.pathname.startsWith('/rest/agile/1.0/');
+    if (destination.origin !== this.#base.origin || (!destination.pathname.startsWith('/rest/api/3/') && !agile)) throw new Error('Jira path escaped configured API root');
+    if (agile && input.method !== 'GET') throw new Error('Jira Agile access is read-only');
+    const response = await this.#fetcher(destination, { method: input.method, headers: input.headers, ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }) });
     const raw = await response.text();
     let body: unknown = undefined;
     if (raw.length > 0) { try { body = JSON.parse(raw); } catch { throw new Error('Jira returned invalid JSON'); } }
@@ -51,6 +57,8 @@ export interface JiraRestExecutorOptions {
   transitions: Readonly<Record<string, JiraTransition>>;
   /** Called only inside the controller process. Its value is never retained by this adapter. */
   authorizationHeader?: () => Promise<string>;
+  /** Optional controller evidence gate after reconciliation, before authority/effect. */
+  beforeWrite?: (action: AuthorizedAction, operation: JiraOperation) => Promise<void>;
 }
 
 class JiraConfigurationError extends Error {}
@@ -79,12 +87,14 @@ export class JiraRestActionExecutor implements ControllerActionExecutor {
   readonly #operationFor: JiraRestExecutorOptions['operationFor'];
   readonly #transitions: JiraRestExecutorOptions['transitions'];
   readonly #authorizationHeader?: JiraRestExecutorOptions['authorizationHeader'];
+  readonly #beforeWrite?: JiraRestExecutorOptions['beforeWrite'];
 
   constructor(options: JiraRestExecutorOptions) {
     this.#client = options.client;
     this.#operationFor = options.operationFor;
     this.#transitions = options.transitions;
     this.#authorizationHeader = options.authorizationHeader;
+    this.#beforeWrite = options.beforeWrite;
   }
 
   async execute(action: AuthorizedAction, guard: () => Promise<void>): Promise<ActionExecutionResult> {
@@ -103,6 +113,8 @@ export class JiraRestActionExecutor implements ControllerActionExecutor {
 
   private async executeConfigured(action: AuthorizedAction, operation: JiraOperation, guard: () => Promise<void>): Promise<ActionExecutionResult> {
     if (await this.reconciled(action, operation)) return { outcome: 'safe_noop', detail: 'Jira already reflects this idempotent action' };
+    try { await this.#beforeWrite?.(action, operation); }
+    catch { return { outcome: 'blocked', detail: 'delivery_evidence_changed_before_write' }; }
     await guard(); // Immediately precedes the only possible externally visible write.
     const response = await this.write(action, operation);
     if (response.status >= 200 && response.status < 300) return { outcome: 'completed', detail: `Jira ${operation.kind} completed` };

@@ -156,6 +156,11 @@ export function summarizeUsage(records, estimate, requestedPhase) {
   const budget = number(estimate) ?? 0;
   const percentUsed = budget === 0 || actual.total === null ? null : Math.round((actual.total / budget) * 10000) / 100;
   const thresholds = [70, 90, 100];
+  const modelGroups = new Map();
+  for (const record of coverage.records) {
+    const key = JSON.stringify([record.provider ?? 'unknown', record.model ?? 'unknown', record.workClass ?? 'unknown']);
+    const group = modelGroups.get(key) ?? []; group.push(record); modelGroups.set(key, group);
+  }
   return {
     schemaVersion: 1,
     phase: requestedPhase ?? normalized.records[0]?.phase ?? null,
@@ -163,6 +168,10 @@ export function summarizeUsage(records, estimate, requestedPhase) {
     actual,
     estimated,
     models: models(coverage.records),
+    modelUsage: [...modelGroups].map(([key, values]) => {
+      const [provider, model, workClass] = JSON.parse(key);
+      return { provider, model, workClass, recordCount: values.length, usage: counters(values), unknownMeasurements: unknown(values).length };
+    }),
     unknown: [...unknown(normalized.records), ...unattributable.map((record) => ({ ticket: record.ticket ?? 'unknown', reason: 'phase-attribution:unknown' })), ...hierarchy.overlapUnknown.map((record) => ({ ticket: record.ticket ?? 'unknown', reason: 'parent-child-overlap:unknown' })), ...coverage.excluded.map((record) => ({ ticket: record.ticket ?? 'unknown', reason: 'coverage-overlap:unknown' }))],
     coverageGaps: coverage.coverageGaps,
     records: { accepted: normalized.accepted, duplicates: normalized.duplicates },

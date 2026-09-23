@@ -10,7 +10,8 @@ export interface ManagerLoopView {
   updatedAt?: string;
   completedPhases: string[];
   currentStage?: { phaseId: string; kind: string; round: number };
-  stages: Array<{ phaseId: string; kind: string; round: number; outcome: string; completedAt: string; decision?: string; verification?: 'passed' | 'failed' }>;
+  stages: Array<{ phaseId: string; kind: string; round: number; outcome: string; completedAt: string; decision?: string; verification?: 'passed' | 'failed'; model?: string; usage?: { availability?: 'reported' | 'partially_reported' | 'unavailable'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; reasoningTokens?: number } }>;
+  usage?: { input?: number | null; cached?: number | null; uncachedInput?: number | null; output?: number | null; reasoning?: number | null; total?: number | null; excludedChildCount?: number; unknownMeasurements?: number };
   reason?: string;
   delivery?: {
     gates: Array<{

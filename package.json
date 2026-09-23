@@ -1,6 +1,6 @@
 {
   "name": "faktori",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "faktoriStateFormatVersion": 1,
   "private": false,
   "description": "A self-hosted, vendor-neutral software factory for small teams.",
@@ -26,10 +26,17 @@
     "templates",
     "INSTALL.md",
     "AGENTS.md",
+    "CLAUDE.md",
     "LICENSE",
     "README.md"
   ],
   "exports": {
+    "./preview": { "types": "./dist/preview/index.d.ts", "import": "./dist/preview/index.js" },
+    "./workflow": { "types": "./dist/workflow/index.d.ts", "import": "./dist/workflow/index.js" },
+    "./verification": {
+      "types": "./dist/verification/index.d.ts",
+      "import": "./dist/verification/index.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
@@ -116,7 +123,7 @@
     "faktori": "node src/cli.ts",
     "build": "npm run console:build && tsc --project tsconfig.build.json",
     "console:build": "vite build --config console/vite.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project console/tsconfig.json",
     "test": "vitest run",
     "skills:verify": "node scripts/verify-skill-kit.mjs",
     "check": "npm run typecheck && npm run build && npm test && npm run pack:verify",

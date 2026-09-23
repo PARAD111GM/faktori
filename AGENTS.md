@@ -9,6 +9,32 @@ phase brief when assigned, and the latest applicable accepted report before work
 The construction protocol below applies to that development, not to ordinary
 installation or operation of an owner's factory.
 
+## Lean delivery and communication
+
+- Optimize for accepted software delivered with less total time, inference and
+  human effort, not ticket counts, PR counts or agent activity.
+- Use one ticket per coherent, independently verifiable outcome, not per
+  implementation step. Keep related code, verification, documentation and
+  in-scope UI refinements together.
+- Default to one feature-sized PR per outcome or human review batch. A cohesive
+  feature may reference several existing tickets. Split only for genuinely
+  separate outcomes, conflicting ownership, dependencies or material risk and
+  reviewability boundaries; avoid micro-PRs and catch-all PRs alike.
+- Keep tickets concise: **Outcome | Acceptance checks | Dependencies/constraints**.
+  Link authoritative specifications and evidence instead of copying them.
+- Keep agent handoffs to changed facts, evidence references, blockers and next
+  action. Do not resend full histories or report unchanged status repeatedly.
+- Keep human updates brief and plain-English; add detail when needed for a
+  decision, safe operation or comprehension.
+- Track small UI-review edits as checklist items within the existing ticket and
+  active implementation session. Batch related edits into one PR update rather
+  than pushing each adjustment. Separate genuinely new or deferred scope.
+- Use deterministic code for routine status and summaries where practical.
+  Measure administrative effort per accepted outcome, not activity volume.
+- Conciseness never removes actionable acceptance criteria, safety constraints,
+  ownership coordination, independent review or reproducible failure evidence.
+  Feature-sized batching does not grant push, merge or deployment authority.
+
 ## Construction protocol
 
 - The Build Manager accepts phases. A fresh Phase Implementer-Orchestrator owns each phase and commands specialized subagents.

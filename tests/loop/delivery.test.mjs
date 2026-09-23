@@ -10,6 +10,16 @@ const state = { format: 'faktori.manager-loop-state/v1', loopId: 'pilot', status
 const publication = { format: 'faktori.loop-publication-receipt/v1', status: 'published', loop: { loopId: 'pilot', acceptedEvidenceDigest: digest }, binding: { repository: 'example/product', branch: 'feat/pilot', baseRefName: 'main', expectedRevision: commit }, pr: { number: 4, url: 'https://github.com/example/product/pull/4', headRefName: 'feat/pilot', headRefOid: commit, baseRefName: 'main' } };
 
 describe('delivery evidence and next action', () => {
+  it('requires the observed deployed revision to match an explicit merge revision, not the PR head or health alone', () => {
+    const mergeCommit = 'c'.repeat(40);
+    const gate = (id, extra = {}) => ({ id, status: 'passed', evidenceUrl: publication.pr.url, recordedBy: 'owner', observedAt: '2026-09-13T00:00:00Z', ...extra });
+    const doc = (deployment) => ({ format: 'faktori.loop-delivery/v1', loopId: 'pilot', acceptedEvidenceDigest: digest, reviewedCommit: commit, gates: [gate('review'), gate('merge', { mergeCommit }), gate('deployment', deployment)] });
+    for (const missingOrWrong of [{}, { deployedRevision: commit }, { deployedRevision: 'd'.repeat(40) }]) {
+      expect(projectLoopDelivery(state, publication, doc(missingOrWrong)).gates[4].status).not.toBe('passed');
+    }
+    expect(projectLoopDelivery(state, publication, doc({ deployedRevision: mergeCommit })).gates[4].status).toBe('passed');
+    expect(projectLoopDelivery(state, publication, doc({ deployedRevision: mergeCommit })).gates[5].status).toBe('unobserved');
+  });
   it('separates local acceptance from delivery and never treats an arbitrary or stale PR receipt as publication', () => {
     const local = projectLoopDelivery(state);
     expect(local.gates.map(({ status }) => status)).toEqual(['passed', 'pending', 'unobserved', 'unobserved', 'unobserved', 'unobserved']);
@@ -40,7 +50,16 @@ describe('delivery evidence and next action', () => {
       const before = await readFile(join(root, 'delivery.json'), 'utf8');
       await expect(recordLoopDeliveryEvidence({ ...request, reviewedCommit: 'c'.repeat(40) })).rejects.toThrow(/reviewed commit/);
       await expect(recordLoopDeliveryEvidence({ ...request, confirmed: false })).rejects.toThrow(/confirmed/);
+      await expect(recordLoopDeliveryEvidence({ ...request, gate: 'merge' })).rejects.toThrow(/mergeCommit/);
       expect(await readFile(join(root, 'delivery.json'), 'utf8')).toBe(before);
+      const mergeCommit = 'e'.repeat(40);
+      await recordLoopDeliveryEvidence({ ...request, gate: 'merge', mergeCommit });
+      const merged = await readFile(join(root, 'delivery.json'), 'utf8');
+      await expect(recordLoopDeliveryEvidence({ ...request, gate: 'deployment', deployedRevision: commit })).rejects.toThrow(/matching deployment/);
+      expect(await readFile(join(root, 'delivery.json'), 'utf8')).toBe(merged);
+      const deployed = await recordLoopDeliveryEvidence({ ...request, gate: 'deployment', deployedRevision: mergeCommit });
+      expect(deployed.gates[4].status).toBe('passed');
+      expect(deployed.gates[5].status).toBe('unobserved');
       const rejected = await recordLoopDeliveryEvidence({ ...request, status: 'failed' });
       expect(rejected.nextAction).toEqual({ label: 'Resolve external review failure', role: 'reviewer', url: publication.pr.url });
     } finally { await rm(root, { recursive: true, force: true }); }

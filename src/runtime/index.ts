@@ -6,4 +6,6 @@ export * from './delivery.ts';
 export * from './journal.ts';
 export * from './portability.ts';
 export * from './run-manifest.ts';
+export * from './routing.ts';
+export * from './consultation.ts';
 export * from './sqlite-projection.ts';

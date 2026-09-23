@@ -34,4 +34,15 @@ describe('factory efficiency metrics', () => {
     expect(metrics.coverage).toEqual({ registeredSessions: 2, usableSessions: 2, ratio: 1 });
     expect(metrics.overhead).toMatchObject({ sharedTokens: 25, gmReview: { attemptCount: 1, tokens: null, unknownMeasurements: 1 } });
   });
+
+  it('reports cached input as an input subset in the configured model cohort', () => {
+    const metrics = summarizeFactoryEfficiency({ summaries: [], records: [{
+      source: 'coordinator', agentId: 'coordinator:run-1', sessionId: 'run-1', registeredSessionId: 'coordinator:run-1:run-1',
+      provider: 'codex', model: 'configured-model', workClass: 'implementation', at: '2026-09-22T12:00:00.000Z',
+      counters: { input: 100, cached: 40, output: 20, reasoning: 15, total: 120 }, references: { ticket: 'work-one', feature: 'feature-one' },
+    }] });
+    expect(metrics.usage).toMatchObject({ input: 100, cached: 40, uncachedInput: 60, output: 20, reasoning: 15, total: 120, unknownMeasurements: 0 });
+    expect(metrics.usageByModel).toEqual([expect.objectContaining({ provider: 'codex', model: 'configured-model', workClass: 'implementation', recordCount: 1,
+      usage: expect.objectContaining({ input: 100, cached: 40, uncachedInput: 60, total: 120 }), unknownMeasurements: 0 })]);
+  });
 });

@@ -22,6 +22,8 @@ import type { ManagerConnectedStore } from '../manager-connected/index.ts';
 import { registerManagerRelay } from './manager-relay.ts';
 import { validateWorkScope, type WorkCatalogObserver, type WorkManagementDailyEvent } from './work-management.ts';
 import type { GitHubWorkObserver } from './github-observer.ts';
+import { enqueueGraphFrontier, type GraphDispatchConfiguration } from './graph-dispatch.ts';
+import type { DeliverySynchronizationRuntime } from './delivery-synchronization.ts';
 
 export type ConsoleCommand =
   | { type: 'start_work'; workItemId: string }
@@ -46,6 +48,7 @@ export interface ConsoleOwnerActions {
 }
 
 export interface ConsoleServiceOptions {
+  efficientDelivery?: import('./delivery-control.ts').DeliveryControlPort;
   coordinator: DurableCoordinator;
   /** A local session secret delivered only in the loopback Console document. */
   commandToken: string;
@@ -70,6 +73,11 @@ export interface ConsoleServiceOptions {
   managerLoopRegistry?: ManagerLoopRegistry;
   jiraObserver?: JiraObserver;
   managerConnected?: { store: ManagerConnectedStore; relayToken: string };
+  /** Private controller-owned graph packet; owner can trigger one bounded frontier step. */
+  graphDispatch?: GraphDispatchConfiguration;
+  /** Explicit controller configuration; never enabled by a browser request. */
+  automaticGraphDispatch?: boolean;
+  deliverySynchronization?: () => ReturnType<DeliverySynchronizationRuntime['snapshot']> | { status: 'not_configured' };
   workCatalogObserver?: WorkCatalogObserver;
   githubWorkObserver?: GitHubWorkObserver;
   factoryGM?: () => ReturnType<typeof coordinatorGMState> & { nightly?: GMNightlyState; efficiency: FactoryEfficiencyMetrics };
@@ -322,6 +330,15 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     events.emit('state');
   }, options.eventPollIntervalMs ?? 200);
   journalPoll.unref();
+  // Status projection only: external reads/writes remain in the single runtime.
+  let deliveryVersion = '';
+  const deliveryPoll = options.deliverySynchronization ? setInterval(() => {
+    const version = JSON.stringify(options.deliverySynchronization!());
+    if (version === deliveryVersion) return;
+    deliveryVersion = version;
+    events.emit('state');
+  }, 1_000) : undefined;
+  deliveryPoll?.unref();
   const unsubscribeManagerLoops = options.managerLoopObserver?.onChange(() => events.emit('state'));
   const unsubscribeManagerConnected = options.managerConnected?.store.onChange(() => events.emit('state'));
   const unsubscribeWorkCatalog = options.workCatalogObserver?.onChange(() => events.emit('state'));
@@ -378,6 +395,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       .reduce((sum, snapshot) => sum + snapshot.reservation.estimatedTokens, 0);
     const waiting = snapshots.filter((snapshot) => snapshot.state === 'blocked' || snapshot.state === 'reconciling');
     const managerLoops = options.managerLoopObserver?.summaries() ?? [];
+    const tokenTracker = options.managerLoopObserver?.tokenTracker();
     const jiraBoards = options.jiraObserver?.snapshot() ?? [];
     const managerConnected = options.managerConnected?.store.snapshot();
     const dailyEvents = retainedWorkManagementDailyEvents(options.coordinator.journal.events(), snapshots, managerConnected, managerLoops);
@@ -386,6 +404,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       admissionPaused: currentPause(records()),
       runs: snapshots.map((snapshot) => publicRun(options.coordinator, snapshot)),
       managerLoops,
+      ...(tokenTracker === undefined ? {} : { tokenTracker }),
       ...(managerConnected ? { managerConnected } : {}),
       workManagement: options.workCatalogObserver
         ? options.workCatalogObserver.snapshot(managerConnected, options.githubWorkObserver?.snapshot(), dailyEvents)
@@ -400,6 +419,8 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
       overview: { activeRuns: snapshots.filter((snapshot) => ['admitted', 'launching', 'running', 'cancelling', 'reconciling'].includes(snapshot.state)).length, waitingDecisions: waiting.length, failedRuns: snapshots.filter((snapshot) => snapshot.state === 'failed').length },
       resources: { knownUsageTokens: knownTokens, reportedUsageCount: reported.length, unavailableUsageCount: usages.length - reported.length, reservedTokens, unavailableMeasurements: usages.filter((usage) => usage.availability === 'unavailable').length, queueAge: snapshots.filter((snapshot) => snapshot.state === 'queued' || snapshot.state === 'admitted').map((snapshot) => ({ runId: snapshot.intent.runId, createdAt: snapshot.intent.createdAt })) },
       factoryGM: options.factoryGM?.() ?? coordinatorGMState(options.coordinator),
+      deliverySynchronization: options.deliverySynchronization?.() ?? { status: 'not_configured' },
+      ...(options.efficientDelivery ? { efficientDelivery: options.efficientDelivery.snapshot() } : {}),
     };
   }
 
@@ -438,6 +459,7 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     try {
       let result: Record<string, unknown> = {};
       if (request.command.type === 'start_work') {
+        if (options.managerConnected?.store.isSprintWork(request.command.workItemId)) throw new Error('This recovery sprint requires its visible Codex task. Dispatch through the Foreman relay after sprint readiness passes.');
         if (currentPause(records())) throw new Error('admission_paused');
         if (options.ownerActions?.startWork === undefined) throw new Error('start_work_unavailable');
         result = await options.ownerActions.startWork(request.command.workItemId);
@@ -473,17 +495,73 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
   }
 
   app.addHook('onSend', async (_request, reply) => { secureHeaders(reply); });
+  let graphPoll: ReturnType<typeof setInterval> | undefined;
+  let graphTick: Promise<void> | undefined;
+  let graphInputKey: string | undefined;
+  let graphValidUntil: string | undefined;
+  let graphRetryAt = 0;
+  let graphFailures = 0;
+  let graphDispatchState: { mode: 'manual' | 'automatic'; status: string; lastEvaluatedAt?: string; detail?: string } = {
+    mode: options.automaticGraphDispatch === true ? 'automatic' : 'manual', status: options.automaticGraphDispatch === true ? 'waiting' : 'disabled',
+  };
+  const replenishGraph = async (): Promise<void> => {
+    if (closed || graphTick || !options.automaticGraphDispatch || now().getTime() < graphRetryAt) return;
+    graphTick = (async () => {
+      const config = options.graphDispatch; const catalogObserver = options.workCatalogObserver; const store = options.managerConnected?.store;
+      if (!config || !catalogObserver || !store) {
+        graphDispatchState = { mode: 'automatic', status: 'blocked', detail: 'Graph packet, work catalog and sprint relay are required.' }; return;
+      }
+      try {
+        const files = await Promise.all([config.path, config.readinessPath, catalogObserver.configuration.path].map(async path => {
+          const stat = await lstat(path, { bigint: true });
+          return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(String);
+        }));
+        const snapshot = catalogObserver.snapshot();
+        const requests = store.snapshot().requests.map(r => [r.id, r.status]);
+        const key = JSON.stringify({ files, catalog: [snapshot.status, snapshot.revision], requests });
+        if (key === graphInputKey) {
+          if (graphValidUntil && Date.parse(graphValidUntil) <= now().getTime()) graphDispatchState = {
+            ...graphDispatchState, status: 'blocked', detail: 'Sprint readiness expired. Fresh admission evidence is required.',
+          };
+          return;
+        }
+        graphInputKey = key;
+        const catalog = catalogObserver.catalog();
+        if (!catalog || snapshot.status !== 'available' || !snapshot.revision) throw new Error('catalog_unavailable');
+        graphValidUntil = (await store.sprintReadiness()).validUntil;
+        const result = await enqueueGraphFrontier(config, catalog, snapshot.revision, store, catalogObserver.configuration.path, { reconcileExisting: true });
+        graphFailures = 0; graphRetryAt = 0;
+        graphDispatchState = { mode: 'automatic', status: result.receipts.some(r => r.status === 'failed') ? 'blocked' : 'monitoring',
+          lastEvaluatedAt: now().toISOString(), detail: result.receipts.some(r => r.status === 'failed')
+            ? 'Queue admission failed. Reconcile outstanding work and current sprint evidence.' : `${result.enqueued} assignments queued. Task execution still requires the Foreman relay.` };
+      } catch {
+        graphInputKey = undefined;
+        graphRetryAt = now().getTime() + Math.min(60_000, 5_000 * 2 ** Math.min(graphFailures++, 4));
+        graphDispatchState = { mode: 'automatic', status: 'blocked', lastEvaluatedAt: now().toISOString(),
+          detail: 'Graph admission is unavailable. Check the private packet, catalog bindings and Sprint readiness.' };
+      }
+    })();
+    try { await graphTick; } finally { graphTick = undefined; }
+  };
+  app.addHook('onReady', async () => {
+    if (!options.automaticGraphDispatch) return;
+    await replenishGraph();
+    graphPoll = setInterval(() => { void replenishGraph(); }, 5_000); graphPoll.unref();
+  });
   app.addHook('preClose', async () => {
     for (const stream of eventStreams) stream.end();
     eventStreams.clear();
   });
   app.addHook('onClose', async () => {
     closed = true;
+    if (graphPoll) clearInterval(graphPoll);
+    await graphTick;
     if (jiraPoll) clearInterval(jiraPoll);
     if (catalogPoll) clearInterval(catalogPoll);
     if (githubWorkPoll) clearInterval(githubWorkPoll);
     options.jiraObserver?.close();
     clearInterval(journalPoll);
+    if (deliveryPoll) clearInterval(deliveryPoll);
     unsubscribeManagerLoops?.();
     unsubscribeManagerConnected?.();
     unsubscribeWorkCatalog?.();
@@ -491,6 +569,24 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     options.managerLoopObserver?.close();
   });
   app.get('/api/console/state', async () => state());
+  app.post('/api/console/efficient-delivery/commands', async (request, reply) => {
+    if (!commandAuthorized(request, reply)) return reply;
+    if (!options.efficientDelivery) return reply.code(409).send({ error: 'delivery_not_configured', nextAction: 'Enable the required capability in the owner-controlled Console configuration, then restart the Console.' });
+    const body = request.body as { commandId?: unknown; command?: unknown } | undefined;
+    if (!body || typeof body.commandId !== 'string') return reply.code(400).send({ error: 'delivery_command_id_required', nextAction: 'Refresh the Console and retry with a new command identity.' });
+    try { return reply.code(202).send(await options.efficientDelivery.submit(body.commandId, body.command)); }
+    catch { return reply.code(409).send({ error: 'delivery_command_rejected', nextAction: 'Use a registered action and a unique command identity. Do not replay an unresolved command; inspect its receipt first.' }); }
+  });
+  app.get('/api/console/delivery-synchronization', async () => options.deliverySynchronization?.() ?? { status: 'not_configured' });
+  app.get('/api/console/sprint-readiness', async () => {
+    const report = await options.managerConnected?.store.sprintReadiness();
+    if (!report) return { ready: false, mode: 'unconfigured', blockers: [{ id: 'configuration', owner: 'Foreman',
+      problem: 'Manager-connected sprint execution is not configured.', nextAction: 'Configure the Foreman relay and verify its sprint admission checks.' }] };
+    // Evidence references, configured paths and arbitrary owner text remain private.
+    return { ready: report.ready, mode: report.mode, validUntil: report.validUntil, graphDispatch: graphDispatchState, blockers: report.blockers.map(b => ({
+      id: b.id, owner: 'Foreman', problem: b.problem, nextAction: b.nextAction,
+    })) };
+  });
   app.post('/api/console/manager-loops/register', async (request, reply) => {
     if (!commandAuthorized(request, reply)) return reply;
     if (options.managerLoopRegistry === undefined || options.managerLoopObserver === undefined) return reply.code(409).send({ error: 'manager_loop_registration_unavailable' });
@@ -552,8 +648,16 @@ export function createConsoleService(options: ConsoleServiceOptions): FastifyIns
     app.post('/api/console/manager-connected', async (request, reply) => {
       if (!commandAuthorized(request, reply)) return reply;
       const action = object(request.body);
-      if (!action || !['enqueue', 'cancel'].includes(String(action.type))) return reply.code(400).send({ error: 'unsupported_owner_action' });
+      if (!action || !['enqueue', 'cancel', 'enqueue_frontier'].includes(String(action.type))) return reply.code(400).send({ error: 'unsupported_owner_action' });
       try {
+        if (action.type === 'enqueue_frontier') {
+          if (Object.keys(action).length !== 1 || options.graphDispatch === undefined || options.workCatalogObserver === undefined) return reply.code(409).send({ error: 'graph_dispatch_unavailable' });
+          const catalog = options.workCatalogObserver.catalog();
+          const current = options.workCatalogObserver.snapshot();
+          if (!catalog || current.status !== 'available' || typeof current.revision !== 'string') return reply.code(409).send({ error: 'work_catalog_stale', state: state() });
+          const result = await enqueueGraphFrontier(options.graphDispatch, catalog, current.revision, store, options.workCatalogObserver.configuration.path);
+          return { result, state: state() };
+        }
         if (action.type === 'enqueue') {
           const catalog = options.workCatalogObserver?.catalog();
           if (catalog) {

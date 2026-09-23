@@ -31,6 +31,21 @@ try {
   const tarball = join(scratch, packed.filename);
   const entries = run('tar', ['-tf', tarball], scratch).split('\n').filter(Boolean);
   const requiredEntries = [
+    'package/CLAUDE.md',
+    'package/docs/releases/v0.2.4.md',
+    'package/docs/subscription-efficient-delivery.md',
+    'package/dist/preview/index.js',
+    'package/dist/workflow/index.js',
+    'package/dist/runtime/routing.js',
+    'package/dist/verification/index.js',
+    'package/docs/runtime-verification.md',
+    'package/dist/sprint/witnessed-delivery.js',
+    'package/dist/console/delivery-synchronization.js',
+    'package/dist/integrations/delivery-composer.js',
+    'package/dist/integrations/delivery-observation.js',
+    'package/dist/sprint/readiness.js',
+    'package/docs/recovery-setup.md',
+    'package/docs/releases/v0.2.3.md',
     'package/dist/maintenance/index.js',
     'package/dist/maintenance/backup.js',
     'package/dist/maintenance/update.js',
@@ -62,6 +77,28 @@ try {
     encoding: 'utf8',
   });
   if (importResult.status !== 0) throw new Error(importResult.stderr || importResult.stdout || 'installed runtime exports failed');
+
+  // Catch source-only recovery implementations that cannot be used from the
+  // actual package. This reads configuration only; it never starts a controller.
+  const recoveryResult = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    const integrations = await import('faktori/integrations');
+    const verification = await import('faktori/verification');
+    if (typeof verification.verifyCandidateRuntime !== 'function' || typeof verification.captureCandidateSnapshot !== 'function') process.exit(4);
+    const consoleKit = await import('faktori/console');
+    if (typeof integrations.createDeliveryTransitionController !== 'function'
+      || typeof integrations.observeDeliveryForSynchronization !== 'function') process.exit(2);
+    const configuration = consoleKit.parseLocalConsoleConfiguration({
+      factoryId: 'packed-recovery', journalPath: '/private/faktori/operations.jsonl',
+      projectionPath: '/private/faktori/projection.sqlite', port: 0,
+      allowedOrigins: ['http://127.0.0.1:4173'],
+      limits: { maxConcurrentRuns: 1, maxRetries: 0, maxRuntimeMinutes: 5,
+        maxTokens: 0, strictSpending: false, strictSpendingSupported: false },
+      deliverySynchronization: { packetPath: '/private/faktori/delivery.json',
+        grantVaultPath: '/private/faktori/grants', pollIntervalMs: 30000 }
+    });
+    if (configuration.deliverySynchronization?.pollIntervalMs !== 30000) process.exit(3);
+  `], { cwd: consumer, encoding: 'utf8' });
+  if (recoveryResult.status !== 0) throw new Error(recoveryResult.stderr || recoveryResult.stdout || 'installed recovery configuration failed');
 
   const executable = join(consumer, 'node_modules', '.bin', 'faktori');
   const configPath = join(consumer, 'solo.json');

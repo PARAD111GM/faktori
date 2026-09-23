@@ -13,7 +13,7 @@ const BETTER_SQLITE3_VERSION = '13.0.3';
 const REQUIRED_KIT_PATHS = ['dist', 'console/dist', 'docs', 'docker', 'examples', 'provider-entrymaps/generated', 'skills', 'templates', 'LICENSE', 'README.md', 'package.json'] as const;
 // Older releases predate these entry points. Include declared additions in new
 // candidates without making existing installations unreadable.
-const ADDITIONAL_KIT_PATHS = ['.agents/skills/faktori-update', '.claude/commands/faktori-update.md', '.cursor/commands/faktori-update.md', 'AGENTS.md', 'INSTALL.md', 'provider-entrymaps/source.json'] as const;
+const ADDITIONAL_KIT_PATHS = ['.agents/skills/faktori-update', '.claude/commands/faktori-update.md', '.cursor/commands/faktori-update.md', 'AGENTS.md', 'CLAUDE.md', 'INSTALL.md', 'provider-entrymaps/source.json'] as const;
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 

@@ -15,7 +15,7 @@ import {
   type GitHubPublicationStore,
   type GitHubPublisherTarget,
 } from '../integrations/github.ts';
-import { captureManagerLoopWorkspaceEvidence } from './index.ts';
+import { captureManagerLoopWorkspaceEvidence, managerLoopReceiptReference } from './index.ts';
 
 const MAX_FILES = 20_000;
 const MAX_BYTES = 512 * 1024 * 1024;
@@ -258,14 +258,14 @@ function acceptedLoopReport(value: unknown, reportBody: Buffer): LoopPublication
   if (stages.length !== value.stages.length) throw new Error('publication_loop_report_stages_invalid');
   const acceptance = stages.at(-1);
   if ((acceptance?.kind !== 'manager_accept' && acceptance?.kind !== 'deterministic_accept') || typeof acceptance.stageId !== 'string' || !record(acceptance.response) || acceptance.response.accepted !== true || !record(acceptance.evidence)) throw new Error('publication_requires_final_manager_acceptance');
-  const acceptedEvidenceDigest = requiredString(acceptance.response.evidenceDigest, 'publication_accepted_evidence_digest');
+  const acceptedEvidenceDigest = requiredString(managerLoopReceiptReference(acceptance, 'evidenceDigest'), 'publication_accepted_evidence_digest');
   const acceptedBranch = requiredString(acceptance.evidence.branch, 'publication_accepted_branch');
   if (acceptance.evidence.contentDigest !== acceptedEvidenceDigest) throw new Error('publication_manager_acceptance_evidence_mismatch');
-  const reviewStageId = requiredString(acceptance.response.reviewStageId, 'publication_review_stage_id');
+  const reviewStageId = requiredString(managerLoopReceiptReference(acceptance, 'reviewStageId'), 'publication_review_stage_id');
   const reviewStageIds = acceptance.kind === 'deterministic_accept' ? acceptance.response.reviewStageIds : [reviewStageId];
   if (!Array.isArray(reviewStageIds) || reviewStageIds.length < 1 || reviewStageIds.some((id) => typeof id !== 'string') || reviewStageIds.at(-1) !== reviewStageId) throw new Error('publication_exact_review_evidence_missing');
   const reviews = reviewStageIds.map((id) => stages.find((stage) => stage.stageId === id));
-  if (reviews.some((review) => review?.kind !== 'review' || review.phaseId !== acceptance.phaseId || !record(review.response) || review.response.verdict !== 'pass' || review.response.evidenceDigest !== acceptedEvidenceDigest || !record(review.evidence) || review.evidence.contentDigest !== acceptedEvidenceDigest)) throw new Error('publication_exact_review_evidence_missing');
+  if (reviews.some((review) => review?.kind !== 'review' || review.phaseId !== acceptance.phaseId || !record(review.response) || review.response.verdict !== 'pass' || managerLoopReceiptReference(review, 'evidenceDigest') !== acceptedEvidenceDigest || !record(review.evidence) || review.evidence.contentDigest !== acceptedEvidenceDigest)) throw new Error('publication_exact_review_evidence_missing');
   if (reviews.some((review) => !Array.isArray(review?.verification) || review.verification.length === 0 || review.verification.some((item) => !record(item) || item.passed !== true || (acceptance.kind === 'deterministic_accept' && item.evidenceDigest !== acceptedEvidenceDigest)))) throw new Error('publication_passing_verification_receipts_missing');
   if (acceptance.kind === 'deterministic_accept') {
     const receipt = acceptance.response.receipt;

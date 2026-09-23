@@ -55,7 +55,8 @@ describe('argv-only execution transports', () => {
       args: ['-e', 'process.stdout.write(`${process.cwd()}|${process.env.ONLY ?? "missing"}|${process.env.HOME ?? "absent"}`)'],
       cwd: CWD,
       env: { ONLY: 'explicit' },
-      timeoutMs: 2_000,
+      // This case proves argv/environment isolation, not startup latency.
+      timeoutMs: 5_000,
       stdoutMaxBytes: 1024,
       stderrMaxBytes: 1024,
     });
@@ -71,7 +72,7 @@ describe('argv-only execution transports', () => {
       args: ['-e', 'process.stdout.write("x".repeat(64)); process.exit(0)'],
       cwd: CWD,
       env: {},
-      timeoutMs: 2_000,
+      timeoutMs: 5_000,
       stdoutMaxBytes: 8,
       stderrMaxBytes: 8,
     });
@@ -153,6 +154,26 @@ describe('argv-only execution transports', () => {
         { pid: 85, processStartedAt: 'Thu Sep  4 21:00:01 2026', processGroupId: 84, running: true },
       ],
     });
+  });
+
+  it('confirms an empty macOS process group with pgrep instead of inferring absence from ps', async () => {
+    if (process.platform !== 'darwin') return;
+    const calls = [];
+    const commands = new BoundedCommandRunner({
+      spawn: (command, args) => {
+        calls.push([command, args]);
+        const child = new FakeChild(75);
+        queueMicrotask(() => child.emit('close', 1, null));
+        return child;
+      },
+    });
+    const probe = new NativeIdentityProbe({ commands, cwd: CWD, env: ENV });
+
+    expect(await probe.inspectProcessGroup(84)).toEqual({ status: 'absent' });
+    expect(calls).toEqual([
+      ['ps', ['-o', 'pid=,lstart=,pgid=,stat=', '-g', '84']],
+      ['pgrep', ['-g', '84']],
+    ]);
   });
 
   it('reports a real missing ps executable as an unknown identity without an unhandled process error', async () => {

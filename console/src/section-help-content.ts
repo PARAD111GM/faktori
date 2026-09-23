@@ -8,6 +8,12 @@ export type SectionHelp = {
 const help = (summary: string, source: string, next: string, note?: string): SectionHelp => ({ summary, source, next, note });
 
 const sections: Record<string, SectionHelp> = {
+  'delivery synchronization': help(
+    'Whether the configured controller is reconciling delivery evidence into already-authorized Jira transitions. Monitoring is not proof that a product shipped.',
+    'Fresh Jira and GitHub observations, revision-bound review and acceptance evidence, and the existing signed-action journal.',
+    'If blocked, ask the Foreman to repair the named observation or current grant. If not configured, complete the opt-in recovery setup. This panel cannot approve work or restart agents.',
+    'The ledger follows evidence—not optimism.',
+  ),
   'at a glance': help(
     'A quick count across saved project plans: open decisions, blocked tickets, and whether the numbers may be old. It is not live activity.',
     'Saved project plans and the latest Console snapshot; counts can be missing or old.',
@@ -133,6 +139,12 @@ const sections: Record<string, SectionHelp> = {
     'Known usage, reservations, reported measurements, and unknown telemetry kept separate so estimates do not become pretend spending facts.',
     'Coordinator resource records and provider-reported measurements; unavailable values stay unavailable.',
     'Inspect the affected run or capacity policy before changing limits or drawing a cost conclusion.',
+  ),
+  'token tracker': help(
+    'A lower-bound view of provider token telemetry from registered Manager Loop observations: stage receipts plus any explicitly registered usage export. Input, cached input, uncached input, and output remain distinct; cached input is part of input, not additional spend.',
+    'The existing Manager Loop observer and shared normalized usage accounting. It updates when a saved stage receipt is observed; a running stage may be unmeasured. Coverage applies only to registered observations, not all factory or Foreman work.',
+    'Open a run to inspect its recorded phase receipts and scope. Treat missing counters, model labels, and stage roles as unavailable rather than filling them in. Budgets remain advisory only when separately configured.',
+    'Controlling Codex-task and Foreman overhead stay excluded unless an explicit registered usage export supplies them. This is telemetry, not an invoice, savings calculation, or delivery-acceptance signal.',
   ),
   'queue age': help(
     'How long currently visible runs have waited in the queue. It distinguishes human wait from evidence of actual execution.',
@@ -279,8 +291,49 @@ const sections: Record<string, SectionHelp> = {
     'Saved loop history; an old record does not show whether a worker is still active.',
     'Use the delivery gates and next required action to see what still needs to happen.',
   ),
+  'efficient delivery': help(
+    'A bounded operating view of routing, queue evaluation, local preview review, and command receipts. It cannot grant merge, deployment, publishing, or provider authority.',
+    'Owner-configured controller snapshots and the durable local journal. Missing or stale evidence remains visible as such.',
+    'Inspect the named blocker or receipt, then use only the listed owner-configured action when its prerequisites are present.',
+  ),
+  'routing decisions': help(
+    'Recorded route admissions or blocks, including the route reason and capacity freshness. A chosen route is not proof that its work completed.',
+    'The owner-configured subscription routing controller and its durable decision journal.',
+    'Read the reason and freshness first. Repair or refresh the named observation through the owner-controlled configuration when routing is blocked.',
+  ),
+  'workflow queue': help(
+    'The current role queue projection: each item’s stage, owner role, activity, rank, and blocker. Automatic evaluation remains separately gated.',
+    'The configured workflow controller and its source evidence. An absent workflow is not inferred from the browser.',
+    'Enter the local command token and request a bounded shadow or attended evaluation only when workflow configuration is published.',
+  ),
+  'persistent local previews': help(
+    'Owner-registered loopback previews for human review. They are distinct from disposable verification and never constitute deployment evidence.',
+    'The persistent-preview lifecycle journal plus the owner-approved identity probe. Browser contexts are declared separately and are not browser evidence.',
+    'Use only the listed operation IDs, confirm the runtime revision, and keep human feedback bound to the registered candidate revision.',
+  ),
+  'feedback batch': help(
+    'Bounded human review requests, their owner-configured application, and confirmation for the same feature, implementer, and revision.',
+    'The local preview journal. Requested text is redacted before it becomes a browser projection if it resembles a credential or local path.',
+    'Record a concrete edit, wait for the original builder’s configured application receipt, then confirm the matching current revision.',
+  ),
+  'unresolved consultations': help(
+    'Consultation operations that have not yet reached a terminal recorded outcome. This view does not invent diagnosis detail or retry them.',
+    'The consultation runtime recovery projection, keyed by run and operation identity.',
+    'Open the matching run or operation and follow its recorded recovery path.',
+  ),
+  'command receipts': help(
+    'Durable acknowledgements for bounded Console actions. Accepted means queued; only a terminal receipt says completed, failed, or uncertain.',
+    'The single-writer delivery-control journal.',
+    'Wait for a terminal receipt. If it is uncertain, reconcile the owned effect before attempting another action.',
+  ),
+  'factory usage by model and work class': help(
+    'A compact grouping of recorded resource use by model and work class. Missing measurement stays unavailable rather than being estimated.',
+    'The existing factory usage projection and its retained records.',
+    'Use the broader resource signals and linked work evidence before drawing an operational conclusion from a summary.',
+  ),
   overview: help('The high-level view of saved plan counts, decisions, and factory signals. It is a quick orientation, not live factory activity.', 'Latest local Console snapshots from saved plans and factory records.', 'Open the named project, decision, Work, or Factory view for the underlying record.'),
   work: help('The place to inspect tickets, Manager requests, activity, loops, and work that is already eligible to start.', 'Saved project plans, coordinator records, and optional Jira snapshots.', 'Open the relevant ticket or record, then follow its stated next action.'),
+  'sprint readiness': help('A controller-owned, read-only admission observation. It can say no-go or unknown but cannot approve, start, or repair work.', 'The local sprint-readiness endpoint; errors and missing reports stay unknown and no-go.', 'Give the named owner the reported next action, then wait for a fresh controller observation.'),
   projects: help('The factory’s saved project plans: projects, plans, phases, tickets, and saved artifacts. This is not the provider catalog.', 'The optional workCatalog file configured for this Console.', 'Choose a project to see its plan, or ask your agent to connect the existing workCatalog when it is missing.'),
   sessions: help('Recorded session assignments and Manager contact details. They do not prove an agent is currently working.', 'Saved project-plan session records and optional Manager snapshots.', 'Check the session’s assigned scope, then open its related work if you need more detail.'),
   factory: help('The operating view for resource signals, GM review, and factory or delivery blockers. It separates factory trouble from product work.', 'Saved coordinator and GM records; unknown measurements remain unknown.', 'Open the finding or review and follow the named owner’s next action.'),

@@ -16,7 +16,7 @@ const execFileAsync = promisify(execFile);
 const ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const REASONING = new Set(['low', 'medium', 'high']);
 const CONFIG_KEYS = new Set(['format', 'loopId', 'workspace', 'artifactsDirectory', 'provider', 'limits', 'phases']);
-const LEAN_CONFIG_KEYS = new Set(['format', 'loopId', 'profile', 'workspace', 'artifactsDirectory', 'approval', 'candidate', 'provider', 'roleRoutes', 'implementationBrief', 'repairApproval', 'requirements', 'acceptanceCriteria', 'verification', 'toolchain', 'review', 'limits']);
+const LEAN_CONFIG_KEYS = new Set(['format', 'loopId', 'profile', 'workspace', 'artifactsDirectory', 'approval', 'candidate', 'provider', 'roleRoutes', 'implementationBrief', 'repairApproval', 'requirements', 'acceptanceCriteria', 'verification', 'toolchain', 'review', 'limits', 'subscriptionRouting']);
 const WORKSPACE_KEYS = new Set(['path', 'nativeAccessApproved']);
 const PROVIDER_KEYS = new Set(['kind', 'model', 'reasoning', 'contextIsolation']);
 const LEAN_PROVIDER_KEYS = new Set([...PROVIDER_KEYS, 'executable', 'knownQuota']);
@@ -86,6 +86,8 @@ export interface LeanLoopConfiguration {
   acceptanceCriteria: Array<{ id: string; requirementIds: string[]; expectedOutcome: string }>;
   toolchain: Array<{ command: string; args: string[]; expectedOutput: string }>;
   review: { sensitive: boolean; requiredPasses: number };
+  /** Optional Console-owned selection; standalone CLI retains static routes when absent. */
+  subscriptionRouting?: LoopSubscriptionRoutingConfiguration;
   limits: ManagerLoopConfiguration['limits'];
   /** Normalized single work item consumed by the shared loop executor. */
   phases: [ManagerLoopPhase];
@@ -118,6 +120,8 @@ export interface ManagerLoopStageReceipt {
   outcome: string;
   sessionId?: string;
   response?: RecordValue;
+  /** Controller-owned input identity, separate from the provider's judgment. */
+  binding?: { format: 'faktori.loop-stage-binding/v1'; actor: 'controller'; evidenceDigest: string; reviewStageId?: string };
   /** Exact provider-reported terminal telemetry; unavailable remains unavailable. */
   usage: UsageTelemetry;
   evidence: ManagerLoopWorkspaceEvidence;
@@ -184,6 +188,19 @@ export interface ManagerLoopDependencies {
   createId?: () => string;
   environment?: Readonly<Record<string, string>>;
   nativeIdentityProbe?: NativeIdentityProbeContract;
+  /** A Console-owned shared-account controller. This loop never creates a second coordinator. */
+  routing?: LoopRoutingPort;
+}
+
+export interface LoopRoutingPort {
+  select(intent: RunIntent, contextRevision: string, taskClass: string): Promise<RunIntent>;
+  terminal(runId: string, outcome: string): Promise<void>;
+}
+
+export interface LoopSubscriptionRoutingConfiguration {
+  enabled: true;
+  stageTaskClasses: Partial<Record<StageKind, string>>;
+  rolePrompts?: Partial<Record<'builder' | 'reviewer' | 'manager', string>>;
 }
 
 export interface LeanRouteDecision {
@@ -357,6 +374,30 @@ function parseLeanRoutes(value: unknown, role: 'implementer' | 'reviewer', issue
   });
 }
 
+function parseLoopSubscriptionRouting(value: unknown, profile: LeanLoopConfiguration['profile'], issues: string[]): LoopSubscriptionRoutingConfiguration | undefined {
+  if (value === undefined) return undefined;
+  const input = record(value) ? value : (issues.push('configuration.subscriptionRouting must be an object'), {});
+  unknownKeys(input, new Set(['enabled', 'stageTaskClasses', 'rolePrompts']), 'configuration.subscriptionRouting', issues);
+  if (input.enabled !== true) issues.push('configuration.subscriptionRouting.enabled must be true');
+  const classes = record(input.stageTaskClasses) ? input.stageTaskClasses : (issues.push('configuration.subscriptionRouting.stageTaskClasses must be an object'), {});
+  const stageKeys = new Set(['manager_brief', 'implement', 'repair', 'review', 'manager_accept']);
+  unknownKeys(classes, stageKeys, 'configuration.subscriptionRouting.stageTaskClasses', issues);
+  const required = profile === 'implementation' ? ['implement', 'repair', 'review'] : ['review'];
+  const stageTaskClasses: Partial<Record<StageKind, string>> = {};
+  for (const stage of stageKeys) {
+    const configured = classes[stage];
+    if (configured === undefined) { if (required.includes(stage)) issues.push(`configuration.subscriptionRouting.stageTaskClasses.${stage} is required`); continue; }
+    stageTaskClasses[stage as StageKind] = text(configured, `configuration.subscriptionRouting.stageTaskClasses.${stage}`, issues, 128);
+  }
+  const prompts = input.rolePrompts === undefined ? undefined : (record(input.rolePrompts) ? input.rolePrompts : (issues.push('configuration.subscriptionRouting.rolePrompts must be an object'), {}));
+  const rolePrompts: Partial<Record<'builder' | 'reviewer' | 'manager', string>> = {};
+  if (prompts !== undefined) {
+    unknownKeys(prompts, new Set(['builder', 'reviewer', 'manager']), 'configuration.subscriptionRouting.rolePrompts', issues);
+    for (const role of ['builder', 'reviewer', 'manager'] as const) if (prompts[role] !== undefined) rolePrompts[role] = text(prompts[role], `configuration.subscriptionRouting.rolePrompts.${role}`, issues, 2_000);
+  }
+  return { enabled: true, stageTaskClasses, ...(Object.keys(rolePrompts).length === 0 ? {} : { rolePrompts }) };
+}
+
 /** Parse the explicit opt-in lean profile without changing legacy Manager Loop parsing. */
 export function parseLeanLoopConfiguration(input: unknown): LeanLoopConfiguration {
   const issues: string[] = [];
@@ -367,6 +408,7 @@ export function parseLeanLoopConfiguration(input: unknown): LeanLoopConfiguratio
   if (loopId && !ID.test(loopId)) issues.push('configuration.loopId must be a lowercase slug');
   const profile = root.profile;
   if (profile !== 'implementation' && profile !== 'validation_only') issues.push('configuration.profile must be implementation or validation_only');
+  const subscriptionRouting = parseLoopSubscriptionRouting(root.subscriptionRouting, profile === 'implementation' ? 'implementation' : 'validation_only', issues);
 
   const workspace = record(root.workspace) ? root.workspace : (issues.push('configuration.workspace must be an object'), {});
   unknownKeys(workspace, WORKSPACE_KEYS, 'configuration.workspace', issues);
@@ -506,7 +548,7 @@ export function parseLeanLoopConfiguration(input: unknown): LeanLoopConfiguratio
     candidate: { baseRevision, dependencies, environmentInputs, inputCompleteness: inputCompleteness as LeanLoopConfiguration['candidate']['inputCompleteness'] },
     provider: { kind: 'codex', model, ...(reasoning === undefined ? {} : { reasoning: reasoning as 'low' | 'medium' | 'high' }), contextIsolation: 'bounded', executable, knownQuota: knownQuota as LeanLoopConfiguration['provider']['knownQuota'] },
     roleRoutes: { implementer: implementerRoutes, reviewer: reviewerRoutes }, ...(implementationBrief === undefined ? {} : { implementationBrief }), ...(repairApproval === undefined ? {} : { repairApproval: repairApproval as LeanLoopConfiguration['repairApproval'] }),
-    requirements, acceptanceCriteria, toolchain, review: { sensitive, requiredPasses }, limits: parsedLimits, phases: [verificationPhase],
+    requirements, acceptanceCriteria, toolchain, review: { sensitive, requiredPasses }, ...(subscriptionRouting === undefined ? {} : { subscriptionRouting }), limits: parsedLimits, phases: [verificationPhase],
   };
 }
 
@@ -612,7 +654,7 @@ function selectLeanRoute(config: LeanLoopConfiguration, role: 'implementer' | 'r
   return undefined;
 }
 
-async function leanPreflight(config: LeanLoopConfiguration, environment: Readonly<Record<string, string>>, now: () => Date): Promise<LeanPreflightReceipt> {
+async function leanPreflight(config: LeanLoopConfiguration, environment: Readonly<Record<string, string>>, now: () => Date, routingAvailable: boolean): Promise<LeanPreflightReceipt> {
   const checks: LeanPreflightReceipt['checks'] = [];
   const check = (id: string, passed: boolean, detail: string): void => { checks.push({ id, passed, detail }); };
   check('approval.scope', config.approval.approved, config.approval.approved ? `approved:${config.approval.scopeRevision}` : 'approval_denied');
@@ -665,11 +707,13 @@ async function leanPreflight(config: LeanLoopConfiguration, environment: Readonl
     check(`toolchain.${probe.command}`, result.exitCode === 0 && !result.timedOut && !result.outputLimitExceeded && output.includes(probe.expectedOutput), result.exitCode === 0 ? `expected:${probe.expectedOutput}` : `exit:${result.exitCode ?? 'none'}`);
   }
   const roles: Array<'implementer' | 'reviewer'> = config.profile === 'implementation' || config.repairApproval !== undefined ? ['implementer', 'reviewer'] : ['reviewer'];
-  const routes = roles.flatMap((role) => {
-    const selection = selectLeanRoute(config, role);
-    check(`route.${role}`, selection !== undefined, selection ? `${selection.routeId}:${selection.model}:${selection.reasoning ?? 'provider-default'}` : 'no_available_owner_configured_route');
-    return selection ? [selection] : [];
-  });
+  const routes = config.subscriptionRouting?.enabled === true
+    ? (() => { check('subscription.routing', routingAvailable, routingAvailable ? 'console_controller_connected' : 'requires_console_controller'); return []; })()
+    : roles.flatMap((role) => {
+      const selection = selectLeanRoute(config, role);
+      check(`route.${role}`, selection !== undefined, selection ? `${selection.routeId}:${selection.model}:${selection.reasoning ?? 'provider-default'}` : 'no_available_owner_configured_route');
+      return selection ? [selection] : [];
+    });
   const failed = checks.filter((item) => !item.passed).map(({ id, detail }) => ({ id, detail }));
   return { format: 'faktori.lean-preflight-receipt/v1', passed: failed.length === 0, causeDigest: `sha256:${digest(canonical(failed))}`, checks, environmentInputs, routes, quota: config.provider.knownQuota, consecutiveFailures: 0, launchSuppressed: false, observedAt: now().toISOString() };
 }
@@ -712,9 +756,9 @@ function validatedStageResponse(kind: StageKind, result: ProviderRunResult): Rec
   } else if (kind === 'implement' || kind === 'repair') {
     if ((value.status !== 'implemented' && value.status !== 'blocked') || typeof value.summary !== 'string' || value.summary.trim().length === 0) throw new Error('provider_response_schema_invalid');
   } else if (kind === 'review') {
-    if ((value.verdict !== 'pass' && value.verdict !== 'repair') || typeof value.summary !== 'string' || !Array.isArray(value.findings) || value.findings.some((item) => typeof item !== 'string') || typeof value.evidenceDigest !== 'string') throw new Error('provider_response_schema_invalid');
+    if ((value.verdict !== 'pass' && value.verdict !== 'repair') || typeof value.summary !== 'string' || !Array.isArray(value.findings) || value.findings.some((item) => typeof item !== 'string') || ('evidenceDigest' in value && typeof value.evidenceDigest !== 'string')) throw new Error('provider_response_schema_invalid');
     if ((value.verdict === 'repair' && value.findings.length === 0) || (value.verdict === 'pass' && value.findings.length !== 0)) throw new Error('provider_response_schema_invalid');
-  } else if (typeof value.accepted !== 'boolean' || typeof value.summary !== 'string' || typeof value.evidenceDigest !== 'string' || typeof value.reviewStageId !== 'string') throw new Error('provider_response_schema_invalid');
+  } else if (typeof value.accepted !== 'boolean' || typeof value.summary !== 'string' || ('evidenceDigest' in value && typeof value.evidenceDigest !== 'string') || ('reviewStageId' in value && typeof value.reviewStageId !== 'string')) throw new Error('provider_response_schema_invalid');
   return value;
 }
 
@@ -722,27 +766,52 @@ function responseText(value: unknown, key: string): string | undefined {
   return record(value) && typeof value[key] === 'string' && (value[key] as string).trim().length > 0 ? value[key] as string : undefined;
 }
 
-function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase: ManagerLoopPhase, evidence: ManagerLoopWorkspaceEvidence, verification: ManagerLoopVerificationReceipt[], prior?: { stageId?: string; response?: RecordValue }): string {
+/** Read new controller bindings or untouched legacy receipts; contradictions fail closed. */
+export function managerLoopReceiptReference(receipt: unknown, key: 'evidenceDigest' | 'reviewStageId'): string | undefined {
+  if (!record(receipt)) return undefined;
+  if (receipt.binding === undefined) return responseText(receipt.response, key);
+  const binding = receipt.binding;
+  if (!record(binding) || binding.format !== 'faktori.loop-stage-binding/v1' || binding.actor !== 'controller') return undefined;
+  const value = responseText(binding, key);
+  if (record(receipt.response) && key in receipt.response && receipt.response[key] !== value) return undefined;
+  return value;
+}
+
+function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase: ManagerLoopPhase, evidence: ManagerLoopWorkspaceEvidence, verification: ManagerLoopVerificationReceipt[], prior?: { stageId?: string; response?: RecordValue; evidence?: ManagerLoopWorkspaceEvidence }): string {
   if (config.format === 'faktori.lean-loop/v1') {
     const reviewerVerification = verification.map(({ outputDigest: _outputDigest, evidenceDigest: _evidenceDigest, ...receipt }) => receipt);
     const packet = {
       format: 'faktori.lean-agent-packet/v1', objective: phase.objective,
       constraints: config.implementationBrief?.constraints ?? ['Do not change the validation-only candidate.'],
       requirements: config.requirements, acceptanceCriteria: config.acceptanceCriteria,
-      changedFacts: kind === 'repair' ? prior?.response ?? {} : {},
+      changedFacts: kind === 'repair' || kind === 'review' ? prior?.response ?? {} : {},
+      ...(kind === 'review' ? { reviewScope: {
+        mode: !config.review.sensitive && prior?.response?.verdict === 'repair' ? 'repair_followup' : 'full_candidate',
+        ...(prior?.response?.verdict === 'repair' ? { previousCandidateDigest: prior.evidence?.contentDigest, priorFindings: prior.response.findings } : {}),
+        instruction: !config.review.sensitive && prior?.response?.verdict === 'repair'
+          ? 'Verify each prior finding against the current candidate, inspect corrections and affected behavior, and widen inspection when needed. A previous verdict never approves this head.'
+          : 'Independently inspect the full current candidate; sensitive changes retain every required exact-head pass.',
+      } } : {}),
       evidence: { canonicalCandidateDigest: evidence.contentDigest, candidate: { head: evidence.head, branch: evidence.branch, dirty: evidence.dirty }, verification: reviewerVerification },
       nextAction: kind === 'review' ? 'Independently inspect the exact candidate and return a fixed-head verdict.' : kind === 'repair' ? 'Repair only the stated findings within approved scope.' : 'Implement the approved brief within approved scope.',
     };
     if (kind === 'implement' || kind === 'repair') return `Act as the implementation owner for this bounded Faktori lean loop. Do not commit, merge, push, deploy, publish, change authority, or work outside the approved workspace. Compact packet: ${JSON.stringify(packet)} Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
-    if (kind === 'review') return `CANONICAL_CANDIDATE_EVIDENCE_DIGEST=${evidence.contentDigest}\nThis exact literal is Faktori's canonical candidate digest. Copy it unchanged into the response field named evidenceDigest. Never recompute a digest and never substitute a context digest, verifier output digest, file hash, Git hash, or any other digest. Act as an independent read-only reviewer for this bounded Faktori lean loop. Do not edit, commit, merge, push, deploy, publish, or change authority. Compact packet: ${JSON.stringify(packet)} Return only strict JSON with exactly these fields: {"verdict":"pass"|"repair","summary":"...","findings":[],"evidenceDigest":"${evidence.contentDigest}"}. The findings array is defects-only. When verdict is pass, findings MUST be the literal empty array []; put all positive observations in summary. When verdict is repair, findings MUST contain one or more actionable defects. A pass requires direct inspection and all configured verification receipts to pass against this exact candidate.`;
+    if (kind === 'review') return `Act as an independent read-only reviewer for this bounded Faktori lean loop. Do not edit, commit, merge, push, deploy, publish, or change authority. Compact packet: ${JSON.stringify(packet)} The controller binds your judgment to this candidate; do not return hashes or stage identifiers. Return only strict JSON with exactly these fields: {"verdict":"pass"|"repair","summary":"...","findings":[]}. The findings array is defects-only. When verdict is pass, findings MUST be the literal empty array []; put all positive observations in summary. When verdict is repair, findings MUST contain one or more actionable defects. A pass requires direct inspection and all configured verification receipts to pass against this exact candidate.`;
     throw new Error('lean_loop_does_not_launch_manager_roles');
   }
   const common = `You are participating in a bounded Faktori Manager Loop phase. Do not commit, merge, push, deploy, change authority, or work outside the approved workspace. Phase: ${phase.id}. Objective: ${phase.objective}\nAcceptance criteria:\n${phase.acceptanceCriteria.map((item) => `- ${item}`).join('\n')}\nCurrent workspace evidence: ${JSON.stringify(evidence)}.`;
   if (kind === 'manager_brief') return `${common}\nAccepted prior phase summaries: ${JSON.stringify(prior?.response ?? {})}. Act as build manager. During this planning turn, do not edit files; the next implementer turn is explicitly authorized to edit files inside the approved workspace. Missing functionality requested by this phase is expected and is not a blocker. Report blocked only when the accepted objective is contradictory, unsafe, or impossible with the supplied scope. Return only strict JSON: {"status":"ready"|"blocked","brief":"..."}.`;
   if (kind === 'implement') return `${common}\nAccepted manager brief: ${JSON.stringify(prior?.response ?? {})}. Act as the phase implementer. Make the smallest workspace changes that satisfy the accepted phase. Do not assume or require subagent fanout; if the runtime makes specialized native subagents available, use them only for independently useful bounded work. Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
   if (kind === 'repair') return `${common}\nContinue as the same implementer session. Repair only these configured verification or independent review findings: ${JSON.stringify(prior?.response ?? {})}. Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
-  if (kind === 'review') return `${common}\nConfigured verification receipts: ${JSON.stringify(verification)}. Act as an independent reviewer. Inspect actual workspace evidence. During this review turn, do not edit files; a later repair implementer turn is authorized to address findings inside the approved workspace. Return only strict JSON: {"verdict":"pass"|"repair","summary":"...","findings":["..."],"evidenceDigest":"${evidence.contentDigest}"}. A pass requires the configured verification receipts and direct workspace evidence.`;
-  return `${common}\nIndependent review receipt: ${JSON.stringify(prior?.response ?? {})}. Configured verification receipts: ${JSON.stringify(verification)}. Act as build manager. During this acceptance turn, do not edit files; this restriction applies only to this manager turn. Accept only if the review passed against this exact evidence. Return only strict JSON: {"accepted":true|false,"summary":"...","evidenceDigest":"${evidence.contentDigest}","reviewStageId":"${prior?.stageId ?? ''}"}.`;
+  if (kind === 'review') return `${common}\nConfigured verification receipts: ${JSON.stringify(verification)}. Act as an independent reviewer. Inspect actual workspace evidence. During this review turn, do not edit files; a later repair implementer turn is authorized to address findings inside the approved workspace. The controller binds your judgment to this candidate; do not return hashes or stage identifiers. Return only strict JSON: {"verdict":"pass"|"repair","summary":"...","findings":[]}. A pass requires the configured verification receipts and direct workspace evidence. Pass findings must be empty; repair findings must contain actionable defects.`;
+  return `${common}\nIndependent review receipt: ${JSON.stringify(prior?.response ?? {})}. Configured verification receipts: ${JSON.stringify(verification)}. Act as build manager. During this acceptance turn, do not edit files; this restriction applies only to this manager turn. Accept only if the review passed against this exact evidence. The controller binds your judgment to this candidate and independent review; do not return hashes or stage identifiers. Return only strict JSON: {"accepted":true|false,"summary":"..."}.`;
+}
+
+function configuredRolePrompt(config: ExecutableLoopConfiguration, kind: StageKind): string | undefined {
+  if (config.format !== 'faktori.lean-loop/v1' || config.subscriptionRouting?.enabled !== true) return undefined;
+  const role = kind === 'implement' || kind === 'repair' ? 'builder' : kind === 'review' ? 'reviewer' : 'manager';
+  const instruction = config.subscriptionRouting.rolePrompts?.[role];
+  return instruction === undefined ? undefined : `\nAdditional owner-configured ${role} instructions: ${instruction}`;
 }
 
 function contextFor(stageId: string, prompt: string, evidence: ManagerLoopWorkspaceEvidence, kind: StageKind): ProviderCurrentContext {
@@ -832,7 +901,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
       }
       const current = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
       const accepted = prior.lean.acceptance.evidence.candidate;
-      const currentPreflight = await leanPreflight(config, environment, now);
+      const currentPreflight = await leanPreflight(config, environment, now, dependencies.routing !== undefined);
       if (!currentPreflight.passed || canonical(current) !== canonical(accepted) || canonical(currentPreflight.environmentInputs) !== canonical(prior.lean.acceptance.evidence.environmentInputs)) {
         return { format: 'faktori.manager-loop-result/v1', loopId: config.loopId, status: 'blocked', completedPhases: [...prior.completedPhases], reason: 'accepted_evidence_changed_fresh_validation_required' };
       }
@@ -842,7 +911,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
   }
   let initialLean: LoopState['lean'];
   if (config.format === 'faktori.lean-loop/v1' && (prior === undefined || (prior.status === 'blocked' && prior.reason?.startsWith('lean_preflight_failed:') === true))) {
-    const preflight = await leanPreflight(config, environment, now);
+    const preflight = await leanPreflight(config, environment, now, dependencies.routing !== undefined);
     const previous = prior?.lean?.preflight;
     preflight.consecutiveFailures = preflight.passed ? 0 : previous?.passed === false && previous.causeDigest === preflight.causeDigest ? previous.consecutiveFailures + 1 : 1;
     preflight.launchSuppressed = preflight.consecutiveFailures >= 2;
@@ -851,7 +920,9 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
     if (!preflight.passed) {
       const blocked: LoopState = { format: 'faktori.manager-loop-state/v1', loopId: config.loopId, configDigest, status: 'blocked', completedPhases: [], stages: [], implementerSessions: {}, lean: initialLean, reason: `lean_preflight_failed:${preflight.causeDigest}`, updatedAt: now().toISOString() };
       await atomicJson(statePath, blocked);
-      return resultFrom(blocked);
+      return config.subscriptionRouting?.enabled === true && dependencies.routing === undefined
+        ? { ...resultFrom(blocked), reason: 'subscription_routing_requires_console_controller' }
+        : resultFrom(blocked);
     }
     if (prior !== undefined) {
       prior.status = 'running'; prior.reason = undefined; prior.lean = initialLean; prior.updatedAt = now().toISOString();
@@ -866,36 +937,67 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
   const executeStage = async (phase: ManagerLoopPhase, kind: StageKind, round: number, verification: ManagerLoopVerificationReceipt[], previous?: { stageId?: string; response?: RecordValue }): Promise<ManagerLoopStageReceipt | ManagerLoopResult> => {
     const id = stageId(config.loopId, phase.id, kind, round);
     const before = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
-    const prompt = rolePrompt(config, kind, phase, before, verification, previous);
+    const prompt = `${rolePrompt(config, kind, phase, before, verification, previous)}${configuredRolePrompt(config, kind) ?? ''}`;
     const context = contextFor(id, prompt, before, kind);
     const intendedAt = now().toISOString();
     state.currentStage = { stageId: id, phaseId: phase.id, kind, round, intendedAt };
     await save();
     await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: intendedAt, kind: 'stage.intended', stage: state.currentStage });
     const leanRole = kind === 'implement' || kind === 'repair' ? 'implementer' : kind === 'review' ? 'reviewer' : undefined;
-    const route = config.format === 'faktori.lean-loop/v1' && leanRole !== undefined ? state.lean?.routes.find((item) => item.role === leanRole) : undefined;
-    const adapter = dependencies.adapterFactory?.(route) ?? defaultAdapter(config, environment, createId, dependencies.nativeIdentityProbe, route);
-    const intent = intentFor(config, phase, { stageId: id, kind, round }, context, before, intendedAt, route);
+    const subscription = config.format === 'faktori.lean-loop/v1' ? config.subscriptionRouting : undefined;
+    const route = subscription?.enabled === true ? undefined : config.format === 'faktori.lean-loop/v1' && leanRole !== undefined ? state.lean?.routes.find((item) => item.role === leanRole) : undefined;
+    let intent = intentFor(config, phase, { stageId: id, kind, round }, context, before, intendedAt, route);
+    if (subscription?.enabled === true) {
+      const taskClass = subscription.stageTaskClasses[kind];
+      if (taskClass === undefined || dependencies.routing === undefined) return fail('blocked', `${id}:subscription_routing_requires_console_controller`);
+      try { intent = await dependencies.routing.select(intent, context.packetRevision, taskClass); }
+      catch (error) { return fail('blocked', `${id}:subscription_routing_blocked:${error instanceof Error ? error.message : 'unavailable'}`); }
+      if (intent.execution.providerId !== 'codex') {
+        try { await dependencies.routing.terminal(intent.runId, 'denied'); }
+        catch { return fail('interrupted_uncertain', `${id}:subscription_routing_terminal_unrecorded`); }
+        return fail('blocked', `${id}:subscription_routing_provider_unsupported`);
+      }
+    }
+    const adapterRoute: LeanRouteDecision | undefined = subscription?.enabled === true && leanRole !== undefined
+      ? { role: leanRole, routeId: 'subscription-controller', provider: 'codex' as const, model: intent.execution.model, ...(intent.execution.reasoning === undefined ? {} : { reasoning: intent.execution.reasoning }), suitability: 'bounded' as const, availability: 'unknown' as const, order: 0 }
+      : route;
     const lifecycle = {
       onStarted: async (worker: WorkerIdentity): Promise<void> => { await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: now().toISOString(), kind: 'worker.started', stageId: id, worker }); },
       onTerminationRequired: async (_worker: WorkerIdentity, reason: string): Promise<void> => { await appendEvent(eventsPath, { format: 'faktori.manager-loop-event/v1', eventId: createId(), loopId: config.loopId, occurredAt: now().toISOString(), kind: 'worker.termination.intended', stageId: id, reason }); },
     };
     let providerResult: ProviderRunResult;
-    if (kind === 'repair') {
-      const stored = state.implementerSessions[phase.id];
-      if (stored === undefined) {
-        if (config.format !== 'faktori.lean-loop/v1' || config.profile !== 'validation_only' || config.repairApproval?.approved !== true) return fail('blocked', `repair_session_unavailable:${phase.id}`);
-        providerResult = await adapter.start(intent, context, lifecycle);
-      } else {
-        const binding: ProviderSessionBinding = { sessionId: stored.sessionId, sourceRunId: stored.sourceRunId, sourceContext: { packetRevision: stored.sourceContext.packetRevision, digest: stored.sourceContext.digest }, sourceScope: { factoryId: intent.target.factoryId, productId: intent.target.productId, repository: intent.target.repository, workspaceId: intent.execution.workspaceId, workspacePath: intent.execution.workspacePath, providerId: 'codex' } };
-        providerResult = await adapter.resume(intent, binding, context, lifecycle);
+    try {
+      const adapter = dependencies.adapterFactory?.(adapterRoute) ?? defaultAdapter(config, environment, createId, dependencies.nativeIdentityProbe, adapterRoute);
+      if (kind === 'repair') {
+        const stored = state.implementerSessions[phase.id];
+        if (stored === undefined) {
+          if (config.format !== 'faktori.lean-loop/v1' || config.profile !== 'validation_only' || config.repairApproval?.approved !== true) return fail('blocked', `repair_session_unavailable:${phase.id}`);
+          providerResult = await adapter.start(intent, context, lifecycle);
+        } else {
+          const binding: ProviderSessionBinding = { sessionId: stored.sessionId, sourceRunId: stored.sourceRunId, sourceContext: { packetRevision: stored.sourceContext.packetRevision, digest: stored.sourceContext.digest }, sourceScope: { factoryId: intent.target.factoryId, productId: intent.target.productId, repository: intent.target.repository, workspaceId: intent.execution.workspaceId, workspacePath: intent.execution.workspacePath, providerId: 'codex' } };
+          providerResult = await adapter.resume(intent, binding, context, lifecycle);
+        }
+      } else providerResult = await adapter.start(intent, context, lifecycle);
+    } catch (error) {
+      if (subscription?.enabled !== true) throw error;
+      if (subscription?.enabled === true && dependencies.routing !== undefined) {
+        try { await dependencies.routing.terminal(intent.runId, 'interrupted_uncertain'); } catch { /* preserve uncertain stage evidence */ }
       }
-    } else providerResult = await adapter.start(intent, context, lifecycle);
+      return fail('interrupted_uncertain', `${id}:provider_turn_uncertain`);
+    }
+    if (subscription?.enabled === true) {
+      try { await dependencies.routing?.terminal(intent.runId, providerResult.final.outcome); }
+      catch { return fail('interrupted_uncertain', `${id}:subscription_routing_terminal_unrecorded`); }
+    }
     const after = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
     const receipt = (response?: RecordValue): ManagerLoopStageReceipt => ({
       stageId: id, phaseId: phase.id, kind, round, outcome: providerResult.final.outcome,
       ...(providerResult.sessionId === undefined ? {} : { sessionId: providerResult.sessionId }),
       ...(response === undefined ? {} : { response }), usage: providerResult.final.usage,
+      ...((kind === 'review' || kind === 'manager_accept') ? { binding: {
+        format: 'faktori.loop-stage-binding/v1' as const, actor: 'controller' as const, evidenceDigest: before.contentDigest,
+        ...(kind === 'manager_accept' && previous?.stageId !== undefined ? { reviewStageId: previous.stageId } : {}),
+      } } : {}),
       evidence: after, ...(verification.length === 0 ? {} : { verification }), completedAt: now().toISOString(),
     });
     const persist = async (value: ManagerLoopStageReceipt): Promise<void> => {
@@ -932,6 +1034,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
         }
         let repairRound = 0;
         let passingReviews: ManagerLoopStageReceipt[] = [];
+        let priorFindingReview: ManagerLoopStageReceipt | undefined;
         let receipts: ManagerLoopVerificationReceipt[] = [];
         while (repairRound <= config.limits.maxRepairRounds) {
           const verificationEvidence = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
@@ -959,25 +1062,27 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
           let findingReview: ManagerLoopStageReceipt | undefined;
           for (let pass = 0; pass < config.review.requiredPasses; pass += 1) {
             const expected = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
-            const review = await executeStage(phase, 'review', repairRound * 10 + pass, receipts, pass === 0 ? implementation : passingReviews.at(-1));
+            const review = await executeStage(phase, 'review', repairRound * 10 + pass, receipts, pass === 0 ? priorFindingReview ?? implementation : passingReviews.at(-1));
             if ('status' in review) return review;
-            if (responseText(review.response, 'evidenceDigest') !== expected.contentDigest || review.evidence.contentDigest !== expected.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
+            if (managerLoopReceiptReference(review, 'evidenceDigest') !== expected.contentDigest || review.evidence.contentDigest !== expected.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
             if (responseText(review.response, 'verdict') === 'repair') { findingReview = review; break; }
             if (responseText(review.response, 'verdict') !== 'pass') return fail('failed', `${phase.id}:invalid_review_verdict`);
             passingReviews.push(review);
           }
           if (findingReview === undefined) break;
+          priorFindingReview = findingReview;
           if (config.profile === 'validation_only' && config.repairApproval?.approved !== true) return fail('blocked', `${phase.id}:validation_repair_not_approved`);
           if (repairRound >= config.limits.maxRepairRounds) return fail('failed', `${phase.id}:repair_limit_exceeded`);
           const repair = await executeStage(phase, 'repair', repairRound + 1, receipts, findingReview);
           if ('status' in repair) return repair;
           if (responseText(repair.response, 'status') !== 'implemented') return fail('blocked', `${phase.id}:repair_blocked`);
+          if ((await captureManagerLoopWorkspaceEvidence(config.workspace.path)).contentDigest === findingReview.evidence.contentDigest) return fail('blocked', `${phase.id}:repair_candidate_unchanged`);
           repairRound += 1;
         }
         if (passingReviews.length !== config.review.requiredPasses) return fail('failed', `${phase.id}:review_not_passed`);
         const candidate = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
         if (passingReviews.some((review) => review.evidence.contentDigest !== candidate.contentDigest) || receipts.some((receipt) => receipt.evidenceDigest !== candidate.contentDigest || !receipt.passed)) return fail('failed', `${phase.id}:deterministic_acceptance_evidence_mismatch`);
-        const finalPreflight = await leanPreflight(config, environment, now);
+        const finalPreflight = await leanPreflight(config, environment, now, dependencies.routing !== undefined);
         const preflightEvidence = (value: LeanPreflightReceipt): unknown => ({ checks: value.checks, environmentInputs: value.environmentInputs, routes: value.routes, quota: value.quota });
         if (!finalPreflight.passed || canonical(preflightEvidence(finalPreflight)) !== canonical(preflightEvidence(state.lean!.preflight))) return fail('failed', `${phase.id}:deterministic_acceptance_preflight_changed`);
         const acceptanceStageId = stageId(config.loopId, phase.id, 'deterministic_accept', 0);
@@ -1038,7 +1143,7 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
         const evidence = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
         const review = await executeStage(phase, 'review', round, receipts, round === 0 ? implementation : lastReview);
         if ('status' in review) return review;
-        if (responseText(review.response, 'evidenceDigest') !== evidence.contentDigest || review.evidence.contentDigest !== evidence.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
+        if (managerLoopReceiptReference(review, 'evidenceDigest') !== evidence.contentDigest || review.evidence.contentDigest !== evidence.contentDigest) return fail('failed', `${phase.id}:review_evidence_mismatch`);
         lastReview = review;
         if (responseText(review.response, 'verdict') === 'pass') break;
         if (responseText(review.response, 'verdict') !== 'repair') return fail('failed', `${phase.id}:invalid_review_verdict`);
@@ -1049,9 +1154,10 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
       }
       if (lastReview === undefined || responseText(lastReview.response, 'verdict') !== 'pass') return fail('failed', `${phase.id}:review_not_passed`);
       const acceptanceEvidence = await captureManagerLoopWorkspaceEvidence(config.workspace.path);
+      if (lastReview.evidence.contentDigest !== acceptanceEvidence.contentDigest) return fail('failed', `${phase.id}:manager_acceptance_evidence_mismatch`);
       const accepted = await executeStage(phase, 'manager_accept', 0, receipts, lastReview);
       if ('status' in accepted) return accepted;
-      if (accepted.response?.accepted !== true || responseText(accepted.response, 'evidenceDigest') !== acceptanceEvidence.contentDigest || responseText(accepted.response, 'reviewStageId') !== lastReview.stageId || accepted.evidence.contentDigest !== acceptanceEvidence.contentDigest) return fail('failed', `${phase.id}:manager_acceptance_invalid`);
+      if (accepted.response?.accepted !== true || managerLoopReceiptReference(accepted, 'evidenceDigest') !== acceptanceEvidence.contentDigest || managerLoopReceiptReference(accepted, 'reviewStageId') !== lastReview.stageId || accepted.evidence.contentDigest !== acceptanceEvidence.contentDigest) return fail('failed', `${phase.id}:manager_acceptance_invalid`);
       state.completedPhases.push(phase.id); await save();
     }
     state.status = 'succeeded'; state.reason = undefined; await save();

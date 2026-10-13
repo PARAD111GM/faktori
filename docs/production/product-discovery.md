@@ -6,6 +6,12 @@ existing live product. It does not choose a stack, run a provider, grant executi
 authority or establish production acceptance. The [example definition](../../examples/production/product-definition.json)
 is fictional; its owner decision is example data, not permission to execute.
 
+Start with the saved [requirements interview](discovery-session.md). The
+[definition-draft bridge](definition-draft.md) supplies its full model output
+schema and imports exact response bytes against that session. The CLI exposes
+`discovery definition-prompt` and `discovery import-definition`; imported
+interpretations remain proposed for the separate owner-decision path.
+
 Use `parseProductDefinition(input)` to validate and normalize untrusted JSON.
 `inspectProductDefinition(input)` returns the immutable normalized definition,
 its SHA-256 `definitionDigest`, `readyForDesign`, accepted requirement IDs and

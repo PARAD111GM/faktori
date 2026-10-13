@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.8 release notes](docs/releases/v0.2.8.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.9 release notes](docs/releases/v0.2.9.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -158,6 +158,10 @@ repository; product artifacts normally live beside product code.
 **Early development. Useful foundations; release validation still in progress.**
 
 The ribbon-cutting committee has been asked to wait for evidence.
+
+v0.2.9 adds a complete sourced product-definition draft handoff from the saved
+interview. Owner intent, produced platform targets and live-product context stay
+bound to the exact session; model interpretations remain proposed.
 
 v0.2.8 adds an attended `discovery propose` command using the explicitly selected
 native CLI route. It retains provider evidence and appends a validated proposal

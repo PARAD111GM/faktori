@@ -127,3 +127,18 @@ backup/restore and container feature journeys, including an AMD64 container on
 local emulation. Its public HTTPS deployment and live-user operation remain
 unverified. Local TLS, simulated users and emulated architecture are explicitly
 separate from hosting qualification. No external resource was provisioned.
+
+## Observed v0.2.9 definition bridge
+
+The complete source and clean installed-package acceptance journeys passed for
+both a new product and an existing-product increment. The draft prompt/schema
+and exact-byte import bind to the immutable interview, preserve produced
+platforms/live context and reject stale snapshots, fabricated provenance and
+model approvals. Source typechecking, runtime/Console build and packed verifier
+passed. These are deterministic source/installed journeys using synthetic model
+output; a native model-generated full definition remains a separate next gate.
+
+Android SDK platform 36, build-tools 36.0.0, NDK 27.1.12297006, CMake 3.30.5,
+platform-tools and emulator are now installed in the isolated qualification
+directory after explicit owner approval. Android native compilation is underway;
+the system image/runtime journey and production signing remain unverified.

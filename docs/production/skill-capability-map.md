@@ -2,6 +2,23 @@
 
 **Evidence basis:** repository revision `3c9de5ed520d74ef0a92b574265e576db96c7928` (the requirements-discovery spike base). This inventory is a source review, not an agent-behavior evaluation or production journey. “Guidance” means a skill tells an agent what to do. “Executable seam” means repository code implements a bounded portion of that behavior. Neither implies a complete installed journey.
 
+## Implementation after the inventory
+
+The inventory below retains its original base evidence. Subsequent executable
+work adds immutable raw-idea interviews, exact native model proposal capture,
+definition/requirement/scenario validators, scoped delivery compilation,
+web/iOS/Android release contracts, live-baseline constraints and durable
+intervention records. The v0.2.9 draft bridge carries the full interview into a
+sourced proposal-only product definition. It rejects changed owner intent,
+platforms, live baseline, stale snapshots and model-supplied approval.
+
+Local attended web acceptance and resume, a hardened AMD64 container journey,
+and iOS simulator add/reload/relaunch have been observed. These close specific
+local implementation and feasibility gaps; public delivery, Android runtime,
+live-product increments, human evaluator calibration and qualified automatic
+operation remain open. See [execution status](execution-status.md) for the
+current gates and [definition draft](definition-draft.md) for the new handoff.
+
 ## Accepted goal and evidence standard
 
 The accepted owner mandate and preparation criteria are retained in [the implementation brief](implementation-brief.md) and [attended spike runbook](attended-web-spike.md). New-product and existing-product entry paths are both required; requirements discovery must precede technical solution selection, preserve sourced facts/requirements/assumptions/unknowns, and produce sufficient inputs for the next bounded decision. The complete product target includes web, shared-codebase native iOS/Android, and continuing work on live products. This source map precedes application implementation scope; skill guidance is not automated-journey proof.

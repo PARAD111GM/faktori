@@ -6,6 +6,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { prepareAttendedSpike, inspectProductDefinition, compileProductHierarchy, assembleProductContext, compileProductDelivery, serializeProductDeliveryLoop, inspectProductOperations, appendSpikeIntervention, readSpikeInterventions } from './production/index.ts';
 import { prepareProductDiscoverySession, saveProductDiscoverySession, loadProductDiscoverySession, recordProductDiscoveryAnswer, recordProductDiscoveryProposal, renderProductDiscoveryPrompt, productDiscoveryProposalOutputSchema } from './production/index.ts';
 import { runProductDiscoveryProposal } from './production/index.ts';
+import { importProductDefinitionDraft, renderProductDefinitionDraftPrompt, productDefinitionDraftOutputSchema } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -61,6 +62,8 @@ const HELP = `Usage:
   faktori discovery import-proposal <absolute-history.jsonl> <model-response.json> <proposal-id>
   faktori discovery propose <operator-config.json>
   faktori discovery prompt <absolute-history.jsonl>
+  faktori discovery definition-prompt <absolute-history.jsonl>
+  faktori discovery import-definition <absolute-history.jsonl> <private-model-response.json> <expected-session-digest>
   faktori discovery hierarchy <product-definition.json>
   faktori discovery context <product-definition.json> <node-id>
   faktori product compile <product-definition.json> <delivery-request.json>
@@ -143,12 +146,13 @@ async function json(path: string | undefined, label: string): Promise<unknown> {
   }
 }
 
-async function readModelResponse(path: string): Promise<{ path: string; bytes: Buffer; value: InputRecord }> {
+async function readModelResponse(path: string, expectedKeys = 'questions,status,text', requirePrivate = false): Promise<{ path: string; bytes: Buffer; value: InputRecord }> {
   if (!isAbsolute(path) || resolve(path) !== path) throw new Error('model response path must be a canonical absolute path');
   const canonical = await realpath(path);
   if (canonical !== path) throw new Error('model response path must not contain symlinks or non-canonical components');
   const before = await lstat(path);
   if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size > 1_000_000) throw new Error('model response must be an unaliased regular file of at most one megabyte');
+  if (requirePrivate && (before.mode & 0o077) !== 0) throw new Error('definition response must be private (0600)');
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const held = await handle.stat();
@@ -168,7 +172,7 @@ async function readModelResponse(path: string): Promise<{ path: string; bytes: B
     catch (error) { throw new Error(`model response is not valid JSON: ${errorMessage(error)}`); }
     const response = record(value, 'model response');
     const keys = Object.keys(response).sort();
-    if (keys.join(',') !== 'questions,status,text') throw new Error('model response must contain exactly status, text and questions; operator provenance fields are attached during import');
+    if (keys.join(',') !== expectedKeys) throw new Error(`model response must contain exactly ${expectedKeys}; operator provenance fields are attached during import`);
     return { path: canonical, bytes, value: response };
   } finally { await handle.close(); }
 }
@@ -179,6 +183,20 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'discovery' && action === 'definition-prompt') {
+    if (!source || argv.length !== 3) throw new Error('definition-prompt requires one absolute history path');
+    const session = await loadProductDiscoverySession(source);
+    print({ prompt: renderProductDefinitionDraftPrompt(session), outputSchema: productDefinitionDraftOutputSchema(session) });
+    return;
+  }
+  if (group === 'discovery' && action === 'import-definition') {
+    const expectedSessionDigest = argv[4];
+    if (!source || !extra || !expectedSessionDigest || argv.length !== 5) throw new Error('import-definition requires history, private response and expected session digest');
+    const session = await loadProductDiscoverySession(source);
+    const response = await readModelResponse(extra, 'definition,sessionDigest', true);
+    print(importProductDefinitionDraft(session, { expectedSessionDigest, sourceReference: `file:${response.path}`, responseBytes: response.bytes }));
+    return;
+  }
   if (group === 'discovery' && action === 'propose') {
     if (!source || argv.length !== 3) throw new Error('discovery propose requires one explicit operator configuration');
     const result = await runProductDiscoveryProposal(await json(source, 'discovery provider configuration'));

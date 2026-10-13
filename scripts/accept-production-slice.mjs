@@ -107,3 +107,5 @@ try {
   assert.throws(() => cli('spike', 'intervention', ledger, entryPath));
   console.log('PASS: discovery → scoped context → pinned loop handoff → operations blockers → durable intervention resume. Synthetic local compiler acceptance; providers and deployment unrun.');
 } finally { await rm(root, { recursive: true, force: true }); }
+
+await import('./accept-definition-draft.mjs');

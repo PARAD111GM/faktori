@@ -31,6 +31,11 @@ try {
   const tarball = join(scratch, packed.filename);
   const entries = run('tar', ['-tf', tarball], scratch).split('\n').filter(Boolean);
   const requiredEntries = [
+    'package/dist/production/index.js',
+    'package/docs/production/skill-capability-map.md',
+    'package/docs/production/attended-web-spike.md',
+    'package/docs/releases/v0.2.5.md',
+    'package/examples/production/attended-spike.json',
     'package/CLAUDE.md',
     'package/docs/releases/v0.2.4.md',
     'package/docs/subscription-efficient-delivery.md',
@@ -71,6 +76,15 @@ try {
   await writeFile(join(consumer, 'package.json'), '{"name":"faktori-pack-smoke","private":true}\n');
   runNpm(['install', '--ignore-scripts', '--offline', '--no-audit', '--no-fund', '--package-lock=false', tarball], consumer);
   await verifySkillKit(join(consumer, 'node_modules', 'faktori'));
+
+  const productionImport = spawnSync(process.execPath, ['--input-type=module', '-e', "const root=await import('faktori'); const production=await import('faktori/production'); const result=production.prepareAttendedSpike({format:'faktori.attended-spike-request/v1',spikeId:'packed-spike',resources:[{kind:'workspace',status:'owner_selected'}]}); if(typeof root.prepareAttendedSpike!=='function'||result.status!=='needs_idea'||result.executionReady!==false||result.productionReady!==false||!result.unresolvedDecisions.includes('resource:workspace')||!result.unresolvedDecisions.includes('execution_authority')||!result.unresolvedDecisions.includes('approved_command_handoff')) process.exit(2)"], { cwd: consumer, encoding: 'utf8' });
+  if (productionImport.status !== 0) throw new Error(productionImport.stderr || 'installed spike preparation export failed');
+  const spikePath = join(consumer, 'node_modules', 'faktori', 'examples', 'production', 'attended-spike.json');
+  const spikeBefore = await readFile(spikePath, 'utf8');
+  const spikeResult = spawnSync(process.execPath, [join(consumer, 'node_modules', 'faktori', 'dist', 'cli.js'), 'spike', 'prepare', spikePath], { cwd: consumer, encoding: 'utf8', timeout: 15000 });
+  if (spikeResult.status !== 0) throw new Error(spikeResult.stderr || 'installed spike preparation CLI failed');
+  const spike = JSON.parse(spikeResult.stdout);
+  if (spike.status !== 'needs_idea' || spike.executionReady !== false || spike.productionReady !== false || spike.resourceEvidence !== 'declared_not_observed' || spike.stages.some(stage => stage.state !== 'not_started') || await readFile(spikePath, 'utf8') !== spikeBefore) throw new Error('installed preparation inferred execution or changed its input');
 
   const importResult = spawnSync(process.execPath, ['--input-type=module', '-e', "const runtime=await import('faktori/runtime'); const diagnostics=await import('faktori/diagnostics'); const transports=await import('faktori/execution/transports'); const maintenance=await import('faktori/maintenance'); if(typeof runtime.CoordinatorCodexDelivery!=='function'||typeof runtime.createRunManifest!=='function'||typeof diagnostics.evaluatePreflight!=='function'||typeof transports.DockerCodexProcessRunner!=='function'||typeof maintenance.createFactoryBackup!=='function'||typeof maintenance.previewRuntimeUpdate!=='function') process.exit(2)"], {
     cwd: consumer,

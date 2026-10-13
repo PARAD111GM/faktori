@@ -1,0 +1,19 @@
+{
+  "format": "faktori.attended-spike-request/v1",
+  "spikeId": "attended-web-spike",
+  "constraints": [
+    "Begin with the owner's raw idea and adaptive requirements discovery.",
+    "Retain requirements, observed constraints, proposed assumptions and open questions separately.",
+    "Use existing skills and executable seams before adding orchestration.",
+    "Record human interventions and unknown measurements honestly.",
+    "Do not launch providers, provision resources or deploy from this preparation request."
+  ],
+  "resources": [
+    { "kind": "workspace", "status": "unknown" },
+    { "kind": "provider", "status": "unknown" },
+    { "kind": "deployment", "status": "unknown" },
+    { "kind": "database", "status": "unknown" },
+    { "kind": "verification", "status": "unknown" },
+    { "kind": "incident", "status": "unknown" }
+  ]
+}

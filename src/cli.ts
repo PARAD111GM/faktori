@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
+import { prepareAttendedSpike } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -43,6 +44,7 @@ import {
 } from './index.ts';
 
 const HELP = `Usage:
+  faktori spike prepare <request.json>
   faktori config resolve <configuration.json>
   faktori context assemble <hierarchy.json> <node-id>
   faktori provision proposal <request.json>
@@ -119,6 +121,11 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'spike' && action === 'prepare') {
+    if (!source || argv.length !== 3) throw new Error('spike prepare requires exactly one request JSON path');
+    print(prepareAttendedSpike(await json(source, 'attended spike preparation')));
+    return;
+  }
   if (group === 'verification' && action === 'snapshot') {
     if (!source || argv.length !== 3) throw new Error('verification snapshot requires one approved candidate directory');
     print(await captureCandidateSnapshot(source));

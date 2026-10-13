@@ -1,6 +1,6 @@
 {
   "name": "faktori",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "faktoriStateFormatVersion": 1,
   "private": false,
   "description": "A self-hosted, vendor-neutral software factory for small teams.",
@@ -31,6 +31,10 @@
     "README.md"
   ],
   "exports": {
+    "./production": {
+      "types": "./dist/production/index.d.ts",
+      "import": "./dist/production/index.js"
+    },
     "./preview": { "types": "./dist/preview/index.d.ts", "import": "./dist/preview/index.js" },
     "./workflow": { "types": "./dist/workflow/index.d.ts", "import": "./dist/workflow/index.js" },
     "./verification": {

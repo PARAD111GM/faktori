@@ -7,6 +7,7 @@ import { prepareAttendedSpike, inspectProductDefinition, compileProductHierarchy
 import { prepareProductDiscoverySession, saveProductDiscoverySession, loadProductDiscoverySession, recordProductDiscoveryAnswer, recordProductDiscoveryProposal, renderProductDiscoveryPrompt, productDiscoveryProposalOutputSchema } from './production/index.ts';
 import { runProductDiscoveryProposal } from './production/index.ts';
 import { importProductDefinitionDraft, renderProductDefinitionDraftPrompt, productDefinitionDraftOutputSchema } from './production/index.ts';
+import { runProductDefinitionDraft } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -63,6 +64,7 @@ const HELP = `Usage:
   faktori discovery propose <operator-config.json>
   faktori discovery prompt <absolute-history.jsonl>
   faktori discovery definition-prompt <absolute-history.jsonl>
+  faktori discovery draft <operator-config.json>
   faktori discovery import-definition <absolute-history.jsonl> <private-model-response.json> <expected-session-digest>
   faktori discovery hierarchy <product-definition.json>
   faktori discovery context <product-definition.json> <node-id>
@@ -183,6 +185,13 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'discovery' && action === 'draft') {
+    if (!source || argv.length !== 3) throw new Error('discovery draft requires one explicit operator configuration');
+    const result = await runProductDefinitionDraft(await json(source, 'definition provider configuration'));
+    print(result);
+    if (result.status === 'provider_failed' || result.status === 'rejected') process.exitCode = 1;
+    return;
+  }
   if (group === 'discovery' && action === 'definition-prompt') {
     if (!source || argv.length !== 3) throw new Error('definition-prompt requires one absolute history path');
     const session = await loadProductDiscoverySession(source);

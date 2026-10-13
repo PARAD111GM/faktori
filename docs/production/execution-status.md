@@ -33,7 +33,7 @@ product, signed native artifact or live acceptance.
 | Attended web | Local attended qualification passed; human calibration pending | Real scoped provider execution, independent full-feature acceptance, retained full artifacts, restart/resume and intervention measurements |
 | Production web | Resource selection and release authority pending | Exact candidate deployed to an approved HTTPS runtime with real persistence, sign-in/isolation where required, logs, restore and recovery proof |
 | Live web increment | Live baseline pending | Feature development preserves current clients/data, bounds concurrent work, rehearses migration/recovery and proves signed-in behavior after release |
-| Mobile feasibility | Android native build and broader native acceptance pending | Shared-codebase iOS and Android build plus representative native/device capabilities; signing/distribution ownership established separately |
+| Mobile feasibility | Shared native local build/runtime passed; backend/device/distribution open | Shared-codebase iOS and Android build plus representative native/device capabilities; signing/distribution ownership established separately |
 | Qualified automation | Attended evidence pending | Verified transport/native supervision and wake/recovery evidence, independent admission, bounded iterations/cost/attention and safe restart reconciliation |
 | Full release | All qualification gates pending | Installed operator journey, versioned release/update/recovery proof, calibrated independent evaluation and observation period |
 
@@ -142,3 +142,46 @@ Android SDK platform 36, build-tools 36.0.0, NDK 27.1.12297006, CMake 3.30.5,
 platform-tools and emulator are now installed in the isolated qualification
 directory after explicit owner approval. Android native compilation is underway;
 the system image/runtime journey and production signing remain unverified.
+
+## Observed shared native feasibility completion
+
+The Android ARM64 Release qualification build passed with the shared Expo/React
+Native source. Its preserved APK, installed emulator APK, embedded bundle and
+fourteen native libraries were verified by hash. The local debug signature
+verified; it is not a production signing identity. Android 16/API 36 native UI
+acceptance passed empty-name validation, add/save, bought toggle, reload and
+force-stop/new-process persistence. Accessibility XML drove the controls and
+showed native views rather than a WebView. A read-only copy of the actual device
+SQLite database independently confirmed the checked item.
+
+Together with the earlier iOS simulator add/reload/relaunch proof, both platforms
+now have observed local native feasibility. The prototype stores data on-device;
+shared backend/auth, physical-device capabilities, production signing and store
+distribution remain open. The iOS simulator was stopped after its proof to free
+memory; the Android emulator remains available.
+
+Only qualification-generated build caches/dependencies were reclaimed after
+artifact verification to fit the emulator. Source, locks, wrappers, APK, iOS
+artifacts/archives and evidence remain. The isolated NDK/CMake were removed after
+the successful build and must be reinstalled before rebuilding. Current runtime
+packages remain installed. This preparation host needs explicit disk-capacity
+preflight for future native build/runtime work.
+
+## v0.2.10 native definition qualification
+
+Source typechecking/build, the complete synthetic request/replay/failure journey,
+the bounded correction journey and clean installed-package acceptance passed.
+Independent source review found no high-confidence blockers in the initial
+native generator; the corrective path separately passed stale-history,
+auth/quota/uncertain, capture/context overflow and persistence-failure controls.
+
+An actual installed GPT-6.1-Sol request reached its five-minute runtime bound
+without a usable definition. The interview stayed unchanged and the local worker
+was independently observed absent before attended recovery. A second completed
+native request returned 22 requirements, six journeys and twelve scenarios, but
+inconsistent reciprocal references caused deterministic rejection. Its original
+bytes and native usage receipt remain preserved; no definition was accepted.
+
+The resulting correction gap is implemented within the operator's existing
+attempt budget. An installed real-model qualification of that corrected path is
+underway; synthetic success does not stand in for its native result.

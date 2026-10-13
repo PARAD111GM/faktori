@@ -7,6 +7,32 @@ decisions, or authorize execution or release. Web, native iOS/Android and live
 increments use the same bridge. Platform targets describe the product being
 produced. A proposed first slice does not replace the owner's full product goal.
 
+For native generation, use `faktori discovery draft <operator-config.json>` with
+the same explicitly approved native route configuration as `discovery propose`
+and a fresh proposal ID. The generator preserves private raw and normalized
+provider artifacts and a request/result journal, then applies this bridge. Exact
+replay verifies retained artifacts and returns the recorded draft without
+launching a provider. Changed history/configuration, an incomplete journal or
+altered artifacts cannot silently relaunch or return a qualified draft. Failed
+or rejected requests retain evidence; reload history and use an explicit new
+proposal ID only after resolving the cause. This leaves interview history and
+owner acceptance separate. The explicit prompt/import path remains available.
+
+When the operator allows retries, a completed response rejected by deterministic
+definition validation can receive a corrective turn within the same total
+`maxRetries + 1` attempt budget. The prior exact response and error are retained
+and supplied as bounded untrusted data; each attempt's context digest is pinned.
+History changes, failed capture/persistence, auth/quota and uncertain execution
+cannot enter this correction path. The default zero retries remains one attempt.
+Per-attempt runtime bounds multiply by the allowed number of attempts; they do
+not establish financial or token caps. Corrected output still grants no authority.
+
+The selected native vendor can still expose host-global skills in bounded mode;
+an observed request read the local Faktori interview skill. The configured
+flags and approved prompt digest do not prove a hermetic model context or OS
+filesystem isolation. This remains an attended route until its actual context,
+supervision and recovery envelope has been qualified independently.
+
 Use `renderProductDefinitionDraftPrompt(session)` for the model context and
 `productDefinitionDraftOutputSchema(session)` for its complete output shape.
 The schema is specialized for the session's new-product/live-increment mode.

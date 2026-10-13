@@ -7,3 +7,4 @@ export * from './interventions.ts';
 export * from './discovery-session.ts';
 export * from './discovery-provider.ts';
 export * from './definition-draft.ts';
+export * from './definition-provider.ts';

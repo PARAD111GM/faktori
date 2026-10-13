@@ -33,6 +33,7 @@ try {
     limits: { maxRuntimeMinutes: 1, maxRetries: 0, maxOutputBytes: 4096, maxResponseBytes: 1024 },
   });
   assert.throws(() => cli('discovery', 'propose', unapprovedNative));
+  assert.throws(() => cli('discovery', 'draft', unapprovedNative));
   assert.equal(await readFile(history, 'utf8'), beforeNative);
   assert.throws(() => cli('discovery', 'save', sessionPath, history));
   const modelPath = await save('model-output.json', { status: 'proposed', text: 'Investigate technicians offline workflow before choosing architecture.', questions: [{ text: 'Must technicians record work offline?', topic: 'native', id: 'model.offline' }] });

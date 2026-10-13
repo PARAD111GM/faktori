@@ -168,6 +168,13 @@ the successful build and must be reinstalled before rebuilding. Current runtime
 packages remain installed. This preparation host needs explicit disk-capacity
 preflight for future native build/runtime work.
 
+Later host capacity fell to 373 MiB while these task-owned artifacts stayed
+stable. After checking retained iOS/APK and factory-kit hashes, the completed
+old consumer installation, unpacked iOS build products and original prototype's
+node_modules were reclaimed. The app archive, APK, source/locks, installed device
+apps and proof records remain. Native dependencies must be restored before a
+future build; this cleanup does not invalidate the recorded earlier runtime run.
+
 ## v0.2.10 native definition qualification
 
 Source typechecking/build, the complete synthetic request/replay/failure journey,
@@ -199,3 +206,33 @@ Changed design bytes and parent-directory symlink escapes prevent execution.
 These deterministic journeys launch no model and prove no deployed application.
 Clean packed-install acceptance also passed under Node 24.20.0, including the
 same new-product/live-increment handoff and artifact-containment journey.
+
+## v0.2.12 observed baseline and next-feature continuity
+
+Source typechecking/build, the complete source cycle and clean installed-package
+cycle passed. The local authenticated persistent A-to-B application preserved
+old API/data compatibility through additive migration, restart and disposable
+restore. Baseline observations, separate adoption and explicit next-feature
+discovery survive exact replay. Stale runtime, missing public release chain,
+concurrent receipt drift, full-journal admission and interrupted persistence
+were exercised; the latter retains an intent and blocks automatic duplicate
+observation. Initial fixture environment/sandbox failures remain recorded.
+
+Independent source review found three release/recovery binding issues; all were
+repaired and re-review found no residual high-confidence blocker. Public
+adoption currently targets the existing Lean/GitHub release profile. Its valid
+public chain, general unmanaged adoption and human calibration remain unproven.
+
+A separate native/shared-backend source candidate passed one twenty-gate local
+journey, including old-cookie-client compatibility, separate native sessions,
+household isolation, shared completion, durable immutable retries, account-switch
+races, backend restart and restore revoking both transports. Strict HTTP-client
+and controller typechecking passed. The secure-store harness is synthetic; Expo
+dependency locking, full UI checking, actual iOS/Android binaries/runtime and
+public/native TLS remain pending. Earlier local-storage app receipts do not
+qualify this new source.
+
+The owner approved the isolated Fly deployment test: one 512 MB Machine, one
+1 GB volume, synthetic data, a $10 monitored operating ceiling and cleanup after
+seven days. Normal vendor CLI login is confirmed. Deployment and public runtime
+acceptance remain in progress; approval/login are not deployment evidence.

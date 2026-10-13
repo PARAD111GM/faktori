@@ -9,3 +9,4 @@ export * from './discovery-provider.ts';
 export * from './definition-draft.ts';
 export * from './definition-provider.ts';
 export * from './design.ts';
+export * from './live-product.ts';

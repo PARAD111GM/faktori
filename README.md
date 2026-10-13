@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.11 release notes](docs/releases/v0.2.11.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.12 release notes](docs/releases/v0.2.12.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -162,6 +162,9 @@ The ribbon-cutting committee has been asked to wait for evidence.
 v0.2.11 carries separately accepted product experience and architecture into
 the existing delivery loop, with pinned design bytes, native/live constraints
 and targeted invalidation when designs change.
+v0.2.12 connects observed local baselines to separately adopted product knowledge
+and the next owner-requested feature discovery, with durable recovery and exact
+release bindings. Public qualification remains separate from source checks.
 
 v0.2.10 connects full definition drafting to the approved native model route,
 with private evidence, exact replay and preserved owner/live-product context.

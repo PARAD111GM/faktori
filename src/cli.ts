@@ -9,6 +9,7 @@ import { runProductDiscoveryProposal } from './production/index.ts';
 import { importProductDefinitionDraft, renderProductDefinitionDraftPrompt, productDefinitionDraftOutputSchema } from './production/index.ts';
 import { runProductDefinitionDraft } from './production/index.ts';
 import { inspectProductDesign, inspectProductDesignChange, serializeProductDesign, compileProductDesignHandoff } from './production/index.ts';
+import { observeProductBaseline, adoptProductBaseline, beginProductIncrement, readProductLiveJournal, productBaselineObservationScopeDigest } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -77,6 +78,11 @@ const HELP = `Usage:
   faktori product design-change <previous-design.json> <next-design.json>
   faktori product design-compile <product-definition.json> <canonical-design.json> <handoff-request.json>
   faktori product design-loop-config <product-definition.json> <canonical-design.json> <handoff-request.json>
+  faktori product observe <baseline-observation-request.json>
+  faktori product observation-scope <baseline-observation-request.json>
+  faktori product adopt <baseline-adoption-request.json>
+  faktori product next-discovery <increment-discovery-request.json>
+  faktori product live-journal <absolute-live-journal.jsonl>
   faktori config resolve <configuration.json>
   faktori context assemble <hierarchy.json> <node-id>
   faktori provision proposal <request.json>
@@ -191,6 +197,18 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'product' && ['observe', 'observation-scope', 'adopt', 'next-discovery', 'live-journal'].includes(action ?? '')) {
+    if (!source || argv.length !== 3) throw new Error(`${action} requires one explicit request or journal path`);
+    if (action === 'live-journal') print(await readProductLiveJournal(source));
+    else if (action === 'observation-scope') print({ scopeDigest: productBaselineObservationScopeDigest(await json(source, 'observation scope request')), executionStarted: false });
+    else {
+      const request = await json(source, 'live product request');
+      const result = action === 'observe' ? await observeProductBaseline(request)
+        : action === 'adopt' ? await adoptProductBaseline(request) : await beginProductIncrement(request);
+      print(result);
+    }
+    return;
+  }
   if (group === 'product' && action === 'design-canonical') {
     if (!source || argv.length !== 3) throw new Error('design-canonical requires one design JSON file');
     process.stdout.write(serializeProductDesign(await json(source, 'product design')));

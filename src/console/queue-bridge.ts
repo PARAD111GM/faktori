@@ -5,7 +5,7 @@ import type { ManagerConnectedStore } from '../manager-connected/index.ts';
 import type { JiraObserver } from './jira-observer.ts';
 import type { LocalConsoleRuntimeConfiguration } from './startup.ts';
 import type { ConsoleOwnerActions } from './service.ts';
-import { ConsoleWorkflowRuntime, type WorkflowRuntimeConfiguration } from './workflow-runtime.ts';
+import { ConsoleWorkflowRuntime, type WorkflowRuntimeConfiguration, type WorkflowTrustedReadinessPort } from './workflow-runtime.ts';
 import { deliveryJournal } from './delivery-journal.ts';
 
 /** Binds the derived queue to existing provider delivery, never a second worker launcher. */
@@ -19,7 +19,7 @@ export class ConsoleQueueBridge {
   #nextPollAt = 0;
   #nextEvaluationAt = 0;
   readonly #idleWaiters: Array<() => void> = [];
-  constructor(options: { coordinator: DurableCoordinator; configuration: WorkflowRuntimeConfiguration; workItems: LocalConsoleRuntimeConfiguration['workItems']; actions: ConsoleOwnerActions; jira: JiraObserver; manager?: ManagerConnectedStore }) {
+  constructor(options: { coordinator: DurableCoordinator; configuration: WorkflowRuntimeConfiguration; workItems: LocalConsoleRuntimeConfiguration['workItems']; actions: ConsoleOwnerActions; jira: JiraObserver; manager?: ManagerConnectedStore; trustedReadiness?: WorkflowTrustedReadinessPort }) {
     this.#coordinator = options.coordinator;
     this.#journal = deliveryJournal<WorkflowEvent>(options.coordinator, 'workflow');
     const entries = new Map(options.workItems.map(item => [item.workItemId, item]));
@@ -33,7 +33,7 @@ export class ConsoleQueueBridge {
       if (!state.worker) return { status: 'uncertain', reason: 'admitted_task_not_yet_observed' };
       return { status: 'running', workerId: state.intent.runId };
     };
-    this.runtime = new ConsoleWorkflowRuntime({ coordinator: options.coordinator, configuration: options.configuration, workItems: options.workItems,
+    this.runtime = new ConsoleWorkflowRuntime({ coordinator: options.coordinator, configuration: options.configuration, workItems: options.workItems, trustedReadiness: options.trustedReadiness,
       executor: {
         inspect,
         launch: async assignment => {

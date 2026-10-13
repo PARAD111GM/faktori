@@ -10,10 +10,11 @@ provider-enforced billing cap. An active cleanup automation targets October 20,
 2026 at 1:33 PM America/Chicago, checks retained resource identities and removes
 only this exercise's resources. Later owner instructions take precedence.
 
-The deployed image was reused without rebuilding. Its registry manifest is
-`sha256:b17178c0b818076ec76d72d0031cfca446f7c194bf14a14850a600a2347b20e6`;
-its image configuration ID is
-`sha256:125fdb0628c23d6ba4d96695f3364c11491ff72bf8295aef413ca8d51002db52`.
+The initial schema-1 deployment and its receipts are retained. The current
+shared-backend candidate B uses registry manifest
+`sha256:28743a4e6ecb2ff0408656ea2691cf8badccdce80818f73afb005b023ff456f1`
+and image configuration ID
+`sha256:7948aefd84c7c2ef4b18f2e79a0cb82101efa74c254d4d575bb58dfe3a50222a`.
 These identify different objects. Nine deployed application/runtime file hashes
 match the frozen source. Provider health and strict public TLS checks pass.
 
@@ -41,12 +42,35 @@ Fresh fixtures replaced those accounts; obsolete password hashes were replaced
 with unknown random values and obsolete sessions were revoked. Their saved data
 was preserved. No Fly credentials were exposed or exported into project records.
 
-The next gates are human evaluator calibration, the valid public release/adoption
-chain and observed automatic operation.
-The separately reviewed shared-backend native increment still requires actual
-new iOS/Android binaries and real secure-store/network recovery qualification.
-Its exact SecureStore dependency lock and full-UI typechecking are complete;
-fresh native builds are deferred because available local disk space is below
-the observed build requirements plus reserve.
-Requirements discovery and accepted design must remain the beginning of each
-new-product or explicitly requested live-product feature cycle.
+Candidate B added transactional schema-2 migration, native sessions and shared
+completion with immutable request identities while retaining the web cookie and
+frontend contract. Actual external-hosted adoption used an independent native
+verifier against a copied pre-B backup and fresh protected public observations.
+The following feature-discovery cycle remains synthetic and unapproved by a
+real product owner. Installed-package adoption was checked separately with
+whole-feature fixtures.
+
+Fresh iOS and Android native widgets now pass attended journeys against this
+public backend: secure sign-in, bidirectional shared items and completion,
+saved-session relaunch, logout and isolated-household return, exact rapid input,
+persisted offline creation across process restart, same-Machine restoration and
+single reconciliation, then session expiry and fresh sign-in. Final iOS V4
+is simulator-signed; final Android V4 is debug-signed. Both installed binaries
+are bound to the reviewed native source. Earlier keychain, input-race and
+configuration failures remain in the private evidence packet. Physical devices
+and store signing/distribution remain unqualified.
+
+A fresh consistent schema-2 public backup was independently restored locally
+with the exact B image in stopped, network-isolated containers. All protected
+rows matched, backed-up web/native sessions were removed, fresh synthetic
+sign-in recovered four shared items and two completed items from that snapshot,
+and local mutations survived a server restart. Owned containers were removed.
+No public volume was replaced during this restore qualification.
+
+The next gates include exact native-supervision runtime behavior, real-owner
+requirements discovery through accepted design and generated delivery, human
+evaluator calibration, physical-device/store qualification and sustained
+observed operation. Requirements discovery and accepted design remain the
+beginning of each new-product or explicitly requested live-product feature
+cycle. Builds, model proposals and synthetic exercises do not satisfy those
+human or runtime gates.

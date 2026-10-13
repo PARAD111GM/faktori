@@ -28,13 +28,18 @@ product, signed native artifact or live acceptance.
 
 ## Qualification sequence and first incomplete gates
 
+The table below reflects October 13 qualification. Historical version sections
+retain their observations at that time; their earlier pending deployment and
+SDK statements do not describe the current candidate. See
+[current production gates](current-gates.md) for the ordered release boundary.
+
 | Slice | Current gate | Required outcome |
 | --- | --- | --- |
 | Attended web | Local attended qualification passed; human calibration pending | Real scoped provider execution, independent full-feature acceptance, retained full artifacts, restart/resume and intervention measurements |
-| Production web | Resource selection and release authority pending | Exact candidate deployed to an approved HTTPS runtime with real persistence, sign-in/isolation where required, logs, restore and recovery proof |
-| Live web increment | Live baseline pending | Feature development preserves current clients/data, bounds concurrent work, rehearses migration/recovery and proves signed-in behavior after release |
-| Mobile feasibility | Shared native local build/runtime passed; backend/device/distribution open | Shared-codebase iOS and Android build plus representative native/device capabilities; signing/distribution ownership established separately |
-| Qualified automation | Attended evidence pending | Verified transport/native supervision and wake/recovery evidence, independent admission, bounded iterations/cost/attention and safe restart reconciliation |
+| Production web | Approved synthetic HTTPS exercise, persistence/restart and stopped local restore passed; real-owner delivery pending | Linked installed discovery-to-generated-delivery and independently accepted owner product |
+| Live web increment | Schema-2 baseline adoption, migration and old-client compatibility exercise passed; owner feature cycle pending | Feature development against the adopted baseline with owner scope, authorized release and observed behavior |
+| Mobile feasibility | Shared HTTPS backend, iOS Simulator and Android Emulator complete journeys passed; physical devices/signing/distribution open | Signed distribution and applicable physical-device qualification, separate from emulator behavior |
+| Qualified automation | Fifteen-gate source and installed fixtures passed; genuine native supervision in qualification | Verified real transport activation, wake/recovery, independent admission and safe restart reconciliation |
 | Full release | All qualification gates pending | Installed operator journey, versioned release/update/recovery proof, calibrated independent evaluation and observation period |
 
 Use `npm run accept:production` for the single consolidated local CLI feature

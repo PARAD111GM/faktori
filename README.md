@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.13 release notes](docs/releases/v0.2.13.md) · [Public qualification evidence](docs/production/attended-public-qualification.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.14 release notes](docs/releases/v0.2.14.md) · [Public qualification evidence](docs/production/attended-public-qualification.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -107,7 +107,7 @@ npm rebuild better-sqlite3
 npm run build
 npm run skills:verify
 npm run typecheck
-npm test -- --maxWorkers=4
+npm run accept:production
 npm run pack:verify
 ```
 
@@ -156,6 +156,10 @@ repository; product artifacts normally live beside product code.
 ## Where we are
 
 **Early development. Useful foundations; release validation still in progress.**
+
+The [current production gates](docs/production/current-gates.md) distinguish
+attended web/native qualification from the linked discovery-to-production and
+ongoing live-product lifecycle that remains to be qualified.
 
 The ribbon-cutting committee has been asked to wait for evidence.
 

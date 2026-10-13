@@ -19,6 +19,11 @@ reconstruct intent from unrelated siblings.
 
 ## Procedure
 
+Implement a complete feature slice before validation. Use minimal full-slice
+acceptance, including relevant failure and authority boundaries; do not use
+micro-unit testing loops. Repeat checks only when a material change or failure
+requires it.
+
 1. Confirm the work-item identity, accepted revision, target workspace, allowed
    paths, dependency state, and allowed effects before editing. Assemble a
    scoped context packet with `faktori context assemble <hierarchy.json>

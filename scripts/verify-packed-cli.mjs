@@ -35,6 +35,13 @@ try {
     'package/docs/production/skill-capability-map.md',
     'package/docs/production/attended-web-spike.md',
     'package/docs/releases/v0.2.5.md',
+    'package/docs/releases/v0.2.6.md',
+    'package/dist/production/discovery-session.js',
+    'package/dist/production/delivery.js',
+    'package/dist/production/operations.js',
+    'package/dist/production/interventions.js',
+    'package/examples/production/product-definition.json',
+    'package/examples/production/discovery-session.json',
     'package/examples/production/attended-spike.json',
     'package/CLAUDE.md',
     'package/docs/releases/v0.2.4.md',
@@ -85,6 +92,12 @@ try {
   if (spikeResult.status !== 0) throw new Error(spikeResult.stderr || 'installed spike preparation CLI failed');
   const spike = JSON.parse(spikeResult.stdout);
   if (spike.status !== 'needs_idea' || spike.executionReady !== false || spike.productionReady !== false || spike.resourceEvidence !== 'declared_not_observed' || spike.stages.some(stage => stage.state !== 'not_started') || await readFile(spikePath, 'utf8') !== spikeBefore) throw new Error('installed preparation inferred execution or changed its input');
+
+  const productSlice = spawnSync(process.execPath, [join(root, 'scripts', 'accept-production-slice.mjs')], {
+    cwd: root, encoding: 'utf8', timeout: 120000,
+    env: { ...process.env, FAKTORI_ACCEPT_CLI: join(consumer, 'node_modules', 'faktori', 'dist', 'cli.js'), FAKTORI_ACCEPT_MODULE: join(consumer, 'node_modules', 'faktori', 'dist', 'index.js') },
+  });
+  if (productSlice.status !== 0) throw new Error(productSlice.stderr || productSlice.stdout || 'installed full product feature slice failed');
 
   const importResult = spawnSync(process.execPath, ['--input-type=module', '-e', "const runtime=await import('faktori/runtime'); const diagnostics=await import('faktori/diagnostics'); const transports=await import('faktori/execution/transports'); const maintenance=await import('faktori/maintenance'); if(typeof runtime.CoordinatorCodexDelivery!=='function'||typeof runtime.createRunManifest!=='function'||typeof diagnostics.evaluatePreflight!=='function'||typeof transports.DockerCodexProcessRunner!=='function'||typeof maintenance.createFactoryBackup!=='function'||typeof maintenance.previewRuntimeUpdate!=='function') process.exit(2)"], {
     cwd: consumer,

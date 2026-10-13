@@ -1,6 +1,6 @@
 {
   "name": "faktori",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "faktoriStateFormatVersion": 1,
   "private": false,
   "description": "A self-hosted, vendor-neutral software factory for small teams.",
@@ -129,6 +129,7 @@
     "console:build": "vite build --config console/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit --project console/tsconfig.json",
     "test": "vitest run",
+    "accept:production": "node scripts/accept-production-slice.mjs",
     "skills:verify": "node scripts/verify-skill-kit.mjs",
     "check": "npm run typecheck && npm run build && npm test && npm run pack:verify",
     "pack:verify": "node scripts/verify-packed-cli.mjs",

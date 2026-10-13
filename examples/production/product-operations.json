@@ -1,0 +1,13 @@
+{
+  "format": "faktori.product-operations-request/v1",
+  "product": {
+    "id": "replace-with-product-id",
+    "revision": "replace-with-product-definition-revision"
+  },
+  "candidate": {
+    "id": "replace-with-candidate-id",
+    "revision": "replace-with-candidate-revision",
+    "sourceRevision": "replace-with-source-commit"
+  },
+  "platforms": ["web"]
+}

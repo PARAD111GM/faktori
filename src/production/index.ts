@@ -1,2 +1,7 @@
 export { prepareAttendedSpike } from './spike.ts';
 export type { AttendedSpikePreparation, AttendedSpikeRequest, AttendedSpikeResource, SpikeResourceKind, SpikeResourceStatus } from './spike.ts';
+export * from './discovery.ts';
+export * from './delivery.ts';
+export * from './operations.ts';
+export * from './interventions.ts';
+export * from './discovery-session.ts';

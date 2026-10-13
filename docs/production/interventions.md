@@ -1,0 +1,9 @@
+# Attended spike intervention ledger
+
+`appendSpikeIntervention(path, entry)` and `readSpikeInterventions(path)` in `src/production/interventions.ts` record the human actions and capability gaps observed during an attended product spike. The caller supplies the ledger's normalized absolute JSONL path explicitly. This module does not choose a home directory, discover a provider, launch tools, or interpret these entries as release authority.
+
+Each record includes a stable `id`, `spikeId`, `stage`, UTC ISO `occurredAt`, `actor`, `reason`, `action`, an `outcome` (`observed`, `failed`, or `not_verified`), and `evidenceRefs`. `capabilityGap` is optional. Evidence refs should point to retained source artifacts, logs, or other reviewable evidence. The ledger stores the full entries in append order; any short dashboard or report is a projection and must not replace this source record.
+
+The first append creates the parent directory and ledger as needed. Appends are serialized with an exclusive sibling `.lock` file, written as a complete JSONL line, and synced before returning. An exact repeated entry id is an idempotent no-op. Reusing an id with different content fails. Readers preserve every line, including exact repeated lines already present, while rejecting conflicting ids. Unknown fields, malformed records, secrets, unbounded text, oversized entries, and an incomplete final line fail closed. A crash that leaves a partial tail requires explicit owner recovery; this code never truncates, rewrites, or silently repairs the ledger.
+
+If a process stops while holding the lock, the stale `.lock` file blocks further reads and appends. Inspect it and establish that its owner is no longer active before removing it manually. Do not delete or replace the ledger to work around a lock or parse error. Back it up using the product's approved data-handling policy, retaining the original file and its evidence references.

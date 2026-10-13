@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
-import { prepareAttendedSpike } from './production/index.ts';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
+import { prepareAttendedSpike, inspectProductDefinition, compileProductHierarchy, assembleProductContext, compileProductDelivery, serializeProductDeliveryLoop, inspectProductOperations, appendSpikeIntervention, readSpikeInterventions } from './production/index.ts';
+import { prepareProductDiscoverySession, saveProductDiscoverySession, loadProductDiscoverySession, recordProductDiscoveryAnswer, recordProductDiscoveryProposal, renderProductDiscoveryPrompt, productDiscoveryProposalOutputSchema } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -45,6 +48,20 @@ import {
 
 const HELP = `Usage:
   faktori spike prepare <request.json>
+  faktori spike intervention <absolute-ledger.jsonl> <entry.json>
+  faktori spike interventions <absolute-ledger.jsonl>
+  faktori discovery inspect <product-definition.json>
+  faktori discovery session <idea-request.json>
+  faktori discovery save <session.json> <absolute-history.jsonl>
+  faktori discovery resume <absolute-history.jsonl>
+  faktori discovery answer <absolute-history.jsonl> <answer.json>
+  faktori discovery proposal <absolute-history.jsonl> <proposal.json>
+  faktori discovery prompt <absolute-history.jsonl>
+  faktori discovery hierarchy <product-definition.json>
+  faktori discovery context <product-definition.json> <node-id>
+  faktori product compile <product-definition.json> <delivery-request.json>
+  faktori product loop-config <product-definition.json> <delivery-request.json>
+  faktori product operations <operations-request.json>
   faktori config resolve <configuration.json>
   faktori context assemble <hierarchy.json> <node-id>
   faktori provision proposal <request.json>
@@ -121,6 +138,66 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'discovery' && action === 'session') {
+    if (!source || argv.length !== 3) throw new Error('discovery session requires one raw idea request');
+    print(prepareProductDiscoverySession(await json(source, 'discovery session request')));
+    return;
+  }
+  if (group === 'discovery' && action === 'save') {
+    if (!source || !extra || argv.length !== 4) throw new Error('discovery save requires a session JSON and absolute history path');
+    print(await saveProductDiscoverySession(extra, await json(source, 'discovery session')));
+    return;
+  }
+  if (group === 'discovery' && ['resume', 'answer', 'proposal', 'prompt'].includes(action ?? '')) {
+    const changes = action === 'answer' || action === 'proposal';
+    if (!source || argv.length !== (changes ? 4 : 3)) throw new Error(`discovery ${action} requires an absolute history path${changes ? ' and response JSON' : ''}`);
+    const session = await loadProductDiscoverySession(source);
+    if (!changes) { print(action === 'prompt' ? { prompt: renderProductDiscoveryPrompt(session), outputSchema: productDiscoveryProposalOutputSchema } : session); return; }
+    const response = await json(extra!, 'discovery response');
+    const next = action === 'answer' ? recordProductDiscoveryAnswer(session, response) : recordProductDiscoveryProposal(session, response);
+    await saveProductDiscoverySession(source, next);
+    print(next);
+    return;
+  }
+  if (group === 'spike' && action === 'intervention') {
+    if (!source || !extra || argv.length !== 4) throw new Error('spike intervention requires an absolute ledger path and entry JSON');
+    print(await appendSpikeIntervention(source, await json(extra, 'spike intervention')));
+    return;
+  }
+  if (group === 'spike' && action === 'interventions') {
+    if (!source || argv.length !== 3) throw new Error('spike interventions requires an absolute ledger path');
+    print(await readSpikeInterventions(source));
+    return;
+  }
+  if (group === 'discovery' && ['inspect', 'hierarchy', 'context'].includes(action ?? '')) {
+    if (!source || argv.length !== (action === 'context' ? 4 : 3)) throw new Error(`discovery ${action} requires a product definition${action === 'context' ? ' and node ID' : ''}`);
+    const definition = await json(source, 'product definition');
+    print(action === 'inspect' ? inspectProductDefinition(definition) : action === 'hierarchy' ? compileProductHierarchy(definition) : assembleProductContext(definition, extra!));
+    return;
+  }
+  if (group === 'product' && action === 'operations') {
+    if (!source || argv.length !== 3) throw new Error('product operations requires exactly one request JSON path');
+    print(inspectProductOperations(await json(source, 'product operations')));
+    return;
+  }
+  if (group === 'product' && (action === 'compile' || action === 'loop-config')) {
+    if (!source || !extra || argv.length !== 4) throw new Error(`product ${action} requires a definition and delivery request`);
+    const definitionBytes = await readFile(resolve(source));
+    const requestBytes = await readFile(resolve(extra));
+    const definition: unknown = JSON.parse(definitionBytes.toString('utf8'));
+    const request = record(JSON.parse(requestBytes.toString('utf8')), 'product delivery request');
+    for (const [key, path, bytes] of [['definitionArtifact', resolve(source), definitionBytes], ['requestArtifact', resolve(extra), requestBytes]] as const) {
+      const binding = { path, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` };
+      if (request[key] !== undefined) {
+        const supplied = record(request[key], key);
+        if (supplied.path !== binding.path || supplied.digest !== binding.digest) throw new Error(`${key} does not match the actual input file`);
+      }
+      request[key] = binding;
+    }
+    const compilation = compileProductDelivery(definition, request);
+    print(action === 'compile' ? compilation : serializeProductDeliveryLoop(compilation));
+    return;
+  }
   if (group === 'spike' && action === 'prepare') {
     if (!source || argv.length !== 3) throw new Error('spike prepare requires exactly one request JSON path');
     print(prepareAttendedSpike(await json(source, 'attended spike preparation')));

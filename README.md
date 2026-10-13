@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.5 release notes](docs/releases/v0.2.5.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.6 release notes](docs/releases/v0.2.6.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -158,6 +158,16 @@ repository; product artifacts normally live beside product code.
 **Early development. Useful foundations; release validation still in progress.**
 
 The ribbon-cutting committee has been asked to wait for evidence.
+
+v0.2.6 connects a raw idea to a [resumable requirements interview](docs/production/discovery-session.md),
+a sourced [product definition](docs/production/product-discovery.md), and an
+[execution handoff](docs/production/product-delivery.md) into the existing Lean loop.
+Accepted scope, owner decisions, full inherited constraints and exact artifact
+dependencies travel together. Web/native mobile release contracts and live-product
+compatibility are explicit. [Operations](docs/production/product-operations.md)
+and an [intervention ledger](docs/production/interventions.md) keep missing resource
+decisions and unobserved release evidence visible. Run `npm run accept:production`
+for the consolidated local feature journey. Live qualification remains pending.
 
 v0.2.5 adds a source-reviewed [16-skill capability map](docs/production/skill-capability-map.md)
 and `faktori spike prepare`, a read-only raw-idea preparation command. It connects

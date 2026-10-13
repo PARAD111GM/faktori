@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, appendFile, lstat, mkdir, open, readFile, readlink, rename, rm, writeFile } from 'node:fs/promises';
+import { access, appendFile, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
@@ -688,6 +688,13 @@ async function leanPreflight(config: LeanLoopConfiguration, environment: Readonl
   for (const dependency of config.candidate.dependencies) {
     if (dependency.kind === 'file') {
       try {
+        if (['product-definition', 'product-delivery-request'].includes(dependency.id)) {
+          const within = relative(await realpath(config.workspace.path), await realpath(dependency.path));
+          if (!within || isAbsolute(within) || within === '..' || within.startsWith(`..${sep}`)) {
+            check(`dependency.${dependency.id}`, false, 'product_artifact_outside_approved_workspace');
+            continue;
+          }
+        }
         const info = await lstat(dependency.path);
         const observed = info.isFile() && !info.isSymbolicLink() ? `sha256:${digest(await readFile(dependency.path))}` : '';
         check(`dependency.${dependency.id}`, observed === dependency.digest, observed === dependency.digest ? observed : 'file_digest_mismatch');

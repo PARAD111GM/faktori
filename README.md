@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.12 release notes](docs/releases/v0.2.12.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.12 release notes](docs/releases/v0.2.12.md) · [Public qualification evidence](docs/production/attended-public-qualification.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 

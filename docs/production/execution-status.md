@@ -232,7 +232,35 @@ dependency locking, full UI checking, actual iOS/Android binaries/runtime and
 public/native TLS remain pending. Earlier local-storage app receipts do not
 qualify this new source.
 
-The owner approved the isolated Fly deployment test: one 512 MB Machine, one
-1 GB volume, synthetic data, a $10 monitored operating ceiling and cleanup after
-seven days. Normal vendor CLI login is confirmed. Deployment and public runtime
-acceptance remain in progress; approval/login are not deployment evidence.
+The owner-approved isolated Fly test is deployed at
+https://faktori-qual-20261013-c7a9.fly.dev with one 512 MB Machine and one encrypted
+1 GB volume. The deployed registry manifest resolves to the frozen AMD64 image;
+all nine application/runtime file hashes match the retained candidate. Public
+HTTPS health and an independently reviewed eight-gate authenticated browser/API
+journey passed. The strengthened evaluator explicitly proves final-session
+revocation and successful delivery of a delayed household response. Actual
+provider stop/restart/start events and a subsequent authenticated browser check
+prove same-Machine, same-image and same-volume persistence of six shared items.
+
+A consistent live synthetic backup is retained privately off-volume with its
+checksum verified. Independent stopped local restore qualification passed with
+the exact image: all user/item/idempotency/login-limit rows match, all backed-up
+sessions are revoked, the specific saved session was valid in the source backup,
+and fresh local API sign-in recovers the six saved items. This used disposable
+network-isolated containers and a fresh private database; the running cloud
+database was not replaced. Evaluator and container-access failures are retained.
+The first set
+of synthetic fixture passwords was accidentally printed in tool output; fresh
+fixtures replaced it, and the obsolete accounts' passwords and sessions were
+disabled without changing their saved data. No provider credentials were exposed.
+
+The $10 ceiling is monitored rather than provider-enforced. Cleanup is scheduled
+for October 20 against exact owned resource identities. These attended proofs
+do not establish the public Lean/GitHub adoption chain, unattended operation,
+human evaluator calibration or full production readiness. Final independent
+native/shared-backend source review found no residual high-confidence blocker;
+its new native binaries and real secure-store runtime remain unqualified.
+The native increment now has a resolved lock for SecureStore 55.0.18 and strict
+full-UI TypeScript checking against integrity-verified official declarations.
+No full dependency install, Pods, simulator boot or binary build was performed:
+roughly 2.4 GB free was below the observed build requirements plus reserve.

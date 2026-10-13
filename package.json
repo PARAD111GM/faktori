@@ -1,6 +1,6 @@
 {
   "name": "faktori",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "faktoriStateFormatVersion": 1,
   "private": false,
   "description": "A self-hosted, vendor-neutral software factory for small teams.",
@@ -35,8 +35,14 @@
       "types": "./dist/production/index.d.ts",
       "import": "./dist/production/index.js"
     },
-    "./preview": { "types": "./dist/preview/index.d.ts", "import": "./dist/preview/index.js" },
-    "./workflow": { "types": "./dist/workflow/index.d.ts", "import": "./dist/workflow/index.js" },
+    "./preview": {
+      "types": "./dist/preview/index.d.ts",
+      "import": "./dist/preview/index.js"
+    },
+    "./workflow": {
+      "types": "./dist/workflow/index.d.ts",
+      "import": "./dist/workflow/index.js"
+    },
     "./verification": {
       "types": "./dist/verification/index.d.ts",
       "import": "./dist/verification/index.js"
@@ -130,6 +136,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit --project console/tsconfig.json",
     "test": "vitest run",
     "accept:production": "node scripts/accept-production-slice.mjs",
+    "accept:design-draft": "node scripts/accept-design-draft.mjs",
+    "accept:existing-adoption": "node scripts/accept-existing-product-adoption.mjs",
     "skills:verify": "node scripts/verify-skill-kit.mjs",
     "check": "npm run typecheck && npm run build && npm test && npm run pack:verify",
     "pack:verify": "node scripts/verify-packed-cli.mjs",
@@ -143,7 +151,7 @@
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
-    "fastify": "5.12.3",
+    "fastify": "5.12.7",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

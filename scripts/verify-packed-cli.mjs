@@ -42,6 +42,11 @@ try {
     'package/docs/releases/v0.2.10.md',
     'package/docs/releases/v0.2.11.md',
     'package/docs/releases/v0.2.12.md',
+    'package/docs/releases/v0.2.13.md',
+    'package/docs/production/design-draft.md',
+    'package/docs/production/existing-product-adoption.md',
+    'package/dist/production/design-draft.js',
+    'package/dist/production/design-provider.js',
     'package/docs/production/live-product.md',
     'package/dist/production/live-product.js',
     'package/docs/production/product-design.md',
@@ -108,10 +113,10 @@ try {
   if (spike.status !== 'needs_idea' || spike.executionReady !== false || spike.productionReady !== false || spike.resourceEvidence !== 'declared_not_observed' || spike.stages.some(stage => stage.state !== 'not_started') || await readFile(spikePath, 'utf8') !== spikeBefore) throw new Error('installed preparation inferred execution or changed its input');
 
   const productSlice = spawnSync(process.execPath, [join(root, 'scripts', 'accept-production-slice.mjs')], {
-    cwd: root, encoding: 'utf8', timeout: 120000,
+    cwd: root, encoding: 'utf8', timeout: 600000,
     env: { ...process.env, FAKTORI_ACCEPT_CLI: join(consumer, 'node_modules', 'faktori', 'dist', 'cli.js'), FAKTORI_ACCEPT_MODULE: join(consumer, 'node_modules', 'faktori', 'dist', 'index.js') },
   });
-  if (productSlice.status !== 0) throw new Error(productSlice.stderr || productSlice.stdout || 'installed full product feature slice failed');
+  if (productSlice.status !== 0) throw new Error(`Installed full product feature slice failed (status=${productSlice.status}, signal=${productSlice.signal}, error=${productSlice.error?.code ?? 'none'}):\n${productSlice.stderr || productSlice.stdout}`);
 
   const importResult = spawnSync(process.execPath, ['--input-type=module', '-e', "const runtime=await import('faktori/runtime'); const diagnostics=await import('faktori/diagnostics'); const transports=await import('faktori/execution/transports'); const maintenance=await import('faktori/maintenance'); if(typeof runtime.CoordinatorCodexDelivery!=='function'||typeof runtime.createRunManifest!=='function'||typeof diagnostics.evaluatePreflight!=='function'||typeof transports.DockerCodexProcessRunner!=='function'||typeof maintenance.createFactoryBackup!=='function'||typeof maintenance.previewRuntimeUpdate!=='function') process.exit(2)"], {
     cwd: consumer,

@@ -8,6 +8,7 @@ import { projectLoopDelivery } from '../loop/delivery.ts';
 import { withOwnershipLock } from '../runtime/ownership-lock.ts';
 import { prepareProductDiscoverySession, saveProductDiscoverySession, type ProductDiscoverySession } from './discovery-session.ts';
 import type { ProductPlatform, ProductReference } from './discovery.ts';
+import { captureCandidateSnapshot, parseCandidateVerificationConfiguration } from '../verification/index.ts';
 
 export type ProductLiveEnvironment = 'local_qualification' | 'public_production';
 export interface LiveFileBinding { path: string; digest: string }
@@ -18,10 +19,14 @@ export interface ProductLiveIdentity {
   sourceRevision: string;
   artifactDigest: string;
   schemaRevision: string;
+  targetOrigin?: string;
+  resourceId?: string;
+  releaseManifestDigest?: string;
 }
 interface ObserverCommand { command: string; args: string[] }
 export interface ProductBaselineObservationRequest {
   format: 'faktori.product-baseline-observation/v1';
+  profile?: 'managed_lean' | 'external_hosted';
   id: string; productId: string; ownerId: string; environment: ProductLiveEnvironment;
   journalPath: string; expectedParentDigest: string | null;
   receipts: { configuration: LiveFileBinding; verification: LiveFileBinding; artifact?: LiveFileBinding; loopArtifactsDirectory?: string };
@@ -38,7 +43,7 @@ export interface ProductBaselineObservationRequest {
 }
 export interface LiveProductObservation {
   id: string; productId: string; ownerId: string; environment: ProductLiveEnvironment;
-  basis: 'qualified_local_runtime' | 'owner_recorded_delivery_and_observed_runtime';
+  basis: 'qualified_local_runtime' | 'owner_recorded_delivery_and_observed_runtime' | 'externally_released_and_observed_runtime';
   status: 'passed' | 'failed';
   requestDigest: string;
   request: ProductBaselineObservationRequest;
@@ -49,6 +54,7 @@ export interface LiveProductObservation {
   artifactBindings: LiveFileBinding[];
   reason?: string;
   productionReady: false;
+  externalRelease?: { format: 'faktori.external-hosted-characterization/v1'; actor: 'faktori.live-product-controller/v1'; releaseId: string; configurationDigest: string; factoryPublicationClaimed: false };
 }
 export interface LiveProductAdoption {
   id: string; productId: string; ownerId: string; environment: ProductLiveEnvironment;
@@ -121,27 +127,31 @@ function command(value: unknown): ObserverCommand {
 }
 function parseObservation(value: unknown): ProductBaselineObservationRequest {
   bound(value);
-  const d = object(value, ['format', 'id', 'productId', 'ownerId', 'environment', 'journalPath', 'expectedParentDigest', 'receipts', 'expected', 'observer'], 'observation');
+  const d = object(value, ['format', 'profile', 'id', 'productId', 'ownerId', 'environment', 'journalPath', 'expectedParentDigest', 'receipts', 'expected', 'observer'], 'observation');
   if (d.format !== 'faktori.product-baseline-observation/v1' || !['local_qualification', 'public_production'].includes(String(d.environment))) fail('observation format/environment is unsupported');
+  if (d.profile !== undefined && d.profile !== 'managed_lean' && d.profile !== 'external_hosted') fail('unsupported release profile');
+  const external = d.profile === 'external_hosted';
+  if (external && d.environment !== 'public_production') fail('external_hosted requires an already externally released public target');
   const r = object(d.receipts, ['configuration', 'verification', 'artifact', 'loopArtifactsDirectory'], 'receipts');
-  const e = object(d.expected, ['productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', 'sourceReference', 'artifactReference', 'platforms', 'supportedClients', 'contracts'], 'expected runtime');
+  const e = object(d.expected, ['productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', 'sourceReference', 'artifactReference', 'platforms', 'supportedClients', 'contracts', ...(external ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] : [])], 'expected runtime');
   const o = object(d.observer, ['cwd', 'identity', 'check', 'environment', 'limits', 'approval'], 'observer');
   const env = object(o.environment, [...ENV_KEYS], 'observer environment');
   const a = object(o.approval, ['nativeAccessApproved', 'approvedBy', 'scope', 'scopeDigest'], 'observer approval');
   if (a.nativeAccessApproved !== true || a.scope !== 'read_only_target') fail('explicit approved native read-only-target observation is required');
   const limits = object(o.limits, ['timeoutMs', 'outputMaxBytes'], 'observer limits');
   if (!Number.isInteger(limits.timeoutMs) || Number(limits.timeoutMs) < 1 || Number(limits.timeoutMs) > 120000 || !Number.isInteger(limits.outputMaxBytes) || Number(limits.outputMaxBytes) < 1024 || Number(limits.outputMaxBytes) > 1000000) fail('observer limits are invalid');
-  const sourceRevision = text(e.sourceRevision, 'sourceRevision', 64);
-  if (!COMMIT.test(sourceRevision)) fail('sourceRevision requires an exact Git commit');
+  const sourceRevision = text(e.sourceRevision, 'sourceRevision', external ? 71 : 64);
+  if (!COMMIT.test(sourceRevision) && !(external && SHA.test(sourceRevision))) fail('sourceRevision requires an exact Git commit or external SHA256 source revision');
   const result: ProductBaselineObservationRequest = {
-    format: d.format, id: id(d.id, 'id'), productId: id(d.productId, 'productId'), ownerId: id(d.ownerId, 'ownerId'), environment: d.environment as ProductLiveEnvironment,
+    format: d.format, ...(d.profile === undefined ? {} : { profile: d.profile as ProductBaselineObservationRequest['profile'] }), id: id(d.id, 'id'), productId: id(d.productId, 'productId'), ownerId: id(d.ownerId, 'ownerId'), environment: d.environment as ProductLiveEnvironment,
     journalPath: path(d.journalPath, 'journalPath'), expectedParentDigest: parent(d.expectedParentDigest),
     receipts: { configuration: fileBinding(r.configuration, 'configuration'), verification: fileBinding(r.verification, 'verification'), ...(r.artifact === undefined ? {} : { artifact: fileBinding(r.artifact, 'artifact') }), ...(r.loopArtifactsDirectory === undefined ? {} : { loopArtifactsDirectory: path(r.loopArtifactsDirectory, 'loopArtifactsDirectory') }) },
-    expected: { productId: id(e.productId, 'expected.productId'), environment: e.environment as ProductLiveEnvironment, candidateDigest: sha(e.candidateDigest, 'candidateDigest'), sourceRevision, artifactDigest: sha(e.artifactDigest, 'artifactDigest'), schemaRevision: text(e.schemaRevision, 'schemaRevision', 256), sourceReference: text(e.sourceReference, 'sourceReference'), artifactReference: text(e.artifactReference, 'artifactReference'), platforms: platforms(e.platforms), supportedClients: refs(e.supportedClients, 'supportedClients'), contracts: refs(e.contracts, 'contracts') },
+    expected: { productId: id(e.productId, 'expected.productId'), environment: e.environment as ProductLiveEnvironment, candidateDigest: sha(e.candidateDigest, 'candidateDigest'), sourceRevision, artifactDigest: sha(e.artifactDigest, 'artifactDigest'), schemaRevision: text(e.schemaRevision, 'schemaRevision', 256), sourceReference: text(e.sourceReference, 'sourceReference'), artifactReference: text(e.artifactReference, 'artifactReference'), platforms: platforms(e.platforms), supportedClients: refs(e.supportedClients, 'supportedClients'), contracts: refs(e.contracts, 'contracts'), ...(external ? { targetOrigin: httpsOrigin(e.targetOrigin), resourceId: text(e.resourceId, 'resourceId', 256), releaseManifestDigest: sha(e.releaseManifestDigest, 'releaseManifestDigest') } : {}) },
     observer: { cwd: path(o.cwd, 'observer cwd'), identity: command(o.identity), check: command(o.check), environment: Object.fromEntries(Object.entries(env).map(([key, value]) => [key, text(value, `observer environment ${key}`)])), limits: { timeoutMs: Number(limits.timeoutMs), outputMaxBytes: Number(limits.outputMaxBytes) }, approval: { nativeAccessApproved: true, approvedBy: text(a.approvedBy, 'approvedBy', 120), scope: 'read_only_target', scopeDigest: sha(a.scopeDigest, 'scopeDigest') } },
   };
   if (result.expected.productId !== result.productId || result.expected.environment !== result.environment || result.observer.approval.approvedBy !== result.ownerId) fail('runtime/owner approval identity mismatch');
   if (result.environment === 'local_qualification' && result.receipts.loopArtifactsDirectory) fail('local qualification cannot claim publication or public delivery receipts');
+  if (external && result.receipts.loopArtifactsDirectory) fail('external releases cannot claim managed publication/delivery receipts');
   return result;
 }
 /** Nonexecuting digest of the complete owner-selected observer and receipt scope. */
@@ -149,7 +159,13 @@ export function productBaselineObservationScopeDigest(value: unknown): string {
   bound(value);
   const d = value as ProductBaselineObservationRequest;
   const { approval: _approval, ...observer } = d.observer;
-  return digest({ productId: d.productId, ownerId: d.ownerId, environment: d.environment, receipts: d.receipts, expected: d.expected, observer });
+  return digest({ ...(d.profile === undefined ? {} : { profile: d.profile }), productId: d.productId, ownerId: d.ownerId, environment: d.environment, receipts: d.receipts, expected: d.expected, observer });
+}
+function httpsOrigin(value: unknown): string {
+  const v = text(value, 'targetOrigin'); let u: URL;
+  try { u = new URL(v); } catch { fail('targetOrigin requires a fixed HTTPS origin'); }
+  if (u.protocol !== 'https:' || u.username || u.password || u.origin !== v) fail('targetOrigin requires a fixed absolute HTTPS origin without path or credentials');
+  return v;
 }
 async function privateDirectory(value: string): Promise<void> {
   const s = await lstat(value);
@@ -236,6 +252,7 @@ function replay(entries: ProductLiveJournalEntry[], id: string, kind: ProductLiv
   return previous;
 }
 async function receiptBasis(request: ProductBaselineObservationRequest): Promise<LiveFileBinding[]> {
+  if (request.profile === 'external_hosted') return externalReceiptBasis(request);
   const config = parseLeanLoopConfiguration(await boundFile(request.receipts.configuration));
   if (config.approval.approved !== true || config.approval.approvedBy !== request.ownerId || config.workspace.path !== request.observer.cwd) fail('observer must use the existing owner-approved execution workspace');
   const v = await boundFile(request.receipts.verification) as Data;
@@ -275,12 +292,66 @@ async function receiptBasis(request: ProductBaselineObservationRequest): Promise
   }
   return result;
 }
+/** Owner declarations characterize an external release; only native observations qualify its runtime. */
+function invokedCode(command: ObserverCommand, cwd: string): string {
+  // This runtime's Node executable is the only qualified interpreter. Other
+  // commands must seal the executable itself, never an incidental argv value.
+  if (command.command !== process.execPath) return command.command;
+  const script = command.args[0];
+  if (!script || script.startsWith('-')) fail('qualified Node invocation requires the actual script at argv[0], without eval/import flags or wrappers');
+  return resolve(cwd, script);
+}
+async function externalReceiptBasis(request: ProductBaselineObservationRequest): Promise<LiveFileBinding[]> {
+  const c = object(await boundFile(request.receipts.configuration), ['format', 'id', 'productId', 'ownerId', 'approved', 'releaseAuthority', 'workspacePath', 'expected', 'source', 'manifest', 'verificationConfiguration', 'evaluatorFiles', 'observerFiles'], 'external release');
+  if (c.format !== 'faktori.external-hosted-release/v1' || c.approved !== true || c.releaseAuthority !== 'owner_recorded_external_release' || c.productId !== request.productId || c.ownerId !== request.ownerId || c.workspacePath !== request.observer.cwd || stable(c.expected) !== stable(request.expected)) fail('external release requires exact separate owner-approved source/target/client characterization');
+  id(c.id, 'external release id');
+  if (!request.receipts.artifact || request.receipts.artifact.digest !== request.expected.artifactDigest) fail('external release requires exact image configuration bytes');
+  const artifact = object(await boundFile(request.receipts.artifact), ['architecture', 'author', 'config', 'container', 'container_config', 'created', 'docker_version', 'history', 'os', 'rootfs', 'variant'], 'OCI image configuration');
+  if (typeof artifact.architecture !== 'string' || artifact.os !== 'linux' || !artifact.rootfs || !artifact.config) fail('external artifact must be an OCI/Docker image configuration, not a registry manifest');
+  const manifestBinding = fileBinding(c.manifest, 'external manifest');
+  if (manifestBinding.digest !== request.expected.releaseManifestDigest) fail('immutable release manifest differs from requested target');
+  const manifest = object(await boundFile(manifestBinding), ['schemaVersion', 'mediaType', 'config', 'layers', 'annotations', 'subject', 'artifactType'], 'OCI manifest');
+  const descriptor = object(manifest.config, ['mediaType', 'size', 'digest', 'urls', 'annotations', 'data', 'platform', 'artifactType'], 'OCI image descriptor');
+  if (manifest.schemaVersion !== 2 || !['application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'].includes(String(manifest.mediaType)) || !['application/vnd.oci.image.config.v1+json', 'application/vnd.docker.container.image.v1+json'].includes(String(descriptor.mediaType)) || descriptor.digest !== request.expected.artifactDigest || descriptor.size !== (await validateBinding(request.receipts.artifact)).length || !Array.isArray(manifest.layers)) fail('OCI manifest must bind the exact image config digest and byte size');
+  const source = object(c.source, ['candidatePath', 'files'], 'external source');
+  const candidatePath = path(source.candidatePath, 'external candidate path');
+  if (await realpath(candidatePath) !== candidatePath) fail('external candidate path contains aliases');
+  if (!Array.isArray(source.files) || !source.files.length || source.files.length > 300) fail('external source requires bounded exact file provenance');
+  const files = source.files.map(v => fileBinding(v, 'external source file'));
+  if (new Set(files.map(f => f.path)).size !== files.length || files.some(f => !f.path.startsWith(`${candidatePath}/`))) fail('source bindings must identify distinct files inside the exact candidate');
+  const verificationConfiguration = fileBinding(c.verificationConfiguration, 'native verification configuration');
+  const vc = parseCandidateVerificationConfiguration(await boundFile(verificationConfiguration));
+  if (vc.execution.approvedBy !== request.ownerId || vc.candidate.path !== candidatePath || vc.candidate.expectedDigest !== request.expected.candidateDigest || !vc.negativeControls.length) fail('external native verification must bind this owner, source candidate and negative controls');
+  if (!Array.isArray(c.evaluatorFiles) || !c.evaluatorFiles.length || c.evaluatorFiles.length > 100) fail('protected evaluator file bindings are required');
+  const evaluators = c.evaluatorFiles.map(v => fileBinding(v, 'protected evaluator'));
+  if (vc.environment.NODE_OPTIONS !== undefined || vc.environment.NODE_PATH !== undefined || vc.negativeControls.some(control => control.environment.NODE_OPTIONS !== undefined || control.environment.NODE_PATH !== undefined)) fail('external qualification cannot use Node preload or module-path environment overrides');
+  if (new Set(evaluators.map(f => f.path)).size !== evaluators.length || evaluators.some(f => !files.some(sourceFile => sourceFile.path === f.path && sourceFile.digest === f.digest)) || !evaluators.some(f => invokedCode(vc.check, candidatePath) === f.path)) fail('native check must actually invoke a sealed evaluator included in the verified source snapshot');
+  if (!Array.isArray(c.observerFiles) || !c.observerFiles.length || c.observerFiles.length > 100) fail('sealed observer code file bindings are required');
+  const observers = c.observerFiles.map(v => fileBinding(v, 'observer code'));
+  if (new Set(observers.map(f => f.path)).size !== observers.length || [request.observer.identity, request.observer.check].some(command => !observers.some(f => invokedCode(command, request.observer.cwd) === f.path))) fail('both actual observer commands must invoke sealed code files');
+  const v = object(await boundFile(request.receipts.verification), ['format', 'candidateDigest', 'configurationDigest', 'status', 'passed', 'reason', 'snapshot', 'scenarios', 'executionBoundary', 'recoveryDirectory', 'outputDigest'], 'native verification result');
+  const { outputDigest, ...verificationBody } = v;
+  if (v.format !== 'faktori.candidate-verification-result/v1' || v.passed !== true || v.status !== 'passed' || v.reason !== undefined || v.recoveryDirectory !== undefined || v.executionBoundary !== 'owner_trusted_native' || v.candidateDigest !== request.expected.candidateDigest || v.configurationDigest !== bytesDigest(JSON.stringify(vc)) || outputDigest !== bytesDigest(JSON.stringify(verificationBody)) || !Array.isArray(v.scenarios)) fail('external release requires the exact qualified native verifier result/configuration, never a declared pass');
+  const expectedScenarios = ['healthy', ...vc.negativeControls.map(control => control.id)];
+  if (v.scenarios.length !== expectedScenarios.length || v.scenarios.some((s, index) => !s || typeof s !== 'object' || (s as Data).id !== expectedScenarios[index] || (s as Data).passed !== true || (s as Data).cleanup !== 'confirmed')) fail('external verification must complete every healthy and seeded-negative scenario with cleanup');
+  const bindings = [request.receipts.configuration, request.receipts.verification, request.receipts.artifact, manifestBinding, verificationConfiguration, ...files, ...evaluators, ...observers];
+  for (const binding of bindings) await validateBinding(binding);
+  const snapshot = await captureCandidateSnapshot(candidatePath);
+  if (snapshot.candidateDigest !== request.expected.candidateDigest || snapshot.fileCount !== files.length || stable(v.snapshot) !== stable(snapshot)) fail('qualified source snapshot and complete file provenance changed');
+  return bindings;
+}
+async function validateObservationEvidence(observation: LiveProductObservation): Promise<void> {
+  for (const binding of [...observation.receiptBindings, ...observation.artifactBindings]) await validateBinding(binding);
+  if (observation.request.profile === 'external_hosted' && stable(await receiptBasis(observation.request)) !== stable(observation.receiptBindings)) fail('external characterization dependency set changed');
+}
 function identity(value: unknown, request: ProductBaselineObservationRequest): ProductLiveIdentity {
-  const d = object(value, ['format', 'productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision'], 'observed identity');
+  const extra = request.profile === 'external_hosted' ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] as const : [];
+  const d = object(value, ['format', 'productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', ...extra], 'observed identity');
   const expected = request.expected;
   if (d.format !== 'faktori.product-live-identity/v1') fail('observer identity format mismatch');
   for (const key of ['productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision'] as const) if (d[key] !== expected[key]) fail('actual runtime identity differs from the adopted candidate/source/schema');
-  return { productId: expected.productId, environment: expected.environment, candidateDigest: expected.candidateDigest, sourceRevision: expected.sourceRevision, artifactDigest: expected.artifactDigest, schemaRevision: expected.schemaRevision };
+  for (const key of extra) if (d[key] !== expected[key]) fail('actual external target origin/resource/immutable manifest mismatch');
+  return { productId: expected.productId, environment: expected.environment, candidateDigest: expected.candidateDigest, sourceRevision: expected.sourceRevision, artifactDigest: expected.artifactDigest, schemaRevision: expected.schemaRevision, ...(request.profile === 'external_hosted' ? { targetOrigin: expected.targetOrigin, resourceId: expected.resourceId, releaseManifestDigest: expected.releaseManifestDigest } : {}) };
 }
 async function runObserver(request: ProductBaselineObservationRequest, command: ObserverCommand): Promise<unknown> {
   const result = await new BoundedCommandRunner().run({ ...command, cwd: request.observer.cwd, env: request.observer.environment, timeoutMs: request.observer.limits.timeoutMs, stdoutMaxBytes: request.observer.limits.outputMaxBytes, stderrMaxBytes: request.observer.limits.outputMaxBytes });
@@ -289,7 +360,7 @@ async function runObserver(request: ProductBaselineObservationRequest, command: 
 }
 async function observe(request: ProductBaselineObservationRequest): Promise<{ identity: ProductLiveIdentity; checks: NonNullable<LiveProductObservation['checks']> }> {
   const first = identity(await runObserver(request, request.observer.identity), request);
-  const c = object(await runObserver(request, request.observer.check), ['format', 'productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', 'checks'], 'runtime check');
+  const c = object(await runObserver(request, request.observer.check), ['format', 'productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', 'checks', ...(request.profile === 'external_hosted' ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] : [])], 'runtime check');
   const checks = object(c.checks, ['authenticated', 'persistence', 'compatibility', 'recovery', 'outcome', 'outcomeText'], 'runtime checks');
   if (c.format !== 'faktori.product-live-check/v1' || ['authenticated', 'persistence', 'compatibility', 'recovery', 'outcome'].some(key => checks[key] !== true)) fail('authenticated/persistence/compatibility/recovery/outcome observations must all pass');
   const { checks: _checks, ...checkIdentity } = c;
@@ -304,18 +375,25 @@ export async function observeProductBaseline(value: unknown): Promise<LiveProduc
   const requestDigest = digest(request);
   return transaction(request.journalPath, async entries => {
     const previous = replay(entries, request.id, 'observation', requestDigest);
-    if (previous) { const payload = previous.payload as LiveProductObservation; for (const binding of [...payload.receiptBindings, ...payload.artifactBindings]) await validateBinding(binding); return payload; }
+    if (previous) { const payload = previous.payload as LiveProductObservation; await validateObservationEvidence(payload); return payload; }
     current(entries, request.productId, request.expectedParentDigest);
     await capacity(request.journalPath, entries, Buffer.byteLength(JSON.stringify(request)) + 50000);
     const receiptBindings = await receiptBasis(request);
+    if (request.profile === 'external_hosted') {
+      const reserve = Buffer.byteLength(JSON.stringify(request)) + Buffer.byteLength(JSON.stringify(receiptBindings)) + 50000;
+      if (reserve > 2_000_000) fail('external observation exceeds the bounded journal entry before commands');
+      await capacity(request.journalPath, entries, reserve);
+    }
     await claim(request.journalPath, request.id, 'observation', requestDigest, entries.at(-1)?.digest ?? null);
     let observed: Awaited<ReturnType<typeof observe>> | undefined; let reason: string | undefined;
     try { observed = await observe(request); } catch { reason = 'approved runtime observer failed; retained source/receipt bindings were not promoted'; }
     // Re-read all inputs after the command effects before recording any result.
     for (const binding of receiptBindings) await validateBinding(binding);
+    if (request.profile === 'external_hosted' && stable(await receiptBasis(request)) !== stable(receiptBindings)) fail('external release changed after observer');
+    const externalRelease = request.profile === 'external_hosted' ? { format: 'faktori.external-hosted-characterization/v1' as const, actor: 'faktori.live-product-controller/v1' as const, releaseId: id((await boundFile(request.receipts.configuration) as Data).id, 'external release id'), configurationDigest: request.receipts.configuration.digest, factoryPublicationClaimed: false as const } : undefined;
     const evidenceDirectory = join(dirname(request.journalPath), `live-observation-${randomUUID()}`); await mkdir(evidenceDirectory, { mode: 0o700 });
-    const artifact = await persistPrivateProviderArtifact(evidenceDirectory, [request.id], { requestDigest, observed, reason, capture: 'validated observer JSON; no inherited credentials or stderr persisted' });
-    const observation: LiveProductObservation = { id: request.id, productId: request.productId, ownerId: request.ownerId, environment: request.environment, basis: request.environment === 'local_qualification' ? 'qualified_local_runtime' : 'owner_recorded_delivery_and_observed_runtime', status: observed ? 'passed' : 'failed', requestDigest, request, receiptBindings, ...(observed ?? {}), artifactPaths: [artifact], artifactBindings: [{ path: artifact, digest: bytesDigest(await privateBytes(artifact)) }], ...(reason ? { reason } : {}), productionReady: false };
+    const artifact = await persistPrivateProviderArtifact(evidenceDirectory, [request.id], { requestDigest, observed, reason, ...(externalRelease ? { externalRelease, expected: request.expected, receiptBindings, observerAuthority: request.observer.approval } : {}), capture: 'validated observer JSON; no inherited credentials or stderr persisted' });
+    const observation: LiveProductObservation = { id: request.id, productId: request.productId, ownerId: request.ownerId, environment: request.environment, basis: request.environment === 'local_qualification' ? 'qualified_local_runtime' : request.profile === 'external_hosted' ? 'externally_released_and_observed_runtime' : 'owner_recorded_delivery_and_observed_runtime', status: observed ? 'passed' : 'failed', requestDigest, request, receiptBindings, ...(observed ?? {}), ...(externalRelease ? { externalRelease } : {}), artifactPaths: [artifact], artifactBindings: [{ path: artifact, digest: bytesDigest(await privateBytes(artifact)) }], ...(reason ? { reason } : {}), productionReady: false };
     await append(request.journalPath, entries, request.id, 'observation', request.productId, requestDigest, observation);
     return observation;
   });
@@ -327,16 +405,21 @@ export async function adoptProductBaseline(value: unknown): Promise<LiveProductA
   const journal = path(d.journalPath, 'journalPath'), productId = id(d.productId, 'productId'), ownerId = id(d.ownerId, 'ownerId'), adoptionId = id(d.id, 'id'), observationId = id(d.observationId, 'observationId');
   const requestDigest = digest(d);
   return transaction(journal, async entries => {
-    const previous = replay(entries, adoptionId, 'adoption', requestDigest); if (previous) return previous.payload as LiveProductAdoption;
+    const previous = replay(entries, adoptionId, 'adoption', requestDigest); if (previous) {
+      const adopted = previous.payload as LiveProductAdoption;
+      const observed = entries.find(e => e.id === adopted.observationId && e.digest === adopted.observationDigest)?.payload as LiveProductObservation | undefined;
+      if (observed?.request.profile === 'external_hosted') await validateObservationEvidence(observed);
+      return adopted;
+    }
     current(entries, productId, parent(d.expectedParentDigest));
     await capacity(journal, entries);
     const entry = entries.find(e => e.id === observationId && e.kind === 'observation');
     const observation = entry?.payload as LiveProductObservation | undefined;
     if (!entry || observation?.status !== 'passed' || observation.productId !== productId || observation.ownerId !== ownerId) fail('adoption requires a matching passed owner runtime observation');
-    for (const binding of [...observation.receiptBindings, ...observation.artifactBindings]) await validateBinding(binding);
+    await validateObservationEvidence(observation);
     await claim(journal, adoptionId, 'adoption', requestDigest, entries.at(-1)?.digest ?? null);
     await observe(observation.request);
-    for (const binding of [...observation.receiptBindings, ...observation.artifactBindings]) await validateBinding(binding);
+    await validateObservationEvidence(observation);
     const adoption: LiveProductAdoption = { id: adoptionId, productId, ownerId, environment: observation.environment, observationId, observationDigest: entry.digest, authority: 'owner_adoption_only', productionReady: false };
     await append(journal, entries, adoptionId, 'adoption', productId, requestDigest, adoption); return adoption;
   });
@@ -348,7 +431,13 @@ export async function beginProductIncrement(value: unknown): Promise<ProductDisc
   const journal = path(d.journalPath, 'journalPath'), productId = id(d.productId, 'productId'), ownerId = id(d.ownerId, 'ownerId'), incrementId = id(d.id, 'id'), adoptionId = id(d.adoptionId, 'adoptionId'), historyPath = path(d.historyPath, 'historyPath');
   const requestDigest = digest(d);
   return transaction(journal, async entries => {
-    const previous = replay(entries, incrementId, 'increment', requestDigest); if (previous) return (previous.payload as { session: ProductDiscoverySession }).session;
+    const previous = replay(entries, incrementId, 'increment', requestDigest); if (previous) {
+      const prior = previous.payload as { session: ProductDiscoverySession; adoptionId: string; adoptionDigest: string };
+      const adopted = entries.find(e => e.id === prior.adoptionId && e.digest === prior.adoptionDigest)?.payload as LiveProductAdoption | undefined;
+      const observed = adopted && entries.find(e => e.id === adopted.observationId && e.digest === adopted.observationDigest)?.payload as LiveProductObservation | undefined;
+      if (observed?.request.profile === 'external_hosted') await validateObservationEvidence(observed);
+      return prior.session;
+    }
     current(entries, productId, parent(d.expectedParentDigest));
     await capacity(journal, entries);
     const adoptions = entries.filter(e => e.kind === 'adoption'); const adopted = adoptions.at(-1);
@@ -358,10 +447,10 @@ export async function beginProductIncrement(value: unknown): Promise<ProductDisc
     const observationEntry = entries.find(e => e.id === adoption.observationId && e.digest === adoption.observationDigest);
     if (!observationEntry) fail('adopted observation is missing');
     const observation = observationEntry.payload as LiveProductObservation;
-    for (const binding of [...observation.receiptBindings, ...observation.artifactBindings]) await validateBinding(binding);
+    await validateObservationEvidence(observation);
     await claim(journal, incrementId, 'increment', requestDigest, entries.at(-1)?.digest ?? null);
     await observe(observation.request);
-    for (const binding of [...observation.receiptBindings, ...observation.artifactBindings]) await validateBinding(binding);
+    await validateObservationEvidence(observation);
     const expected = observation.request.expected;
     const source = { reference: `file:${journal}#${observationEntry.id}`, revision: observationEntry.digest };
     const ideaSource = object(d.ideaSource, ['reference', 'revision'], 'owner idea source');

@@ -9,6 +9,7 @@ import { runProductDiscoveryProposal } from './production/index.ts';
 import { importProductDefinitionDraft, renderProductDefinitionDraftPrompt, productDefinitionDraftOutputSchema } from './production/index.ts';
 import { runProductDefinitionDraft } from './production/index.ts';
 import { inspectProductDesign, inspectProductDesignChange, serializeProductDesign, compileProductDesignHandoff } from './production/index.ts';
+import { renderProductDesignDraftPrompt, productDesignDraftOutputSchema, importProductDesignDraft, runProductDesignDraft } from './production/index.ts';
 import { observeProductBaseline, adoptProductBaseline, beginProductIncrement, readProductLiveJournal, productBaselineObservationScopeDigest } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
@@ -74,6 +75,9 @@ const HELP = `Usage:
   faktori product loop-config <product-definition.json> <delivery-request.json>
   faktori product operations <operations-request.json>
   faktori product design-inspect <product-definition.json> <design.json> [owner-approval.json]
+  faktori product design-prompt <product-definition.json>
+  faktori product import-design <product-definition.json> <private-model-response.json> <expected-definition-digest>
+  faktori product design-propose <private-operator-config.json>
   faktori product design-canonical <design.json>
   faktori product design-change <previous-design.json> <next-design.json>
   faktori product design-compile <product-definition.json> <canonical-design.json> <handoff-request.json>
@@ -207,6 +211,26 @@ async function run(argv: string[]): Promise<void> {
         : action === 'adopt' ? await adoptProductBaseline(request) : await beginProductIncrement(request);
       print(result);
     }
+    return;
+  }
+  if (group === 'product' && action === 'design-prompt') {
+    if (!source || argv.length !== 3) throw new Error('design-prompt requires one accepted product definition');
+    const definition = await json(source, 'product definition');
+    print({ prompt: renderProductDesignDraftPrompt(definition), outputSchema: productDesignDraftOutputSchema(definition) });
+    return;
+  }
+  if (group === 'product' && action === 'import-design') {
+    const expectedDefinitionDigest = argv[4];
+    if (!source || !extra || !expectedDefinitionDigest || argv.length !== 5) throw new Error('import-design requires accepted definition, private response and expected definition digest');
+    const response = await readModelResponse(extra, 'definitionDigest,design', true);
+    print(importProductDesignDraft(await json(source, 'product definition'), { expectedDefinitionDigest, sourceReference: `file:${response.path}`, responseBytes: response.bytes }));
+    return;
+  }
+  if (group === 'product' && action === 'design-propose') {
+    if (!source || argv.length !== 3) throw new Error('design-propose requires one private operator configuration');
+    const result = await runProductDesignDraft(await json(source, 'design provider configuration'));
+    print(result);
+    if (result.status === 'provider_failed' || result.status === 'rejected') process.exitCode = 1;
     return;
   }
   if (group === 'product' && action === 'design-canonical') {

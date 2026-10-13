@@ -264,3 +264,39 @@ The native increment now has a resolved lock for SecureStore 55.0.18 and strict
 full-UI TypeScript checking against integrity-verified official declarations.
 No full dependency install, Pods, simulator boot or binary build was performed:
 roughly 2.4 GB free was below the observed build requirements plus reserve.
+
+## Shared public backend and native qualification continuation
+
+The approved isolated Fly Machine and volume now run candidate B, with OCI
+manifest `sha256:28743a4e6ecb2ff0408656ea2691cf8badccdce80818f73afb005b023ff456f1`
+and image configuration `sha256:7948aefd84c7c2ef4b18f2e79a0cb82101efa74c254d4d575bb58dfe3a50222a`.
+The update retained the same one 512 MB Machine and one 1 GB volume. Public
+continuity acceptance passed for previous web sessions/data and the native
+session audience; candidate B migrated the schema additively to version 2.
+The pre-update schema-1 backup is preserved. Candidate A cannot read schema 2;
+rollback to A requires a stopped restore and an explicit data-loss decision.
+
+Both new native Release builds succeeded. iOS initially failed SecureStore
+with missing entitlements, and a separately signed candidate was rejected by
+AMFI. An app-target-only Xcode simulator build supplied the required simulated
+entitlement sections and now launches and signs in successfully. Android uses
+the separate qualification application ID and a verified debug signature.
+Neither artifact establishes production signing or store distribution.
+
+Actual iOS and Android UI journeys have created and completed items against
+the same public household. Each platform observed the other's item and bought
+state. Android also retained secure sign-in and completion across process
+restart, reconciled an interrupted save, and observed isolation after signing
+into a different synthetic household. Disk exhaustion interrupted iOS saving
+and clean-package installation; original failures were retained. Reclaiming
+only completed task-owned Gradle caches restored capacity and iOS saving
+recovered without changing application source. Full outage/expiry recovery,
+final installed-package acceptance and public external adoption remain open
+until their retained whole-feature receipts are complete.
+
+The v0.2.13 consolidated source journey passed requirements discovery, definition,
+approved design handoff, bounded model design drafting, and existing-product
+adoption through next-feature discovery. Independent review repaired evaluator
+invocation and observer-file binding in the external-hosted profile. These
+synthetic controller fixtures remain human-uncalibrated; actual model execution,
+installed acceptance and public observation are separate evidence gates.

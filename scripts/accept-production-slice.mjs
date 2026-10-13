@@ -112,3 +112,5 @@ try {
 await import('./accept-definition-draft.mjs');
 await import('./accept-product-design.mjs');
 await import('./accept-live-product-cycle.mjs');
+await import('./accept-design-draft.mjs');
+await import('./accept-existing-product-adoption.mjs');

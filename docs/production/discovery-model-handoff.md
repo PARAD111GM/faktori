@@ -1,6 +1,73 @@
 # Discovery model handoff
 
-This handoff uses the owner's existing Codex CLI session to obtain a structured requirements proposal. Faktori does not launch a provider, select a model, or treat the response as owner approval.
+This handoff uses the owner's existing Codex CLI session to obtain a structured
+requirements proposal. The attended native command launches only the explicitly
+selected route; model output never becomes owner approval.
+
+## Attended native proposal
+
+Create and save a raw-idea discovery session first. Prepare an existing product
+workspace and a private artifact directory with mode `0700`. Supply their
+canonical absolute paths, the saved history, an operator-chosen proposal ID and
+the exact qualified CLI executable in a private configuration:
+
+```json
+{
+  "historyPath": "/absolute/private/discovery.jsonl",
+  "proposalId": "proposal.model.1",
+  "workspacePath": "/absolute/private/product",
+  "artifactsDirectory": "/absolute/private/discovery-artifacts",
+  "provider": {
+    "kind": "codex",
+    "executable": "/absolute/path/to/codex",
+    "model": "OWNER_SELECTED_MODEL",
+    "reasoning": "high",
+    "contextIsolation": "bounded",
+    "nativeAccessApproved": true
+  },
+  "limits": {
+    "maxRuntimeMinutes": 5,
+    "maxRetries": 0,
+    "maxOutputBytes": 2000000,
+    "maxResponseBytes": 250000
+  }
+}
+```
+
+Set `nativeAccessApproved` only for the operator-approved native route, workspace
+and data scope. Do not copy the example as authority. The model must be available
+through the selected executable/account; Faktori never substitutes a separately
+billed provider. Then run:
+
+```sh
+faktori discovery propose /absolute/private/operator-config.json
+```
+
+The command renders the current interview, writes its structured output schema,
+executes one read-only native proposal turn and retains private lifecycle,
+bounded raw capture and complete normalized artifacts. Only a completed native
+turn with a valid exact response may append a proposal. The immutable interview
+history rejects stale or concurrent writers. Failed, malformed or overflowing
+turns retain their artifacts and cannot append; the CLI exits nonzero for a
+provider failure or rejected response. Read-only/bounded context does not prove
+OS filesystem isolation, and this route remains attended.
+
+Runtime bounds apply per attempt; maximum provider time is that bound multiplied
+by `maxRetries + 1`. Retrying is bounded to at most two additional attempts and
+never retries authentication, quota, denial or uncertain interruption. No token
+or financial cap is inferred from runtime/output bounds; reported usage remains
+separate. Exact replay of the same recorded proposal/configuration checks retained
+response bytes and launches no provider. Conflicting reused IDs fail. A later
+interview revision uses a new proposal ID.
+
+Review the result with `discovery resume`, record real owner answers with
+`discovery answer`, then request the next proposal against that same history.
+Consequential owner decisions and definition acceptance remain separate steps.
+
+## Manual provider handoff
+
+The explicit prompt/schema/file-import path remains available for operators who
+already ran the vendor CLI themselves. These commands do not launch a provider.
 
 ## Prepare and run
 

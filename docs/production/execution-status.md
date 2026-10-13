@@ -30,7 +30,7 @@ product, signed native artifact or live acceptance.
 
 | Slice | Current gate | Required outcome |
 | --- | --- | --- |
-| Attended web | Fresh independent acceptance and resume pending | Real scoped provider execution, independent full-feature acceptance, retained full artifacts, restart/resume and intervention measurements |
+| Attended web | Local attended qualification passed; human calibration pending | Real scoped provider execution, independent full-feature acceptance, retained full artifacts, restart/resume and intervention measurements |
 | Production web | Resource selection and release authority pending | Exact candidate deployed to an approved HTTPS runtime with real persistence, sign-in/isolation where required, logs, restore and recovery proof |
 | Live web increment | Live baseline pending | Feature development preserves current clients/data, bounds concurrent work, rehearses migration/recovery and proves signed-in behavior after release |
 | Mobile feasibility | Android native build and broader native acceptance pending | Shared-codebase iOS and Android build plus representative native/device capabilities; signing/distribution ownership established separately |
@@ -91,8 +91,9 @@ and Hermes bundles. The compatible iOS simulator app compiled, installed and
 launched. Its native UI added an item, reloaded storage, then displayed the saved
 item after stop/relaunch; the SQLite record was inspected independently. This
 local-storage feasibility slice has no qualified shared backend/auth, physical
-device, signing or store distribution. Android native compilation remains pending
-an installed SDK and owner-handled license requirements. Neither platform is
+device, signing or store distribution. Android native compilation remains pending SDK installation. The owner approved
+free SDK/emulator installation and standard SDK license acceptance; installation
+has encountered local disk capacity limits. Neither platform is
 claimed production-ready.
 
 Hosted deployment, real-user/product acceptance, independent human calibration,
@@ -100,3 +101,29 @@ live-product increments and qualified automatic operation remain open. The
 [hosted qualification proposal](hosted-qualification-proposal.md) supplies a
 concrete starting resource configuration; its account and spending authority
 remain unapproved. Existing product environments were not changed.
+
+## Observed v0.2.8 discovery and release preparation
+
+The v0.2.8 source and clean installed-package feature journeys, typechecking,
+build and packed verifier passed. The installed `discovery propose` command
+completed a real GPT-6.1-Sol request through the selected native Codex executable,
+retained the response and appended its sourced adaptive question. Exact replay
+returned `already_recorded` with zero provider attempts and the same session
+digest. The proposal is unaccepted; it cannot change the owner's full factory
+scope, authorize execution or establish live-product readiness. Independent
+source security review reported no high-confidence blockers in this path.
+
+The installed v0.2.7 attended web loop subsequently succeeded with two fresh
+independent Sol reviews and both protected controller acceptance receipts.
+Resuming the succeeded run retained the same stages and provider artifacts,
+without another model launch. The browser journey includes immutable uncertain
+save retry, confirmed-save refresh recovery, account-switch isolation and SQLite
+persistence. A separate container journey proved unprivileged execution on a
+fresh volume, idempotent save/retry and persisted sessions/data after restart.
+Evaluators remain model-authored and have not been independently human-calibrated.
+
+A separate hardened hosted candidate passed local HTTPS/browser/API, migration,
+backup/restore and container feature journeys, including an AMD64 container on
+local emulation. Its public HTTPS deployment and live-user operation remain
+unverified. Local TLS, simulated users and emulated architecture are explicitly
+separate from hosting qualification. No external resource was provisioned.

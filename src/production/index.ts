@@ -5,3 +5,4 @@ export * from './delivery.ts';
 export * from './operations.ts';
 export * from './interventions.ts';
 export * from './discovery-session.ts';
+export * from './discovery-provider.ts';

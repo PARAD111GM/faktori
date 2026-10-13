@@ -26,6 +26,14 @@ try {
   assert.equal(answered.revision, 2);
   assert.equal(cli('discovery', 'resume', history).answers.length, 1);
   assert.equal(cli('discovery', 'prompt', history).outputSchema.properties.status.enum[0], 'proposed');
+  const beforeNative = await readFile(history, 'utf8');
+  const unapprovedNative = await save('unapproved-native.json', {
+    historyPath: history, proposalId: 'native.unapproved', workspacePath: root, artifactsDirectory: root,
+    provider: { kind: 'codex', executable: process.execPath, model: 'synthetic', reasoning: 'high', contextIsolation: 'bounded', nativeAccessApproved: false },
+    limits: { maxRuntimeMinutes: 1, maxRetries: 0, maxOutputBytes: 4096, maxResponseBytes: 1024 },
+  });
+  assert.throws(() => cli('discovery', 'propose', unapprovedNative));
+  assert.equal(await readFile(history, 'utf8'), beforeNative);
   assert.throws(() => cli('discovery', 'save', sessionPath, history));
   const modelPath = await save('model-output.json', { status: 'proposed', text: 'Investigate technicians offline workflow before choosing architecture.', questions: [{ text: 'Must technicians record work offline?', topic: 'native', id: 'model.offline' }] });
   const imported = cli('discovery', 'import-proposal', history, modelPath, 'discovery.model.1');

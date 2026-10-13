@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { isAbsolute, resolve } from 'node:path';
 import { prepareAttendedSpike, inspectProductDefinition, compileProductHierarchy, assembleProductContext, compileProductDelivery, serializeProductDeliveryLoop, inspectProductOperations, appendSpikeIntervention, readSpikeInterventions } from './production/index.ts';
 import { prepareProductDiscoverySession, saveProductDiscoverySession, loadProductDiscoverySession, recordProductDiscoveryAnswer, recordProductDiscoveryProposal, renderProductDiscoveryPrompt, productDiscoveryProposalOutputSchema } from './production/index.ts';
+import { runProductDiscoveryProposal } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -58,6 +59,7 @@ const HELP = `Usage:
   faktori discovery answer <absolute-history.jsonl> <answer.json>
   faktori discovery proposal <absolute-history.jsonl> <proposal.json>
   faktori discovery import-proposal <absolute-history.jsonl> <model-response.json> <proposal-id>
+  faktori discovery propose <operator-config.json>
   faktori discovery prompt <absolute-history.jsonl>
   faktori discovery hierarchy <product-definition.json>
   faktori discovery context <product-definition.json> <node-id>
@@ -177,6 +179,13 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'discovery' && action === 'propose') {
+    if (!source || argv.length !== 3) throw new Error('discovery propose requires one explicit operator configuration');
+    const result = await runProductDiscoveryProposal(await json(source, 'discovery provider configuration'));
+    print(result);
+    if (result.status === 'provider_failed' || result.status === 'rejected') process.exitCode = 1;
+    return;
+  }
   if (group === 'discovery' && action === 'session') {
     if (!source || argv.length !== 3) throw new Error('discovery session requires one raw idea request');
     print(prepareProductDiscoverySession(await json(source, 'discovery session request')));

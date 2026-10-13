@@ -37,6 +37,8 @@ try {
     'package/docs/releases/v0.2.5.md',
     'package/docs/releases/v0.2.6.md',
     'package/docs/releases/v0.2.7.md',
+    'package/docs/releases/v0.2.8.md',
+    'package/dist/production/discovery-provider.js',
     'package/docs/production/discovery-model-handoff.md',
     'package/dist/production/discovery-session.js',
     'package/dist/production/delivery.js',

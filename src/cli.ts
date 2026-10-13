@@ -8,6 +8,7 @@ import { prepareProductDiscoverySession, saveProductDiscoverySession, loadProduc
 import { runProductDiscoveryProposal } from './production/index.ts';
 import { importProductDefinitionDraft, renderProductDefinitionDraftPrompt, productDefinitionDraftOutputSchema } from './production/index.ts';
 import { runProductDefinitionDraft } from './production/index.ts';
+import { inspectProductDesign, inspectProductDesignChange, serializeProductDesign, compileProductDesignHandoff } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -71,6 +72,11 @@ const HELP = `Usage:
   faktori product compile <product-definition.json> <delivery-request.json>
   faktori product loop-config <product-definition.json> <delivery-request.json>
   faktori product operations <operations-request.json>
+  faktori product design-inspect <product-definition.json> <design.json> [owner-approval.json]
+  faktori product design-canonical <design.json>
+  faktori product design-change <previous-design.json> <next-design.json>
+  faktori product design-compile <product-definition.json> <canonical-design.json> <handoff-request.json>
+  faktori product design-loop-config <product-definition.json> <canonical-design.json> <handoff-request.json>
   faktori config resolve <configuration.json>
   faktori context assemble <hierarchy.json> <node-id>
   faktori provision proposal <request.json>
@@ -185,6 +191,44 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'product' && action === 'design-canonical') {
+    if (!source || argv.length !== 3) throw new Error('design-canonical requires one design JSON file');
+    process.stdout.write(serializeProductDesign(await json(source, 'product design')));
+    return;
+  }
+  if (group === 'product' && action === 'design-change') {
+    if (!source || !extra || argv.length !== 4) throw new Error('design-change requires previous and next designs');
+    print(inspectProductDesignChange(await json(source, 'previous design'), await json(extra, 'next design')));
+    return;
+  }
+  if (group === 'product' && action === 'design-inspect') {
+    if (!source || !extra || ![4, 5].includes(argv.length)) throw new Error('design-inspect requires definition, design and optional owner approval');
+    print(inspectProductDesign(await json(source, 'product definition'), await json(extra, 'product design'), argv[4] ? await json(argv[4], 'design approval') : undefined));
+    return;
+  }
+  if (group === 'product' && ['design-compile', 'design-loop-config'].includes(action ?? '')) {
+    const requestPath = argv[4];
+    if (!source || !extra || !requestPath || argv.length !== 5) throw new Error(`${action} requires definition, canonical design and handoff request`);
+    const definitionBytes = await readFile(resolve(source));
+    const designBytes = await readFile(resolve(extra));
+    const requestBytes = await readFile(resolve(requestPath));
+    const definition: unknown = JSON.parse(definitionBytes.toString('utf8'));
+    const design: unknown = JSON.parse(designBytes.toString('utf8'));
+    if (!designBytes.equals(Buffer.from(serializeProductDesign(design)))) throw new Error('design artifact must contain exactly design-canonical output bytes');
+    const request = record(JSON.parse(requestBytes.toString('utf8')), 'design handoff request');
+    const deliveryRequest = { ...record(request.deliveryRequest, 'delivery request') };
+    const bind = (target: InputRecord, key: string, path: string, bytes: Buffer) => {
+      const binding = { path, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` };
+      if (target[key] !== undefined && canonicalJson(target[key]) !== canonicalJson(binding)) throw new Error(`${key} does not match the observed source bytes`);
+      target[key] = binding;
+    };
+    bind(deliveryRequest, 'definitionArtifact', resolve(source), definitionBytes);
+    bind(deliveryRequest, 'requestArtifact', resolve(requestPath), requestBytes);
+    bind(request, 'designArtifact', resolve(extra), designBytes);
+    const result = compileProductDesignHandoff(definition, design, { ...request, deliveryRequest });
+    print(action === 'design-loop-config' ? { status: result.status, requiredBindings: result.requiredBindings, inspection: result.inspection, configuration: result.status === 'ready_for_loop' ? serializeProductDeliveryLoop(result.delivery!) : undefined } : result);
+    return;
+  }
   if (group === 'discovery' && action === 'draft') {
     if (!source || argv.length !== 3) throw new Error('discovery draft requires one explicit operator configuration');
     const result = await runProductDefinitionDraft(await json(source, 'definition provider configuration'));

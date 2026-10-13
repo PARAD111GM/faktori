@@ -688,7 +688,7 @@ async function leanPreflight(config: LeanLoopConfiguration, environment: Readonl
   for (const dependency of config.candidate.dependencies) {
     if (dependency.kind === 'file') {
       try {
-        if (['product-definition', 'product-delivery-request'].includes(dependency.id)) {
+        if (['product-definition', 'product-delivery-request', 'product-design'].includes(dependency.id)) {
           const within = relative(await realpath(config.workspace.path), await realpath(dependency.path));
           if (!within || isAbsolute(within) || within === '..' || within.startsWith(`..${sep}`)) {
             check(`dependency.${dependency.id}`, false, 'product_artifact_outside_approved_workspace');

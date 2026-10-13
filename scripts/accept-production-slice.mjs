@@ -110,3 +110,4 @@ try {
 } finally { await rm(root, { recursive: true, force: true }); }
 
 await import('./accept-definition-draft.mjs');
+await import('./accept-product-design.mjs');

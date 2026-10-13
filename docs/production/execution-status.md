@@ -138,10 +138,11 @@ model approvals. Source typechecking, runtime/Console build and packed verifier
 passed. These are deterministic source/installed journeys using synthetic model
 output; a native model-generated full definition remains a separate next gate.
 
-Android SDK platform 36, build-tools 36.0.0, NDK 27.1.12297006, CMake 3.30.5,
+At this earlier gate, Android SDK platform 36, build-tools 36.0.0, NDK 27.1.12297006, CMake 3.30.5,
 platform-tools and emulator are now installed in the isolated qualification
-directory after explicit owner approval. Android native compilation is underway;
-the system image/runtime journey and production signing remain unverified.
+directory after explicit owner approval. Android native compilation was underway;
+the system image/runtime journey and production signing were unverified. The
+subsequent local build/runtime result is recorded below.
 
 ## Observed shared native feasibility completion
 
@@ -183,5 +184,18 @@ inconsistent reciprocal references caused deterministic rejection. Its original
 bytes and native usage receipt remain preserved; no definition was accepted.
 
 The resulting correction gap is implemented within the operator's existing
-attempt budget. An installed real-model qualification of that corrected path is
-underway; synthetic success does not stand in for its native result.
+attempt budget. The next installed GPT-6.1-Sol request produced a valid proposed
+definition on its first attempt. It remains a model interpretation with no owner
+approval; unresolved interview questions and deployment gaps remain explicit.
+An exact replay returned `already_recorded` with zero attempts and the same
+definition digest. The discovery history hash remained unchanged.
+
+## v0.2.11 requirements-to-design handoff
+
+Source typechecking, runtime/Console build and complete production acceptance
+passed. The new-product and live-increment journeys cover web/iOS/Android design,
+separate approvals, canonical CLI handoff and the existing delivery preflight.
+Changed design bytes and parent-directory symlink escapes prevent execution.
+These deterministic journeys launch no model and prove no deployed application.
+Clean packed-install acceptance also passed under Node 24.20.0, including the
+same new-product/live-increment handoff and artifact-containment journey.

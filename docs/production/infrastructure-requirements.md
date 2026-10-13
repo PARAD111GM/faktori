@@ -2,11 +2,27 @@
 
 The deployment provider and account are not selected yet. This sheet records the decisions and access needed before a real hosted exercise. It does not recommend a vendor or authorize account creation, billing, or deployment.
 
+The [prepared first-hosted-qualification proposal](hosted-qualification-proposal.md)
+supplies a concrete starting configuration and its acceptance limits. Its resource
+and spending choices remain proposed until approved.
+
 ## Start locally without an account
 
 The work can begin with a local development server and a local or disposable database. Keep synthetic data in that environment, use local-only credentials, and verify the product's essential journey and recovery behavior there. This path needs no hosting account, paid service, domain purchase, or production data. It is useful for discovery and implementation, but it does not prove a hosted deployment, public HTTPS behavior, production database durability, or live-user readiness.
 
 An existing CLI login only proves that a command-line tool can authenticate to some provider account. It does not identify an approved project, prove permission to create or change hosting resources, grant spending authority, or authorize a production release. Confirm those separately with the account owner.
+
+The owner does not need to know the infrastructure choices in advance. The
+attended operator prepares one concrete proposal after local acceptance: an
+isolated application environment, a compatible persistent data store, assigned
+HTTPS hostname, synthetic identities, log and restore destinations, and a
+documented resource and spending ceiling. Show the candidate, required account
+access, estimated costs and cleanup/recovery commands before asking the owner
+to approve that proposal. Keep existing product projects outside this scope.
+Prefer the provider-assigned hostname; a purchased domain is unnecessary for
+qualification. An unselected provider is a hosted-release gate, while local
+discovery, application implementation, feature increments and native toolchain
+preparation can continue.
 
 ## Decisions before a disposable hosted web exercise
 

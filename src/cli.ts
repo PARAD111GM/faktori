@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, readFile, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { prepareAttendedSpike, inspectProductDefinition, compileProductHierarchy, assembleProductContext, compileProductDelivery, serializeProductDeliveryLoop, inspectProductOperations, appendSpikeIntervention, readSpikeInterventions } from './production/index.ts';
 import { prepareProductDiscoverySession, saveProductDiscoverySession, loadProductDiscoverySession, recordProductDiscoveryAnswer, recordProductDiscoveryProposal, renderProductDiscoveryPrompt, productDiscoveryProposalOutputSchema } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
@@ -56,6 +57,7 @@ const HELP = `Usage:
   faktori discovery resume <absolute-history.jsonl>
   faktori discovery answer <absolute-history.jsonl> <answer.json>
   faktori discovery proposal <absolute-history.jsonl> <proposal.json>
+  faktori discovery import-proposal <absolute-history.jsonl> <model-response.json> <proposal-id>
   faktori discovery prompt <absolute-history.jsonl>
   faktori discovery hierarchy <product-definition.json>
   faktori discovery context <product-definition.json> <node-id>
@@ -119,6 +121,13 @@ function record(value: unknown, label: string): InputRecord {
   return value;
 }
 
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const input = value as InputRecord;
+  return `{${Object.keys(input).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(input[key])}`).join(',')}}`;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -130,6 +139,36 @@ async function json(path: string | undefined, label: string): Promise<unknown> {
   } catch (error) {
     throw new Error(`${label} could not be read as JSON from ${path}: ${errorMessage(error)}`);
   }
+}
+
+async function readModelResponse(path: string): Promise<{ path: string; bytes: Buffer; value: InputRecord }> {
+  if (!isAbsolute(path) || resolve(path) !== path) throw new Error('model response path must be a canonical absolute path');
+  const canonical = await realpath(path);
+  if (canonical !== path) throw new Error('model response path must not contain symlinks or non-canonical components');
+  const before = await lstat(path);
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size > 1_000_000) throw new Error('model response must be an unaliased regular file of at most one megabyte');
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const held = await handle.stat();
+    if (!held.isFile() || held.nlink !== 1 || held.size !== before.size || held.dev !== before.dev || held.ino !== before.ino) throw new Error('model response file changed during open');
+    const bytes = Buffer.alloc(held.size);
+    let position = 0;
+    while (position < bytes.length) {
+      const result = await handle.read(bytes, position, bytes.length - position, position);
+      if (!result.bytesRead) throw new Error('model response file changed during read');
+      position += result.bytesRead;
+    }
+    const after = await handle.stat();
+    const current = await lstat(path);
+    if (after.size !== held.size || after.mtimeMs !== held.mtimeMs || current.dev !== held.dev || current.ino !== held.ino || current.nlink !== 1) throw new Error('model response file changed during read');
+    let value: unknown;
+    try { value = JSON.parse(bytes.toString('utf8')); }
+    catch (error) { throw new Error(`model response is not valid JSON: ${errorMessage(error)}`); }
+    const response = record(value, 'model response');
+    const keys = Object.keys(response).sort();
+    if (keys.join(',') !== 'questions,status,text') throw new Error('model response must contain exactly status, text and questions; operator provenance fields are attached during import');
+    return { path: canonical, bytes, value: response };
+  } finally { await handle.close(); }
 }
 
 function print(value: unknown): void {
@@ -146,6 +185,24 @@ async function run(argv: string[]): Promise<void> {
   if (group === 'discovery' && action === 'save') {
     if (!source || !extra || argv.length !== 4) throw new Error('discovery save requires a session JSON and absolute history path');
     print(await saveProductDiscoverySession(extra, await json(source, 'discovery session')));
+    return;
+  }
+  if (group === 'discovery' && action === 'import-proposal') {
+    const proposalId = argv[4];
+    if (!source || !extra || !proposalId || argv.length !== 5) throw new Error('discovery import-proposal requires an absolute history path, model response JSON path and proposal ID');
+    const { path, bytes, value } = await readModelResponse(extra);
+    const session = await loadProductDiscoverySession(source);
+    const proposal = { ...value, id: proposalId, source: { reference: `file:${path}`, revision: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } };
+    const previous = session.modelProposals.find((item) => item.id === proposalId);
+    if (previous) {
+      const comparable = (item: { id: unknown; status: unknown; text: unknown; source: unknown; questions: unknown }) => canonicalJson({ id: item.id, status: item.status, text: item.text, source: item.source, questions: item.questions });
+      if (comparable(previous) !== comparable({ id: proposalId, status: value.status, text: value.text, source: proposal.source, questions: value.questions })) throw new Error(`proposal ID ${proposalId} already exists with different content or source`);
+      print(session);
+      return;
+    }
+    const next = recordProductDiscoveryProposal(session, proposal);
+    await saveProductDiscoverySession(source, next);
+    print(next);
     return;
   }
   if (group === 'discovery' && ['resume', 'answer', 'proposal', 'prompt'].includes(action ?? '')) {

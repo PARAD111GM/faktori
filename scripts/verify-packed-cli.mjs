@@ -36,6 +36,8 @@ try {
     'package/docs/production/attended-web-spike.md',
     'package/docs/releases/v0.2.5.md',
     'package/docs/releases/v0.2.6.md',
+    'package/docs/releases/v0.2.7.md',
+    'package/docs/production/discovery-model-handoff.md',
     'package/dist/production/discovery-session.js',
     'package/dist/production/delivery.js',
     'package/dist/production/operations.js',

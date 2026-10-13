@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.6 release notes](docs/releases/v0.2.6.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.7 release notes](docs/releases/v0.2.7.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -158,6 +158,12 @@ repository; product artifacts normally live beside product code.
 **Early development. Useful foundations; release validation still in progress.**
 
 The ribbon-cutting committee has been asked to wait for evidence.
+
+v0.2.7 honors the exact owner-selected native CLI executable during launch and
+adds [digest-bound model proposal import](docs/production/discovery-model-handoff.md).
+App model catalogs and separately installed CLI catalogs can differ: observe the
+selected binary and route before claiming model availability. Discovery outputs
+remain proposals until an owner decision accepts scope.
 
 v0.2.6 connects a raw idea to a [resumable requirements interview](docs/production/discovery-session.md),
 a sourced [product definition](docs/production/product-discovery.md), and an

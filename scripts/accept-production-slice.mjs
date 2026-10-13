@@ -27,6 +27,15 @@ try {
   assert.equal(cli('discovery', 'resume', history).answers.length, 1);
   assert.equal(cli('discovery', 'prompt', history).outputSchema.properties.status.enum[0], 'proposed');
   assert.throws(() => cli('discovery', 'save', sessionPath, history));
+  const modelPath = await save('model-output.json', { status: 'proposed', text: 'Investigate technicians offline workflow before choosing architecture.', questions: [{ text: 'Must technicians record work offline?', topic: 'native', id: 'model.offline' }] });
+  const imported = cli('discovery', 'import-proposal', history, modelPath, 'discovery.model.1');
+  assert.equal(imported.revision, 3);
+  assert.equal(imported.modelProposals[0].status, 'proposed');
+  assert.equal(imported.modelProposals[0].source.reference, `file:${modelPath}`);
+  assert.match(imported.modelProposals[0].source.revision, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(cli('discovery', 'import-proposal', history, modelPath, 'discovery.model.1').revision, 3);
+  await save('model-output.json', { status: 'proposed', text: 'spoofed acceptance', questions: [], ownerId: 'fixture-owner' });
+  assert.throws(() => cli('discovery', 'import-proposal', history, modelPath, 'discovery.model.2'));
   const definition = JSON.parse(await readFile('examples/production/product-definition.json', 'utf8'));
   const definitionPath = await save('definition.json', definition);
   const inspected = cli('discovery', 'inspect', definitionPath);

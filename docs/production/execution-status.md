@@ -30,10 +30,10 @@ product, signed native artifact or live acceptance.
 
 | Slice | Current gate | Required outcome |
 | --- | --- | --- |
-| Attended web | Installed provider-to-product journey pending | Real scoped provider execution, independent full-feature acceptance, retained full artifacts, restart/resume and intervention measurements |
+| Attended web | Fresh independent acceptance and resume pending | Real scoped provider execution, independent full-feature acceptance, retained full artifacts, restart/resume and intervention measurements |
 | Production web | Resource selection and release authority pending | Exact candidate deployed to an approved HTTPS runtime with real persistence, sign-in/isolation where required, logs, restore and recovery proof |
 | Live web increment | Live baseline pending | Feature development preserves current clients/data, bounds concurrent work, rehearses migration/recovery and proves signed-in behavior after release |
-| Mobile feasibility | Native toolchain/build proof pending | Shared-codebase iOS and Android build plus representative native/device capabilities; signing/distribution ownership established separately |
+| Mobile feasibility | Android native build and broader native acceptance pending | Shared-codebase iOS and Android build plus representative native/device capabilities; signing/distribution ownership established separately |
 | Qualified automation | Attended evidence pending | Verified transport/native supervision and wake/recovery evidence, independent admission, bounded iterations/cost/attention and safe restart reconciliation |
 | Full release | All qualification gates pending | Installed operator journey, versioned release/update/recovery proof, calibrated independent evaluation and observation period |
 
@@ -64,3 +64,39 @@ does not establish quota, sandbox qualification or a successful product run.
 Xcode 26.3 is installed. Android Studio exists, but the expected Android SDK
 platform-tools/emulator paths were absent. These observations are preparation
 facts, not successful iOS/Android builds or distribution proof.
+
+## Observed attended work after v0.2.6
+
+The v0.2.7 candidate completed the source and installed CLI feature journey,
+runtime/Console typechecking and builds, and clean-package verification. An actual
+subscription-model discovery proposal was imported with exact response-file
+provenance and an idempotent installed retry. A separately installed older CLI
+rejected the requested model; qualification selected the compatible executable
+and observed a representative request rather than silently changing models or
+switching billing routes.
+
+Actual Luna implementation and bounded repairs, followed by Sol diagnosis,
+produced a local SQLite-backed web fixture. The controller's complete browser/API
+journey passed sign-in, denied and cross-household access, persistence through
+reload/restart and failed-save retry. Independent source review found additional
+refresh/session and uncertain-save recovery defects; attended repairs and
+expanded protected scenarios remain recorded as interventions. No independent
+acceptance is inferred from those earlier passes. Full private native captures,
+normalized events, failed candidates and evaluator/package identities are
+retained. Recovered reconnect behavior passed a retained-stream transport replay
+with fatal and incomplete-run controls; that replay is not a new provider call.
+
+A private shared React Native/Expo scaffold generated iOS and Android projects
+and Hermes bundles. The compatible iOS simulator app compiled, installed and
+launched. Its native UI added an item, reloaded storage, then displayed the saved
+item after stop/relaunch; the SQLite record was inspected independently. This
+local-storage feasibility slice has no qualified shared backend/auth, physical
+device, signing or store distribution. Android native compilation remains pending
+an installed SDK and owner-handled license requirements. Neither platform is
+claimed production-ready.
+
+Hosted deployment, real-user/product acceptance, independent human calibration,
+live-product increments and qualified automatic operation remain open. The
+[hosted qualification proposal](hosted-qualification-proposal.md) supplies a
+concrete starting resource configuration; its account and spending authority
+remain unapproved. Existing product environments were not changed.

@@ -8,6 +8,23 @@ product, signed native artifact or live acceptance.
 
 ## Implemented source
 
+The v0.2.15 increment adds [native local delivery](native-delivery.md) to the
+installed observation, adoption and next-discovery path. Its thirteen-stage
+source and installed journeys, typecheck/build and independent review passed.
+Actual retained iOS/Android artifacts were sealed read-only; the lifecycle
+fixtures remain separate from actual device or owner-product acceptance.
+
+The real native-goal qualification exposed unsolicited inference at activation;
+the supervisor stopped, the exact owned goal was paused and all owned groups
+exited. Automatic readiness remains false. A separate attended GPT-6.1-Sol
+bounded run completed with one invocation and passed the independently reviewed
+complete authentication, household isolation, concurrent retry and persistence/
+restart journey. Its synthetic backend is not a real-owner production release.
+
+The [human qualification packet](qualification-review-packet.md) prepares the
+remaining holdout/calibration/cohort evidence. No human labels or cohort days
+are inferred from these runtime and fixture results.
+
 - All 16 lifecycle skills are inventoried in the capability map.
 - Raw ideas start attended discovery sessions. Owner answers and model proposals
   have separate provenance; immutable revision history supports local resume.

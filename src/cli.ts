@@ -11,6 +11,7 @@ import { runProductDefinitionDraft } from './production/index.ts';
 import { inspectProductDesign, inspectProductDesignChange, serializeProductDesign, compileProductDesignHandoff } from './production/index.ts';
 import { renderProductDesignDraftPrompt, productDesignDraftOutputSchema, importProductDesignDraft, runProductDesignDraft } from './production/index.ts';
 import { observeProductBaseline, adoptProductBaseline, beginProductIncrement, readProductLiveJournal, productBaselineObservationScopeDigest } from './production/index.ts';
+import { captureNativeArtifact } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -83,6 +84,7 @@ const HELP = `Usage:
   faktori product design-compile <product-definition.json> <canonical-design.json> <handoff-request.json>
   faktori product design-loop-config <product-definition.json> <canonical-design.json> <handoff-request.json>
   faktori product observe <baseline-observation-request.json>
+  faktori product native-artifact-seal <native-artifact-request.json>
   faktori product observation-scope <baseline-observation-request.json>
   faktori product adopt <baseline-adoption-request.json>
   faktori product next-discovery <increment-discovery-request.json>
@@ -201,6 +203,11 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'product' && action === 'native-artifact-seal') {
+    if (!source || argv.length !== 3) throw new Error('native-artifact-seal requires one actual native artifact path/kind request');
+    print(await captureNativeArtifact(await json(source, 'native artifact')));
+    return;
+  }
   if (group === 'product' && ['observe', 'observation-scope', 'adopt', 'next-discovery', 'live-journal'].includes(action ?? '')) {
     if (!source || argv.length !== 3) throw new Error(`${action} requires one explicit request or journal path`);
     if (action === 'live-journal') print(await readProductLiveJournal(source));

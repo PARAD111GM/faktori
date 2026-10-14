@@ -12,3 +12,4 @@ export * from './design.ts';
 export * from './design-draft.ts';
 export * from './design-provider.ts';
 export * from './live-product.ts';
+export * from './native-delivery.ts';

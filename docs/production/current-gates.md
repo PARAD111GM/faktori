@@ -12,6 +12,14 @@ The production target remains the complete lifecycle for both new products and e
 
 ## Open gates, in order
 
+The v0.2.15 native-local artifact/adoption seam passed its thirteen-stage source
+and clean installed journeys plus independent review. Real retained app/APK
+seals and an actual one-invocation attended model-generated backend feature
+journey also passed. These observations close those bounded implementation
+checks, while the linked owner lifecycle below remains the first incomplete
+gate. See [native local delivery](native-delivery.md) and the prepared
+[human qualification packet](qualification-review-packet.md).
+
 1. **Complete the attended product lifecycle.** Connect actual requirements discovery to a separately accepted product definition and design, generated implementation, independent acceptance, an authorized release, observed adoption, and a subsequent owner-requested feature. Include both greenfield and existing-product paths. The current web receipts are separate synthetic exercises; the linked real-owner journey is not yet proved. Close with one retained evidence chain bound to the same accepted scope and revisions, plus observed delivery and follow-on work.
 2. **Finish source and installed qualification.** The streaming-digest, argv and MCP-exclusion repairs passed source typecheck/build, independently reviewed fifteen-gate acceptance and clean-installed-package feature journeys on the frozen v0.2.14 candidate. New implementation changes require their applicable complete-slice checks and installed qualification before release. No source publication is implied by these checks.
 3. **Qualify real native supervision or retain attended operation.** Prove the installed native transport's bounded activation, one requested turn, exact terminal observation, paused goal, idle wake, restart, cancellation, disconnect handling, and no duplicate launch against the real supported runtime. Bind an expiring readiness witness to the exact source and independent evidence. Otherwise keep automatic dispatch unavailable and continue through the attended route.

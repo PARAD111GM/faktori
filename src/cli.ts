@@ -12,6 +12,7 @@ import { inspectProductDesign, inspectProductDesignChange, serializeProductDesig
 import { renderProductDesignDraftPrompt, productDesignDraftOutputSchema, importProductDesignDraft, runProductDesignDraft } from './production/index.ts';
 import { observeProductBaseline, adoptProductBaseline, beginProductIncrement, readProductLiveJournal, productBaselineObservationScopeDigest } from './production/index.ts';
 import { captureNativeArtifact } from './production/index.ts';
+import { prepareNativeRelease, prepareNativeReleaseUpload, executeNativeRelease, inspectNativeRelease, reconcileNativeRelease } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -85,6 +86,12 @@ const HELP = `Usage:
   faktori product design-loop-config <product-definition.json> <canonical-design.json> <handoff-request.json>
   faktori product observe <baseline-observation-request.json>
   faktori product native-artifact-seal <native-artifact-request.json>
+  faktori product native-release-prepare <configuration-binding-request.json>
+  faktori product native-release-build <approved-build-request.json>
+  faktori product native-release-upload-prepare <signed-build-receipt-request.json>
+  faktori product native-release-upload <separately-approved-upload-request.json>
+  faktori product native-release-inspect <phase-inspection-request.json>
+  faktori product native-release-reconcile <approved-read-only-recovery-request.json>
   faktori product observation-scope <baseline-observation-request.json>
   faktori product adopt <baseline-adoption-request.json>
   faktori product next-discovery <increment-discovery-request.json>
@@ -203,6 +210,13 @@ function print(value: unknown): void {
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'product' && ['native-release-prepare', 'native-release-build', 'native-release-upload-prepare', 'native-release-upload', 'native-release-inspect', 'native-release-reconcile'].includes(action ?? '')) {
+    if (!source || argv.length !== 3) throw new Error('native release requires one explicit protected request');
+    const request = await json(source, 'native release request') as Record<string, unknown>;
+    if (action === 'native-release-build' && request.phase !== 'build_sign_export' || action === 'native-release-upload' && request.phase !== 'upload') throw new Error('native release CLI phase differs from exact approval');
+    print(action === 'native-release-prepare' ? await prepareNativeRelease(request) : action === 'native-release-upload-prepare' ? await prepareNativeReleaseUpload(request) : action === 'native-release-inspect' ? await inspectNativeRelease(request) : action === 'native-release-reconcile' ? await reconcileNativeRelease(request) : await executeNativeRelease(request));
+    return;
+  }
   if (group === 'product' && action === 'native-artifact-seal') {
     if (!source || argv.length !== 3) throw new Error('native-artifact-seal requires one actual native artifact path/kind request');
     print(await captureNativeArtifact(await json(source, 'native artifact')));

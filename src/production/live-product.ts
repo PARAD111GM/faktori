@@ -1,4 +1,5 @@
 import { nativeDeliveryCanonical, parseNativeDeliveryIdentities, parseNativeBackendIdentity, validateNativeDeliveryConfiguration, type NativeDeliveryIdentity, type NativeBackendIdentity } from './native-delivery.ts';
+import { nativeReleaseObservationBasis, parseNativeSignedReleaseTargets, type NativeSignedReleaseTarget } from './native-release.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath } from 'node:fs/promises';
@@ -11,7 +12,7 @@ import { prepareProductDiscoverySession, saveProductDiscoverySession, type Produ
 import type { ProductPlatform, ProductReference } from './discovery.ts';
 import { captureCandidateSnapshot, parseCandidateVerificationConfiguration } from '../verification/index.ts';
 
-export type ProductLiveEnvironment = 'local_qualification' | 'public_production';
+export type ProductLiveEnvironment = 'local_qualification' | 'beta_distribution' | 'public_production';
 export interface LiveFileBinding { path: string; digest: string }
 export interface ProductLiveIdentity {
   productId: string;
@@ -25,11 +26,13 @@ export interface ProductLiveIdentity {
   releaseManifestDigest?: string;
   nativeTargets?: NativeDeliveryIdentity[];
   nativeBackend?: NativeBackendIdentity;
+  nativeReleasedTargets?: NativeSignedReleaseTarget[];
+  nativeReleaseReceiptDigest?: string;
 }
 interface ObserverCommand { command: string; args: string[] }
 export interface ProductBaselineObservationRequest {
   format: 'faktori.product-baseline-observation/v1';
-  profile?: 'managed_lean' | 'external_hosted' | 'native_local';
+  profile?: 'managed_lean' | 'external_hosted' | 'native_local' | 'native_release';
   id: string; productId: string; ownerId: string; environment: ProductLiveEnvironment;
   journalPath: string; expectedParentDigest: string | null;
   receipts: { configuration: LiveFileBinding; verification: LiveFileBinding; artifact?: LiveFileBinding; loopArtifactsDirectory?: string };
@@ -46,7 +49,7 @@ export interface ProductBaselineObservationRequest {
 }
 export interface LiveProductObservation {
   id: string; productId: string; ownerId: string; environment: ProductLiveEnvironment;
-  basis: 'qualified_local_runtime' | 'owner_recorded_delivery_and_observed_runtime' | 'externally_released_and_observed_runtime';
+  basis: 'qualified_local_runtime' | 'owner_recorded_delivery_and_observed_runtime' | 'externally_released_and_observed_runtime' | 'authorized_native_distribution_and_observed_runtime';
   status: 'passed' | 'failed';
   requestDigest: string;
   request: ProductBaselineObservationRequest;
@@ -59,6 +62,7 @@ export interface LiveProductObservation {
   productionReady: false;
   nativeDelivery?: { format: 'faktori.native-local-characterization/v1'; configurationDigest: string; targets: NativeDeliveryIdentity[]; backend: NativeBackendIdentity; distributionQualified: false; factoryPublicationClaimed: false };
   nativeChecks?: { nativeUI: true; lifecycle: true; artifactIdentity: true; signingIdentity: true; backendCompatibility: true };
+  nativeRelease?: { format: 'faktori.native-release-characterization/v1'; configurationDigest: string; receiptDigest: string; environment: ProductLiveEnvironment; targets: NativeSignedReleaseTarget[]; factoryPublicationClaimed: false };
   externalRelease?: { format: 'faktori.external-hosted-characterization/v1'; actor: 'faktori.live-product-controller/v1'; releaseId: string; configurationDigest: string; factoryPublicationClaimed: false };
 }
 export interface LiveProductAdoption {
@@ -133,27 +137,29 @@ function command(value: unknown): ObserverCommand {
 function parseObservation(value: unknown): ProductBaselineObservationRequest {
   bound(value);
   const d = object(value, ['format', 'profile', 'id', 'productId', 'ownerId', 'environment', 'journalPath', 'expectedParentDigest', 'receipts', 'expected', 'observer'], 'observation');
-  if (d.format !== 'faktori.product-baseline-observation/v1' || !['local_qualification', 'public_production'].includes(String(d.environment))) fail('observation format/environment is unsupported');
-  if (d.profile !== undefined && d.profile !== 'managed_lean' && d.profile !== 'external_hosted' && d.profile !== 'native_local') fail('unsupported release profile');
+  if (d.format !== 'faktori.product-baseline-observation/v1' || !['local_qualification', 'beta_distribution', 'public_production'].includes(String(d.environment))) fail('observation format/environment is unsupported');
+  if (d.profile !== undefined && d.profile !== 'managed_lean' && d.profile !== 'external_hosted' && d.profile !== 'native_local' && d.profile !== 'native_release') fail('unsupported release profile');
   const external = d.profile === 'external_hosted';
   const native = d.profile === 'native_local';
+  const release = d.profile === 'native_release';
+  if (!release && d.environment === 'beta_distribution') fail('beta distribution requires its separate native release profile');
   if (native && d.environment !== 'local_qualification') fail('native_local cannot claim public/store delivery');
   if (external && d.environment !== 'public_production') fail('external_hosted requires an already externally released public target');
   const r = object(d.receipts, ['configuration', 'verification', 'artifact', 'loopArtifactsDirectory'], 'receipts');
-  const e = object(d.expected, ['productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', 'sourceReference', 'artifactReference', 'platforms', 'supportedClients', 'contracts', ...(external ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] : []), ...(native ? ['nativeTargets', 'nativeBackend'] : [])], 'expected runtime');
+  const e = object(d.expected, ['productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', 'sourceReference', 'artifactReference', 'platforms', 'supportedClients', 'contracts', ...(external ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] : []), ...(native ? ['nativeTargets', 'nativeBackend'] : []), ...(release ? ['nativeReleasedTargets', 'nativeBackend', 'nativeReleaseReceiptDigest'] : [])], 'expected runtime');
   const o = object(d.observer, ['cwd', 'identity', 'check', 'environment', 'limits', 'approval'], 'observer');
-  const env = object(o.environment, [...ENV_KEYS], 'observer environment');
+  const env = object(o.environment, [...ENV_KEYS, ...(release ? ['HOME'] : [])], 'observer environment');
   const a = object(o.approval, ['nativeAccessApproved', 'approvedBy', 'scope', 'scopeDigest'], 'observer approval');
   if (a.nativeAccessApproved !== true || a.scope !== 'read_only_target') fail('explicit approved native read-only-target observation is required');
   const limits = object(o.limits, ['timeoutMs', 'outputMaxBytes'], 'observer limits');
   if (!Number.isInteger(limits.timeoutMs) || Number(limits.timeoutMs) < 1 || Number(limits.timeoutMs) > 120000 || !Number.isInteger(limits.outputMaxBytes) || Number(limits.outputMaxBytes) < 1024 || Number(limits.outputMaxBytes) > 1000000) fail('observer limits are invalid');
-  const sourceRevision = text(e.sourceRevision, 'sourceRevision', external || native ? 71 : 64);
-  if (!COMMIT.test(sourceRevision) && !((external || native) && SHA.test(sourceRevision))) fail('sourceRevision requires an exact Git commit or external SHA256 source revision');
+  const sourceRevision = text(e.sourceRevision, 'sourceRevision', external || native || release ? 71 : 64);
+  if (!COMMIT.test(sourceRevision) && !((external || native || release) && SHA.test(sourceRevision))) fail('sourceRevision requires an exact Git commit or external SHA256 source revision');
   const result: ProductBaselineObservationRequest = {
     format: d.format, ...(d.profile === undefined ? {} : { profile: d.profile as ProductBaselineObservationRequest['profile'] }), id: id(d.id, 'id'), productId: id(d.productId, 'productId'), ownerId: id(d.ownerId, 'ownerId'), environment: d.environment as ProductLiveEnvironment,
     journalPath: path(d.journalPath, 'journalPath'), expectedParentDigest: parent(d.expectedParentDigest),
     receipts: { configuration: fileBinding(r.configuration, 'configuration'), verification: fileBinding(r.verification, 'verification'), ...(r.artifact === undefined ? {} : { artifact: fileBinding(r.artifact, 'artifact') }), ...(r.loopArtifactsDirectory === undefined ? {} : { loopArtifactsDirectory: path(r.loopArtifactsDirectory, 'loopArtifactsDirectory') }) },
-    expected: { productId: id(e.productId, 'expected.productId'), environment: e.environment as ProductLiveEnvironment, candidateDigest: sha(e.candidateDigest, 'candidateDigest'), sourceRevision, artifactDigest: sha(e.artifactDigest, 'artifactDigest'), schemaRevision: text(e.schemaRevision, 'schemaRevision', 256), sourceReference: text(e.sourceReference, 'sourceReference'), artifactReference: text(e.artifactReference, 'artifactReference'), platforms: platforms(e.platforms), supportedClients: refs(e.supportedClients, 'supportedClients'), contracts: refs(e.contracts, 'contracts'), ...(external ? { targetOrigin: httpsOrigin(e.targetOrigin), resourceId: text(e.resourceId, 'resourceId', 256), releaseManifestDigest: sha(e.releaseManifestDigest, 'releaseManifestDigest') } : {}), ...(native ? { nativeTargets: parseNativeDeliveryIdentities(e.nativeTargets), nativeBackend: parseNativeBackendIdentity(e.nativeBackend) } : {}) },
+    expected: { productId: id(e.productId, 'expected.productId'), environment: e.environment as ProductLiveEnvironment, candidateDigest: sha(e.candidateDigest, 'candidateDigest'), sourceRevision, artifactDigest: sha(e.artifactDigest, 'artifactDigest'), schemaRevision: text(e.schemaRevision, 'schemaRevision', 256), sourceReference: text(e.sourceReference, 'sourceReference'), artifactReference: text(e.artifactReference, 'artifactReference'), platforms: platforms(e.platforms), supportedClients: refs(e.supportedClients, 'supportedClients'), contracts: refs(e.contracts, 'contracts'), ...(external ? { targetOrigin: httpsOrigin(e.targetOrigin), resourceId: text(e.resourceId, 'resourceId', 256), releaseManifestDigest: sha(e.releaseManifestDigest, 'releaseManifestDigest') } : {}), ...(native ? { nativeTargets: parseNativeDeliveryIdentities(e.nativeTargets), nativeBackend: parseNativeBackendIdentity(e.nativeBackend) } : {}), ...(release ? { nativeReleasedTargets: parseNativeSignedReleaseTargets(e.nativeReleasedTargets), nativeBackend: parseNativeBackendIdentity(e.nativeBackend), nativeReleaseReceiptDigest: sha(e.nativeReleaseReceiptDigest, 'nativeReleaseReceiptDigest') } : {}) },
     observer: { cwd: path(o.cwd, 'observer cwd'), identity: command(o.identity), check: command(o.check), environment: Object.fromEntries(Object.entries(env).map(([key, value]) => [key, text(value, `observer environment ${key}`)])), limits: { timeoutMs: Number(limits.timeoutMs), outputMaxBytes: Number(limits.outputMaxBytes) }, approval: { nativeAccessApproved: true, approvedBy: text(a.approvedBy, 'approvedBy', 120), scope: 'read_only_target', scopeDigest: sha(a.scopeDigest, 'scopeDigest') } },
   };
   if (result.expected.productId !== result.productId || result.expected.environment !== result.environment || result.observer.approval.approvedBy !== result.ownerId) fail('runtime/owner approval identity mismatch');
@@ -259,6 +265,7 @@ function replay(entries: ProductLiveJournalEntry[], id: string, kind: ProductLiv
   return previous;
 }
 async function receiptBasis(request: ProductBaselineObservationRequest): Promise<LiveFileBinding[]> {
+  if (request.profile === 'native_release') return nativeReleaseObservationBasis(request, await boundFile(request.receipts.configuration) as Data);
   if (request.profile === 'external_hosted' || request.profile === 'native_local') return characterizedReceiptBasis(request);
   const config = parseLeanLoopConfiguration(await boundFile(request.receipts.configuration));
   if (config.approval.approved !== true || config.approval.approvedBy !== request.ownerId || config.workspace.path !== request.observer.cwd) fail('observer must use the existing owner-approved execution workspace');
@@ -327,6 +334,10 @@ async function characterizedReceiptBasis(request: ProductBaselineObservationRequ
   if (manifest.schemaVersion !== 2 || !['application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'].includes(String(manifest.mediaType)) || !['application/vnd.oci.image.config.v1+json', 'application/vnd.docker.container.image.v1+json'].includes(String(descriptor.mediaType)) || descriptor.digest !== request.expected.artifactDigest || descriptor.size !== (await validateBinding(request.receipts.artifact)).length || !Array.isArray(manifest.layers)) fail('OCI manifest must bind the exact image config digest and byte size');
   extraBindings = [request.receipts.artifact, manifestBinding];
   }
+  return qualifiedNativeSourceBindings(c, request, extraBindings);
+}
+/** Shared existing native-verifier/source proof; does not grant signing or upload authority. */
+export async function qualifiedNativeSourceBindings(c: Record<string, unknown>, request: ProductBaselineObservationRequest, extraBindings: LiveFileBinding[] = []): Promise<LiveFileBinding[]> {
   const source = object(c.source, ['candidatePath', 'files'], 'external source');
   const candidatePath = path(source.candidatePath, 'external candidate path');
   if (await realpath(candidatePath) !== candidatePath) fail('external candidate path contains aliases');
@@ -356,16 +367,16 @@ async function characterizedReceiptBasis(request: ProductBaselineObservationRequ
 }
 async function validateObservationEvidence(observation: LiveProductObservation): Promise<void> {
   for (const binding of [...observation.receiptBindings, ...observation.artifactBindings]) await validateBinding(binding);
-  if ((observation.request.profile === 'external_hosted' || observation.request.profile === 'native_local') && stable(await receiptBasis(observation.request)) !== stable(observation.receiptBindings)) fail('external characterization dependency set changed');
+  if ((observation.request.profile === 'external_hosted' || observation.request.profile === 'native_local' || observation.request.profile === 'native_release') && stable(await receiptBasis(observation.request)) !== stable(observation.receiptBindings)) fail('external characterization dependency set changed');
 }
 function identity(value: unknown, request: ProductBaselineObservationRequest): ProductLiveIdentity {
-  const extra = request.profile === 'external_hosted' ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] : request.profile === 'native_local' ? ['nativeTargets', 'nativeBackend'] : [];
+  const extra = request.profile === 'external_hosted' ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] : request.profile === 'native_local' ? ['nativeTargets', 'nativeBackend'] : request.profile === 'native_release' ? ['nativeReleasedTargets', 'nativeBackend', 'nativeReleaseReceiptDigest'] : [];
   const d = object(value, ['format', 'productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', ...extra], 'observed identity');
   const expected = request.expected;
   if (d.format !== 'faktori.product-live-identity/v1') fail('observer identity format mismatch');
   for (const key of ['productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision'] as const) if (d[key] !== expected[key]) fail('actual runtime identity differs from the adopted candidate/source/schema');
   for (const key of extra) if (nativeDeliveryCanonical(d[key]) !== nativeDeliveryCanonical((expected as unknown as Data)[key])) fail('actual external target origin/resource/immutable manifest mismatch');
-  return { productId: expected.productId, environment: expected.environment, candidateDigest: expected.candidateDigest, sourceRevision: expected.sourceRevision, artifactDigest: expected.artifactDigest, schemaRevision: expected.schemaRevision, ...(request.profile === 'external_hosted' ? { targetOrigin: expected.targetOrigin, resourceId: expected.resourceId, releaseManifestDigest: expected.releaseManifestDigest } : {}), ...(request.profile === 'native_local' ? { nativeTargets: expected.nativeTargets, nativeBackend: expected.nativeBackend } : {}) };
+  return { productId: expected.productId, environment: expected.environment, candidateDigest: expected.candidateDigest, sourceRevision: expected.sourceRevision, artifactDigest: expected.artifactDigest, schemaRevision: expected.schemaRevision, ...(request.profile === 'external_hosted' ? { targetOrigin: expected.targetOrigin, resourceId: expected.resourceId, releaseManifestDigest: expected.releaseManifestDigest } : {}), ...(request.profile === 'native_local' ? { nativeTargets: expected.nativeTargets, nativeBackend: expected.nativeBackend } : {}), ...(request.profile === 'native_release' ? { nativeReleasedTargets: expected.nativeReleasedTargets, nativeBackend: expected.nativeBackend, nativeReleaseReceiptDigest: expected.nativeReleaseReceiptDigest } : {}) };
 }
 async function runObserver(request: ProductBaselineObservationRequest, command: ObserverCommand): Promise<unknown> {
   const result = await new BoundedCommandRunner().run({ ...command, cwd: request.observer.cwd, env: request.observer.environment, timeoutMs: request.observer.limits.timeoutMs, stdoutMaxBytes: request.observer.limits.outputMaxBytes, stderrMaxBytes: request.observer.limits.outputMaxBytes });
@@ -374,17 +385,17 @@ async function runObserver(request: ProductBaselineObservationRequest, command: 
 }
 async function observe(request: ProductBaselineObservationRequest): Promise<{ identity: ProductLiveIdentity; checks: NonNullable<LiveProductObservation['checks']>; nativeChecks?: LiveProductObservation['nativeChecks'] }> {
   const first = identity(await runObserver(request, request.observer.identity), request);
-  const c = object(await runObserver(request, request.observer.check), ['format', 'productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', 'checks', ...(request.profile === 'external_hosted' ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] : []), ...(request.profile === 'native_local' ? ['nativeTargets', 'nativeBackend', 'nativeChecks'] : [])], 'runtime check');
+  const c = object(await runObserver(request, request.observer.check), ['format', 'productId', 'environment', 'candidateDigest', 'sourceRevision', 'artifactDigest', 'schemaRevision', 'checks', ...(request.profile === 'external_hosted' ? ['targetOrigin', 'resourceId', 'releaseManifestDigest'] : []), ...(request.profile === 'native_local' ? ['nativeTargets', 'nativeBackend', 'nativeChecks'] : []), ...(request.profile === 'native_release' ? ['nativeReleasedTargets', 'nativeBackend', 'nativeReleaseReceiptDigest', 'nativeChecks'] : [])], 'runtime check');
   const checks = object(c.checks, ['authenticated', 'persistence', 'compatibility', 'recovery', 'outcome', 'outcomeText'], 'runtime checks');
   if (c.format !== 'faktori.product-live-check/v1' || ['authenticated', 'persistence', 'compatibility', 'recovery', 'outcome'].some(key => checks[key] !== true)) fail('authenticated/persistence/compatibility/recovery/outcome observations must all pass');
-  if (request.profile === 'native_local') {
+  if (request.profile === 'native_local' || request.profile === 'native_release') {
     const nativeChecks = object(c.nativeChecks, ['nativeUI', 'lifecycle', 'artifactIdentity', 'signingIdentity', 'backendCompatibility'], 'native runtime checks');
     if (['nativeUI', 'lifecycle', 'artifactIdentity', 'signingIdentity', 'backendCompatibility'].some(key => nativeChecks[key] !== true)) fail('native runtime checks must all pass');
   }
   const { checks: _checks, nativeChecks: _nativeChecks, ...checkIdentity } = c;
   identity({ ...checkIdentity, format: 'faktori.product-live-identity/v1' }, request);
   identity(await runObserver(request, request.observer.identity), request);
-  return { identity: first, checks: { authenticated: true, persistence: true, compatibility: true, recovery: true, outcome: true, outcomeText: text(checks.outcomeText, 'observed outcome', 8000) }, ...(request.profile === 'native_local' ? { nativeChecks: { nativeUI: true as const, lifecycle: true as const, artifactIdentity: true as const, signingIdentity: true as const, backendCompatibility: true as const } } : {}) };
+  return { identity: first, checks: { authenticated: true, persistence: true, compatibility: true, recovery: true, outcome: true, outcomeText: text(checks.outcomeText, 'observed outcome', 8000) }, ...(['native_local', 'native_release'].includes(request.profile ?? '') ? { nativeChecks: { nativeUI: true as const, lifecycle: true as const, artifactIdentity: true as const, signingIdentity: true as const, backendCompatibility: true as const } } : {}) };
 }
 /** Runs only the separately approved bounded observer; never deploys or grants release authority. */
 export async function observeProductBaseline(value: unknown): Promise<LiveProductObservation> {
@@ -397,7 +408,7 @@ export async function observeProductBaseline(value: unknown): Promise<LiveProduc
     current(entries, request.productId, request.expectedParentDigest);
     await capacity(request.journalPath, entries, Buffer.byteLength(JSON.stringify(request)) + 50000);
     const receiptBindings = await receiptBasis(request);
-    if (request.profile === 'external_hosted' || request.profile === 'native_local') {
+    if (request.profile === 'external_hosted' || request.profile === 'native_local' || request.profile === 'native_release') {
       const reserve = Buffer.byteLength(JSON.stringify(request)) + Buffer.byteLength(JSON.stringify(receiptBindings)) + 50000;
       if (reserve > 2_000_000) fail('external observation exceeds the bounded journal entry before commands');
       await capacity(request.journalPath, entries, reserve);
@@ -407,12 +418,13 @@ export async function observeProductBaseline(value: unknown): Promise<LiveProduc
     try { observed = await observe(request); } catch { reason = 'approved runtime observer failed; retained source/receipt bindings were not promoted'; }
     // Re-read all inputs after the command effects before recording any result.
     for (const binding of receiptBindings) await validateBinding(binding);
-    if ((request.profile === 'external_hosted' || request.profile === 'native_local') && stable(await receiptBasis(request)) !== stable(receiptBindings)) fail('external release changed after observer');
+    if ((request.profile === 'external_hosted' || request.profile === 'native_local' || request.profile === 'native_release') && stable(await receiptBasis(request)) !== stable(receiptBindings)) fail('external release changed after observer');
     const externalRelease = request.profile === 'external_hosted' ? { format: 'faktori.external-hosted-characterization/v1' as const, actor: 'faktori.live-product-controller/v1' as const, releaseId: id((await boundFile(request.receipts.configuration) as Data).id, 'external release id'), configurationDigest: request.receipts.configuration.digest, factoryPublicationClaimed: false as const } : undefined;
     const nativeDelivery = request.profile === 'native_local' ? { format: 'faktori.native-local-characterization/v1' as const, configurationDigest: request.receipts.configuration.digest, targets: request.expected.nativeTargets!, backend: request.expected.nativeBackend!, distributionQualified: false as const, factoryPublicationClaimed: false as const } : undefined;
+    const nativeRelease = request.profile === 'native_release' ? { format: 'faktori.native-release-characterization/v1' as const, configurationDigest: request.receipts.configuration.digest, receiptDigest: request.expected.nativeReleaseReceiptDigest!, environment: request.environment, targets: request.expected.nativeReleasedTargets!, factoryPublicationClaimed: false as const } : undefined;
     const evidenceDirectory = join(dirname(request.journalPath), `live-observation-${randomUUID()}`); await mkdir(evidenceDirectory, { mode: 0o700 });
-    const artifact = await persistPrivateProviderArtifact(evidenceDirectory, [request.id], { requestDigest, observed, reason, ...(externalRelease ? { externalRelease, expected: request.expected, receiptBindings, observerAuthority: request.observer.approval } : {}), ...(nativeDelivery ? { nativeDelivery, expected: request.expected, receiptBindings, observerAuthority: request.observer.approval } : {}), capture: 'validated observer JSON; no inherited credentials or stderr persisted' });
-    const observation: LiveProductObservation = { id: request.id, productId: request.productId, ownerId: request.ownerId, environment: request.environment, basis: request.environment === 'local_qualification' ? 'qualified_local_runtime' : request.profile === 'external_hosted' ? 'externally_released_and_observed_runtime' : 'owner_recorded_delivery_and_observed_runtime', status: observed ? 'passed' : 'failed', requestDigest, request, receiptBindings, ...(observed ?? {}), ...(externalRelease ? { externalRelease } : {}), ...(nativeDelivery ? { nativeDelivery } : {}), artifactPaths: [artifact], artifactBindings: [{ path: artifact, digest: bytesDigest(await privateBytes(artifact)) }], ...(reason ? { reason } : {}), productionReady: false };
+    const artifact = await persistPrivateProviderArtifact(evidenceDirectory, [request.id], { requestDigest, observed, reason, ...(externalRelease ? { externalRelease, expected: request.expected, receiptBindings, observerAuthority: request.observer.approval } : {}), ...(nativeDelivery ? { nativeDelivery, expected: request.expected, receiptBindings, observerAuthority: request.observer.approval } : {}), ...(nativeRelease ? { nativeRelease, expected: request.expected, receiptBindings, observerAuthority: request.observer.approval } : {}), capture: 'validated observer JSON; no inherited credentials or stderr persisted' });
+    const observation: LiveProductObservation = { id: request.id, productId: request.productId, ownerId: request.ownerId, environment: request.environment, basis: request.environment === 'local_qualification' ? 'qualified_local_runtime' : request.profile === 'external_hosted' ? 'externally_released_and_observed_runtime' : request.profile === 'native_release' ? 'authorized_native_distribution_and_observed_runtime' : 'owner_recorded_delivery_and_observed_runtime', status: observed ? 'passed' : 'failed', requestDigest, request, receiptBindings, ...(observed ?? {}), ...(externalRelease ? { externalRelease } : {}), ...(nativeDelivery ? { nativeDelivery } : {}), ...(nativeRelease ? { nativeRelease } : {}), artifactPaths: [artifact], artifactBindings: [{ path: artifact, digest: bytesDigest(await privateBytes(artifact)) }], ...(reason ? { reason } : {}), productionReady: false };
     await append(request.journalPath, entries, request.id, 'observation', request.productId, requestDigest, observation);
     return observation;
   });
@@ -427,7 +439,7 @@ export async function adoptProductBaseline(value: unknown): Promise<LiveProductA
     const previous = replay(entries, adoptionId, 'adoption', requestDigest); if (previous) {
       const adopted = previous.payload as LiveProductAdoption;
       const observed = entries.find(e => e.id === adopted.observationId && e.digest === adopted.observationDigest)?.payload as LiveProductObservation | undefined;
-      if ((observed?.request.profile === 'external_hosted' || observed?.request.profile === 'native_local')) await validateObservationEvidence(observed);
+      if ((observed?.request.profile === 'external_hosted' || observed?.request.profile === 'native_local' || observed?.request.profile === 'native_release')) await validateObservationEvidence(observed);
       return adopted;
     }
     current(entries, productId, parent(d.expectedParentDigest));
@@ -454,7 +466,7 @@ export async function beginProductIncrement(value: unknown): Promise<ProductDisc
       const prior = previous.payload as { session: ProductDiscoverySession; adoptionId: string; adoptionDigest: string };
       const adopted = entries.find(e => e.id === prior.adoptionId && e.digest === prior.adoptionDigest)?.payload as LiveProductAdoption | undefined;
       const observed = adopted && entries.find(e => e.id === adopted.observationId && e.digest === adopted.observationDigest)?.payload as LiveProductObservation | undefined;
-      if ((observed?.request.profile === 'external_hosted' || observed?.request.profile === 'native_local')) await validateObservationEvidence(observed);
+      if ((observed?.request.profile === 'external_hosted' || observed?.request.profile === 'native_local' || observed?.request.profile === 'native_release')) await validateObservationEvidence(observed);
       return prior.session;
     }
     current(entries, productId, parent(d.expectedParentDigest));
@@ -479,6 +491,7 @@ export async function beginProductIncrement(value: unknown): Promise<ProductDisc
         { text: `Baseline environment: ${observation.environment}; evidence basis: ${observation.basis}. No publication, release or new feature approval is inherited.`, source },
         { text: `Preserve supported clients: ${stable(expected.supportedClients)}; contracts: ${stable(expected.contracts)}; schema revision: ${expected.schemaRevision}.`, source },
         ...(observation.nativeDelivery ? [{ text: `Native local qualification only: ${stable(observation.nativeDelivery)}. Physical devices, production signing and distribution are not qualified.`, source }] : []),
+        ...(observation.nativeRelease ? [{ text: `Owner-authorized native distribution baseline: ${stable(observation.nativeRelease)}; backend: ${stable(expected.nativeBackend)}. Preserve exact app/build/publisher/signing/track, artifact and client/backend compatibility. Beta distribution remains beta; synthetic qualification remains local. No signing, upload, store review acceptance or next release authority is inherited.`, source }] : []),
         { text: `Prior observed evaluator outcome (not an owner-selected priority): ${observation.checks!.outcomeText}`, source },
       ],
     } });

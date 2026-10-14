@@ -12,11 +12,16 @@ intervention records. The v0.2.9 draft bridge carries the full interview into a
 sourced proposal-only product definition. It rejects changed owner intent,
 platforms, live baseline, stale snapshots and model-supplied approval.
 
-Local attended web acceptance and resume, a hardened AMD64 container journey,
-and iOS simulator add/reload/relaunch have been observed. These close specific
-local implementation and feasibility gaps; public delivery, Android runtime,
-live-product increments, human evaluator calibration and qualified automatic
-operation remain open. See [execution status](execution-status.md) for the
+Subsequent observed qualification includes the approved synthetic public web
+exercise and schema-2 baseline adoption/restore, shared-backend iOS Simulator and
+Android Emulator journeys, and actual bounded Node/Python generated-feature
+acceptance. The installed native-local artifact/adoption seam also passed.
+The production signing/distribution adapter passed separate synthetic source
+and installed qualification; the deploy skill identifies its distinct build
+and artifact-bound upload approvals. Actual signing/store distribution remain
+unqualified.
+The linked real-owner lifecycle, human evaluator calibration, sustained outcomes
+and qualified automatic operation remain open. See [execution status](execution-status.md) for the
 current gates and [definition draft](definition-draft.md) for the new handoff.
 
 ## Accepted goal and evidence standard

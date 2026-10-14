@@ -117,3 +117,4 @@ await import('./accept-existing-product-adoption.mjs');
 
 await import('./accept-native-supervision.mjs');
 await import('./accept-native-product-cycle.mjs');
+await import('./accept-native-release-cycle.mjs');

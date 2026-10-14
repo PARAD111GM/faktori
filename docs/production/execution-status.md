@@ -21,6 +21,20 @@ bounded run completed with one invocation and passed the independently reviewed
 complete authentication, household isolation, concurrent retry and persistence/
 restart journey. Its synthetic backend is not a real-owner production release.
 
+A separate attended GPT-6-Luna Python generation passed the retained installed
+v0.2.15 controller’s complete HTTP/SQLite feature journey, including injected
+dates, concurrent idempotency, malformed-input rejection, online backup, actual
+restart/restore and detection of a seeded inclusive-date defect. One bounded
+model invocation completed; retained replay launched no model, and every owned
+process exited. This is local synthetic qualification, not owner acceptance.
+
+The v0.2.16 [native release adapter](native-release.md) adds separate build/sign/
+export and exact-artifact upload approvals, durable uncertain-effect custody,
+read-only reconciliation and the existing adoption/next-feature lifecycle. Its
+repaired complete synthetic nine-gate source and clean installed journeys
+passed, alongside typecheck/build, skill verification and independent review. No real store, signing
+or physical-device effect was performed.
+
 The [human qualification packet](qualification-review-packet.md) prepares the
 remaining holdout/calibration/cohort evidence. No human labels or cohort days
 are inferred from these runtime and fixture results.

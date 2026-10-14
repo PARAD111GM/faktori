@@ -8,7 +8,7 @@ import type { LiveFileBinding, ProductBaselineObservationRequest } from './live-
 
 export interface NativeArtifactSeal {
   path: string;
-  kind: 'ios_app_directory' | 'android_apk_file';
+  kind: 'ios_app_directory' | 'android_apk_file' | 'ios_ipa_file' | 'android_aab_file';
   digest: string;
   fileCount: number;
   sizeBytes: number;
@@ -63,7 +63,7 @@ const MAX_ENTRIES = 20000;
 export async function captureNativeArtifact(value: unknown): Promise<NativeArtifactSeal> {
   const d = object(value, ['path', 'kind']);
   const root = canonicalPath(d.path);
-  if (d.kind !== 'ios_app_directory' && d.kind !== 'android_apk_file') fail('unsupported native artifact kind');
+  if (!['ios_app_directory', 'android_apk_file', 'ios_ipa_file', 'android_aab_file'].includes(String(d.kind))) fail('unsupported native artifact kind');
   if (await realpath(root) !== root) fail('artifact alias');
   const entries: Array<{ path: string; kind: string; mode: number; size?: number; digest?: string }> = [];
   const identities: Array<{ path: string; stat: Stats }> = [];
@@ -101,12 +101,13 @@ export async function captureNativeArtifact(value: unknown): Promise<NativeArtif
     } finally { await handle.close(); }
   }
   const rootStat = await lstat(root);
-  if (d.kind === 'ios_app_directory' ? !rootStat.isDirectory() || !root.endsWith('.app') : !rootStat.isFile() || !root.endsWith('.apk')) fail('artifact kind/path mismatch');
+  const suffix = d.kind === 'ios_ipa_file' ? '.ipa' : d.kind === 'android_aab_file' ? '.aab' : '.apk';
+  if (d.kind === 'ios_app_directory' ? !rootStat.isDirectory() || !root.endsWith('.app') : !rootStat.isFile() || !root.endsWith(suffix)) fail('artifact kind/path mismatch');
   await visit(root, '');
   if (!files) fail('empty native artifact');
   for (const original of identities) if (!unchanged(original.stat, await lstat(original.path))) fail('artifact tree changed during seal');
   if (await realpath(root) !== root) fail('artifact alias changed');
-  return { path: root, kind: d.kind, digest: nativeDeliveryDigest({ format: 'faktori.native-artifact-tree/v1', kind: d.kind, entries }), fileCount: files, sizeBytes: total };
+  return { path: root, kind: d.kind as NativeArtifactSeal['kind'], digest: nativeDeliveryDigest({ format: 'faktori.native-artifact-tree/v1', kind: d.kind, entries }), fileCount: files, sizeBytes: total };
 }
 export function parseNativeDeliveryIdentities(value: unknown): NativeDeliveryIdentity[] {
   if (!Array.isArray(value) || !value.length || value.length > 2) fail('one or two native targets required');

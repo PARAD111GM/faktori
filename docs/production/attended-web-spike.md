@@ -1,5 +1,9 @@
 # Prepare an attended requirements-discovery-to-production web spike
 
+This document preserves the original spike preparation. The current installed
+entry point is the [attended operator runbook](attended-operator-runbook.md), which
+connects the implemented discovery, definition, design and delivery commands.
+
 This is the first product-feasibility exercise, not an automatic dispatch pilot.
 Start with the owner's raw idea, exercise existing skills, and measure every
 place a human has to bridge the stages. Keep requirements discovery central.

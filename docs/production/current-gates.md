@@ -1,6 +1,34 @@
 # Current production gates
 
-**Status as of October 13, 2026:** FAKTORI is progressing through a private source and installed-package qualification. Source changes and checks remain in progress; the v0.2.15 implementation branch is pushed, while no package release has been published and the v0.2.16 increment remains local. The first incomplete gate is a single linked, installed attended journey from real requirements discovery through an accepted definition and design, generated implementation, independent acceptance, delivery, observed adoption, and the next requested feature cycle.
+**Status as of October 15, 2026:** The v0.2.17 candidate connects the installed entry skills and installation guide to the [attended operator runbook](attended-operator-runbook.md). The prior qualified v0.2.16 implementation is pushed in [draft PR #13](https://github.com/PARAD111GM/faktori/pull/13); Linux CI passed on commit `be45d3e67864ea4c404113068f62b8d81c0af9c0`, including source and clean installed-package full-feature qualification. Subsequent candidate checks are recorded separately; that prior CI result is not a v0.2.17 receipt. The PR remains a draft; no merge or package release is claimed. The first incomplete gate is a single linked, installed attended journey from real requirements discovery through an accepted definition and design, generated implementation, independent acceptance, delivery, observed adoption, and the next requested feature cycle.
+
+The owner selected the shopping-list app as the product for this journey. A fresh
+private discovery record and scope proposal are prepared. The owner selected
+quantities/units as the first feature. Its local backend/web/native-controller
+candidate passed the repaired 20-gate complete feature journey and independent
+review, including migration, durable retries, backup/restore and Unicode unit
+round trips. The local AMD64 container also passed its sign-in, quantity/unit,
+completion and restart-persistence slice. The repaired iOS Simulator and Android
+Emulator artifacts also passed complete feature/recovery slices and installed-byte
+verification. Both original offline requests reconciled once; iOS astral-unit
+entry/retry and Android astral rendering/cache passed. Direct Android astral-keyboard
+entry remains an automation limitation. Owned test processes were cleaned up.
+The owner accepted the quantities/units candidate and the same-resource public
+test update. That exact image is now deployed on schema 3; runtime file hashes,
+strict-HTTPS browser/API behavior, old-client continuity and same-Machine restart
+persistence passed. A fresh actual schema-3 public backup also passed stopped
+local restore: all application data and quantity/unit fields were preserved,
+both restored session transports were revoked, and fresh authentication and
+recovery worked. Public-HTTPS iOS Simulator and Android Emulator app journeys
+also observed shared quantity/unit creation and completion, signed-in relaunch
+and household isolation. Native offline retry is qualified by the separate
+exact-source local journey; no new public-native outage/retry is claimed.
+Physical-device/store delivery and
+whole-product definition/design acceptance remain open. Earlier
+synthetic qualification is retained as prior evidence, not retroactive owner
+acceptance. Existing temporary hosting restrictions and cleanup remain in force.
+See the [accepted shopping-list increment](owner-shopping-list-increment.md) for
+its scope, observed release, recovery and remaining lifecycle boundary.
 
 The production target remains the complete lifecycle for both new products and existing-product changes: discovery, accepted definition, design and architecture, coherent implementation, independent verification, release, observation, and continued development across web, native iOS, and native Android. A qualified coordinator, isolated feature slice, or deployed synthetic app does not establish that lifecycle.
 

@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.16 release notes](docs/releases/v0.2.16.md) · [Public qualification evidence](docs/production/attended-public-qualification.md) · [Attended spike preparation](docs/production/attended-web-spike.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.17 release notes](docs/releases/v0.2.17.md) · [Attended operator runbook](docs/production/attended-operator-runbook.md) · [Public qualification evidence](docs/production/attended-public-qualification.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -155,7 +155,7 @@ repository; product artifacts normally live beside product code.
 
 ## Where we are
 
-**Early development. Useful foundations; release validation still in progress.**
+**Attended release candidate. Full production qualification remains in progress.**
 
 The [current production gates](docs/production/current-gates.md) distinguish
 attended web/native qualification from the linked discovery-to-production and

@@ -1,5 +1,9 @@
 # Shipped skill capability map
 
+For current installed operation, start with the
+[attended operator runbook](attended-operator-runbook.md). This inventory retains
+its historical source-review baseline; it is not the current launch procedure.
+
 **Evidence basis:** repository revision `3c9de5ed520d74ef0a92b574265e576db96c7928` (the requirements-discovery spike base). This inventory is a source review, not an agent-behavior evaluation or production journey. “Guidance” means a skill tells an agent what to do. “Executable seam” means repository code implements a bounded portion of that behavior. Neither implies a complete installed journey.
 
 ## Implementation after the inventory

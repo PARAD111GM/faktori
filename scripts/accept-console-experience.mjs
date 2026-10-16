@@ -97,6 +97,7 @@ async function navigate(page, view) {
   await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
   await expect(navigation.getByRole('button', { name: view, exact: true })).toHaveAttribute('aria-current', 'page');
   await expect.poll(() => page.evaluate(() => location.hash.split('?')[0])).toBe(`#${view}`);
+  await expect(page.locator('#console-content')).toBeFocused();
 }
 
 async function pendingCleared(page) {

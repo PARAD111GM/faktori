@@ -1,5 +1,5 @@
 import { HelpHeading, HelpSummary } from "./section-help.tsx";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import './styles.css';
@@ -431,9 +431,20 @@ function App() {
   }, []);
   const content = useRef<HTMLDivElement>(null);
   const focusConnectionSettings = useRef(false);
+  const pendingNavigationFocus = useRef(false);
+  const focusContent = useCallback(() => {
+    content.current?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+  useLayoutEffect(() => {
+    if (!pendingNavigationFocus.current) return;
+    pendingNavigationFocus.current = false;
+    focusContent();
+  }, [view, focusContent]);
   const navigate = (next: ReturnType<typeof viewFromHash>): void => {
+    if (next === view) { focusContent(); return; }
+    pendingNavigationFocus.current = true;
     setView(next);
-    window.requestAnimationFrame(() => { content.current?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' }); });
   };
   const revealConnectionSettings = useCallback(() => {
     const input = document.getElementById('console-command-token');

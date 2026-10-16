@@ -47,6 +47,8 @@ try {
     'package/docs/releases/v0.2.15.md',
     'package/docs/releases/v0.2.16.md',
     'package/docs/releases/v0.2.17.md',
+    'package/docs/releases/v0.2.18.md',
+    'package/docs/production/final-qualification-plan.md',
     'package/docs/production/attended-operator-runbook.md',
     'package/docs/production/owner-shopping-list-increment.md',
     'package/docs/production/native-release.md',

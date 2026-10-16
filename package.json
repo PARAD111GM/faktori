@@ -1,6 +1,6 @@
 {
   "name": "faktori",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "faktoriStateFormatVersion": 1,
   "private": false,
   "description": "A self-hosted, vendor-neutral software factory for small teams.",
@@ -148,6 +148,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit --project console/tsconfig.json",
     "test": "vitest run",
     "accept:production": "node scripts/accept-production-slice.mjs",
+    "accept:console": "node scripts/accept-console-experience.mjs",
     "accept:design-draft": "node scripts/accept-design-draft.mjs",
     "accept:existing-adoption": "node scripts/accept-existing-product-adoption.mjs",
     "skills:verify": "node scripts/verify-skill-kit.mjs",

@@ -8,6 +8,7 @@ dist/
 !.env.example
 coverage/
 playwright-report/
+output/playwright/
 test-results/
 __pycache__/
 *.py[cod]

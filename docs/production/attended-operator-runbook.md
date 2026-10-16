@@ -2,7 +2,9 @@
 
 Use the selected installed kit for a new web/native product or the next complete
 feature of an existing product. The supported fallback is attended, bounded
-execution through the selected existing provider. Automatic native supervision
+execution through the selected existing provider. Use the [remaining qualification plan](final-qualification-plan.md)
+for the prospective owner journey, complete responsive experience checks, native
+distribution, human calibration and sustained outcomes. Automatic native supervision
 is not qualified. See [current gates](current-gates.md) for release status and
 the remaining owner, platform, calibration and observation gates.
 

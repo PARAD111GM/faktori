@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, appendFile, lstat, mkdir, open, readFile, readlink, rename, rm, writeFile } from 'node:fs/promises';
+import { access, appendFile, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 
-import { BoundedCommandRunner, NativeCodexProcessRunner, NativeIdentityProbe } from '../execution/transports.ts';
+import { BoundedCommandRunner, NativeCodexProcessRunner, NativeIdentityProbe, persistPrivateProviderArtifact } from '../execution/transports.ts';
 import type { NativeIdentityProbe as NativeIdentityProbeContract } from '../execution/index.ts';
 import { CodexAdapter } from '../providers/codex.ts';
 import { providerContextPayloadDigest, type ProviderCurrentContext, type ProviderRunResult, type ProviderSessionBinding, type ProviderTurnAdapter } from '../providers/contracts.ts';
@@ -688,6 +688,13 @@ async function leanPreflight(config: LeanLoopConfiguration, environment: Readonl
   for (const dependency of config.candidate.dependencies) {
     if (dependency.kind === 'file') {
       try {
+        if (['product-definition', 'product-delivery-request', 'product-design'].includes(dependency.id)) {
+          const within = relative(await realpath(config.workspace.path), await realpath(dependency.path));
+          if (!within || isAbsolute(within) || within === '..' || within.startsWith(`..${sep}`)) {
+            check(`dependency.${dependency.id}`, false, 'product_artifact_outside_approved_workspace');
+            continue;
+          }
+        }
         const info = await lstat(dependency.path);
         const observed = info.isFile() && !info.isSymbolicLink() ? `sha256:${digest(await readFile(dependency.path))}` : '';
         check(`dependency.${dependency.id}`, observed === dependency.digest, observed === dependency.digest ? observed : 'file_digest_mismatch');
@@ -778,12 +785,16 @@ export function managerLoopReceiptReference(receipt: unknown, key: 'evidenceDige
 }
 
 function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase: ManagerLoopPhase, evidence: ManagerLoopWorkspaceEvidence, verification: ManagerLoopVerificationReceipt[], prior?: { stageId?: string; response?: RecordValue; evidence?: ManagerLoopWorkspaceEvidence }): string {
+  const findingsContract = 'The findings field must be string[]: every item is a plain JSON string containing the location, defect, and corrective action; never return finding objects. Illustrative repair example, not an observed finding: {"verdict":"repair","summary":"A source defect requires correction.","findings":["src/example.ts:42: A required value is used before validation; validate it before use."]}.';
   if (config.format === 'faktori.lean-loop/v1') {
     const reviewerVerification = verification.map(({ outputDigest: _outputDigest, evidenceDigest: _evidenceDigest, ...receipt }) => receipt);
     const packet = {
       format: 'faktori.lean-agent-packet/v1', objective: phase.objective,
-      constraints: config.implementationBrief?.constraints ?? ['Do not change the validation-only candidate.'],
+      constraints: config.implementationBrief?.constraints ?? (kind === 'repair' && config.repairApproval?.approved === true
+        ? ['Repair only the stated findings within the approved workspace and repair scope.']
+        : ['Do not change the validation-only candidate.']),
       requirements: config.requirements, acceptanceCriteria: config.acceptanceCriteria,
+      controllerVerification: { owner: 'controller', commands: phase.verification },
       changedFacts: kind === 'repair' || kind === 'review' ? prior?.response ?? {} : {},
       ...(kind === 'review' ? { reviewScope: {
         mode: !config.review.sensitive && prior?.response?.verdict === 'repair' ? 'repair_followup' : 'full_candidate',
@@ -795,15 +806,15 @@ function rolePrompt(config: ExecutableLoopConfiguration, kind: StageKind, phase:
       evidence: { canonicalCandidateDigest: evidence.contentDigest, candidate: { head: evidence.head, branch: evidence.branch, dirty: evidence.dirty }, verification: reviewerVerification },
       nextAction: kind === 'review' ? 'Independently inspect the exact candidate and return a fixed-head verdict.' : kind === 'repair' ? 'Repair only the stated findings within approved scope.' : 'Implement the approved brief within approved scope.',
     };
-    if (kind === 'implement' || kind === 'repair') return `Act as the implementation owner for this bounded Faktori lean loop. Do not commit, merge, push, deploy, publish, change authority, or work outside the approved workspace. Compact packet: ${JSON.stringify(packet)} Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
-    if (kind === 'review') return `Act as an independent read-only reviewer for this bounded Faktori lean loop. Do not edit, commit, merge, push, deploy, publish, or change authority. Compact packet: ${JSON.stringify(packet)} The controller binds your judgment to this candidate; do not return hashes or stage identifiers. Return only strict JSON with exactly these fields: {"verdict":"pass"|"repair","summary":"...","findings":[]}. The findings array is defects-only. When verdict is pass, findings MUST be the literal empty array []; put all positive observations in summary. When verdict is repair, findings MUST contain one or more actionable defects. A pass requires direct inspection and all configured verification receipts to pass against this exact candidate.`;
+    if (kind === 'implement' || kind === 'repair') return `Act as the implementation owner for this bounded Faktori lean loop. Do not commit, merge, push, deploy, publish, change authority, or work outside the approved workspace. Compact packet: ${JSON.stringify(packet)} Configured verification and protected acceptance commands belong to the controller; do not launch or repeat them in this worker. The controller runs them after your turn. Return implemented when the scoped code work is complete and ready for controller verification. Native sandbox denial of localhost binding, browser execution, or another controller-owned verification capability alone does not make completed implementation blocked. Describe any observed verification limitation in summary without claiming unobserved checks passed. Return blocked only for an actual unsafe or impossible scope, unresolved dependency, or other impediment to completing the code work, with its concrete reason in summary. Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
+    if (kind === 'review') return `Act as an independent read-only reviewer for this bounded Faktori lean loop. Do not edit, commit, merge, push, deploy, publish, or change authority. Compact packet: ${JSON.stringify(packet)} Use the supplied controller verification receipts and direct source inspection. Do not repeat controller-owned protected acceptance commands or browser journeys in the read-only sandbox. Report source defects or missing or failed required verification receipts as actionable findings; a sandbox inability to repeat an already-receipted controller check is not itself a source defect. The controller binds your judgment to this candidate; do not return hashes or stage identifiers. Return only strict JSON with exactly these fields: {"verdict":"pass"|"repair","summary":"...","findings":[]}. ${findingsContract} The findings array is defects-only. When verdict is pass, findings MUST be the literal empty array []; put all positive observations in summary. When verdict is repair, findings MUST contain one or more actionable defects. A pass requires direct inspection and all configured verification receipts to pass against this exact candidate.`;
     throw new Error('lean_loop_does_not_launch_manager_roles');
   }
   const common = `You are participating in a bounded Faktori Manager Loop phase. Do not commit, merge, push, deploy, change authority, or work outside the approved workspace. Phase: ${phase.id}. Objective: ${phase.objective}\nAcceptance criteria:\n${phase.acceptanceCriteria.map((item) => `- ${item}`).join('\n')}\nCurrent workspace evidence: ${JSON.stringify(evidence)}.`;
   if (kind === 'manager_brief') return `${common}\nAccepted prior phase summaries: ${JSON.stringify(prior?.response ?? {})}. Act as build manager. During this planning turn, do not edit files; the next implementer turn is explicitly authorized to edit files inside the approved workspace. Missing functionality requested by this phase is expected and is not a blocker. Report blocked only when the accepted objective is contradictory, unsafe, or impossible with the supplied scope. Return only strict JSON: {"status":"ready"|"blocked","brief":"..."}.`;
   if (kind === 'implement') return `${common}\nAccepted manager brief: ${JSON.stringify(prior?.response ?? {})}. Act as the phase implementer. Make the smallest workspace changes that satisfy the accepted phase. Do not assume or require subagent fanout; if the runtime makes specialized native subagents available, use them only for independently useful bounded work. Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
   if (kind === 'repair') return `${common}\nContinue as the same implementer session. Repair only these configured verification or independent review findings: ${JSON.stringify(prior?.response ?? {})}. Return only strict JSON: {"status":"implemented"|"blocked","summary":"..."}.`;
-  if (kind === 'review') return `${common}\nConfigured verification receipts: ${JSON.stringify(verification)}. Act as an independent reviewer. Inspect actual workspace evidence. During this review turn, do not edit files; a later repair implementer turn is authorized to address findings inside the approved workspace. The controller binds your judgment to this candidate; do not return hashes or stage identifiers. Return only strict JSON: {"verdict":"pass"|"repair","summary":"...","findings":[]}. A pass requires the configured verification receipts and direct workspace evidence. Pass findings must be empty; repair findings must contain actionable defects.`;
+  if (kind === 'review') return `${common}\nConfigured verification receipts: ${JSON.stringify(verification)}. Act as an independent reviewer. Inspect actual workspace evidence. During this review turn, do not edit files; a later repair implementer turn is authorized to address findings inside the approved workspace. The controller binds your judgment to this candidate; do not return hashes or stage identifiers. Return only strict JSON: {"verdict":"pass"|"repair","summary":"...","findings":[]}. ${findingsContract} A pass requires the configured verification receipts and direct workspace evidence. Pass findings must be empty; repair findings must contain actionable defects.`;
   return `${common}\nIndependent review receipt: ${JSON.stringify(prior?.response ?? {})}. Configured verification receipts: ${JSON.stringify(verification)}. Act as build manager. During this acceptance turn, do not edit files; this restriction applies only to this manager turn. Accept only if the review passed against this exact evidence. The controller binds your judgment to this candidate and independent review; do not return hashes or stage identifiers. Return only strict JSON: {"accepted":true|false,"summary":"..."}.`;
 }
 
@@ -825,6 +836,9 @@ function contextFor(stageId: string, prompt: string, evidence: ManagerLoopWorksp
 
 function intentFor(config: ExecutableLoopConfiguration, phase: ManagerLoopPhase, stage: { stageId: string; kind: StageKind; round: number }, context: ProviderCurrentContext, evidence: ManagerLoopWorkspaceEvidence, now: string, route?: LeanRouteDecision): RunIntent {
   const branch = evidence.branch === 'HEAD' ? 'detached' : evidence.branch;
+  // Review ordinals identify independent judgments, including multiple passes
+  // after a repair; only genuine repairs consume the provider retry allowance.
+  const attempt = stage.kind === 'repair' ? stage.round + 1 : 1;
   return {
     format: 'faktori.run-intent/v1', runId: stage.stageId, admissionKey: `${config.loopId}:${stage.stageId}`,
     workItem: { id: phase.id, revision: digest(canonical(phase)), role: stage.kind === 'implement' || stage.kind === 'repair' ? 'builder' : stage.kind === 'review' ? 'reviewer' : 'manager' },
@@ -832,7 +846,7 @@ function intentFor(config: ExecutableLoopConfiguration, phase: ManagerLoopPhase,
     context: { packetRevision: context.packetRevision, digest: context.digest },
     execution: { profile: 'native', workspaceId: digest(config.workspace.path), workspacePath: config.workspace.path, providerId: 'codex', model: route?.model ?? config.provider.model, ...((route?.reasoning ?? config.provider.reasoning) === undefined ? {} : { reasoning: route?.reasoning ?? config.provider.reasoning }), approvedInputDigests: [providerContextPayloadDigest(context)] },
     budget: { reservationId: `${stage.stageId}-reservation`, maxRuntimeMinutes: config.limits.maxRuntimeMinutes, estimatedTokens: config.limits.maxTokens, status: 'held' },
-    authority: { authorityRevision: 'manager-loop-human-publication/v1', epoch: 1, scopeDigest: digest(canonical(AUTHORITY)), policy: AUTHORITY }, attempt: stage.round + 1, createdAt: now,
+    authority: { authorityRevision: 'manager-loop-human-publication/v1', epoch: 1, scopeDigest: digest(canonical(AUTHORITY)), policy: AUTHORITY }, attempt, createdAt: now,
   };
 }
 
@@ -846,7 +860,11 @@ async function defaultVerification(command: ManagerLoopVerificationCommand, cwd:
 function defaultAdapter(config: ExecutableLoopConfiguration, environment: Readonly<Record<string, string>>, createId: () => string, suppliedProbe?: NativeIdentityProbeContract, route?: LeanRouteDecision): ProviderTurnAdapter {
   const commands = new BoundedCommandRunner();
   return new CodexAdapter({
-    runner: new NativeCodexProcessRunner({ commands, identityProbe: suppliedProbe ?? new NativeIdentityProbe({ commands, cwd: config.workspace.path, env: environment }), runNonce: createId() }),
+    runner: new NativeCodexProcessRunner({
+      ...(config.format === 'faktori.lean-loop/v1' ? { executable: config.provider.executable } : {}),
+      artifactsDirectory: join(config.artifactsDirectory, 'provider-artifacts'),
+      commands, identityProbe: suppliedProbe ?? new NativeIdentityProbe({ commands, cwd: config.workspace.path, env: environment }), runNonce: createId(),
+    }),
     limits: { maxRuntimeMinutes: config.limits.maxRuntimeMinutes, maxTokens: config.limits.maxTokens, maxRetries: config.limits.maxRepairRounds },
     environment, compatibleModels: [route?.model ?? config.provider.model], contextIsolation: 'bounded',
   });
@@ -978,6 +996,12 @@ export async function runManagerLoop(input: unknown, dependencies: ManagerLoopDe
           providerResult = await adapter.resume(intent, binding, context, lifecycle);
         }
       } else providerResult = await adapter.start(intent, context, lifecycle);
+      // Retain normalized events and final metadata before response validation,
+      // including malformed/failed turns. Artifact failure cannot yield success.
+      await persistPrivateProviderArtifact(join(config.artifactsDirectory, 'provider-artifacts'), ['normalized', config.loopId, id], {
+        format: 'faktori.normalized-provider-artifact/v1', loopId: config.loopId,
+        stageId: id, runId: intent.runId, observedAt: now().toISOString(), result: providerResult,
+      });
     } catch (error) {
       if (subscription?.enabled !== true) throw error;
       if (subscription?.enabled === true && dependencies.routing !== undefined) {

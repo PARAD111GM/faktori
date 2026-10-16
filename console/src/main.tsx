@@ -1,5 +1,5 @@
 import { HelpHeading, HelpSummary } from "./section-help.tsx";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import './styles.css';
@@ -173,25 +173,30 @@ function useConsoleState() {
   useEffect(() => {
     let closed = false;
     let retry: number | undefined;
+    let source: EventSource | undefined;
     const connect = (): void => {
       if (closed) return;
       setConnection('connecting');
-      const source = new EventSource('/api/console/events');
-      source.addEventListener('state', (event) => {
+      const current = new EventSource('/api/console/events');
+      source = current;
+      current.addEventListener('state', (event) => {
+        if (closed || source !== current) return;
         try {
           setState(JSON.parse((event as MessageEvent<string>).data) as ConsoleState);
           setError(undefined);
           setConnection('live');
         } catch { setConnection('disconnected'); setError('Received an invalid live update'); }
       });
-      source.onerror = () => {
-        source.close();
+      current.onerror = () => {
+        current.close();
+        if (closed || source !== current) return;
+        source = undefined;
         setConnection('disconnected');
         if (!closed) retry = window.setTimeout(connect, 2_000);
       };
     };
     connect();
-    return () => { closed = true; if (retry !== undefined) window.clearTimeout(retry); };
+    return () => { closed = true; source?.close(); if (retry !== undefined) window.clearTimeout(retry); };
   }, []);
   const applyState = useCallback((next: ConsoleState) => { setState(next); setError(undefined); }, []);
   return { state, connection, error, refresh, applyState };
@@ -274,7 +279,7 @@ function WorkHierarchy({ hierarchy, filter }: { hierarchy?: Hierarchy; filter: S
   return <div className="split-section hierarchy-section"><section className="panel panel-primary"><HelpHeading level={2} scope="main">Hierarchy</HelpHeading>{nodes.length === 0 ? <Empty title="No hierarchy nodes match this scope" detail="Choose another product or pod filter to inspect the published work hierarchy." /> : <div className="hierarchy-tree">{roots.map((node) => <HierarchyBranch key={node.id} node={node} children={children} />)}</div>}</section><section className="panel panel-support"><HelpHeading level={2} scope="main">Dependencies</HelpHeading>{dependencies.length === 0 ? <Empty title="No dependency edges match this scope" detail="Dependencies are shown only when the coordinator projection publishes an explicit edge." /> : <ul className="dependency-list">{dependencies.map((edge) => <li key={`${edge.from}-${edge.to}`}><span>{allNodeLabels.get(edge.from) ?? edge.from}</span><b>depends on</b><span>{allNodeLabels.get(edge.to) ?? edge.to}</span></li>)}</ul>}</section></div>;
 }
 
-export function Work({ state, token = '', onChanged = () => undefined, runs, selectRun, openLoop, openRequest, openDecision, focusedRequestId, focusedSessionId, submit, submitManagerConnected }: { state: ConsoleState; token?: string; onChanged?: () => void | Promise<void>; runs: Run[]; selectRun: (id: string) => void; openLoop: (id: string) => void; openRequest: (id: string) => void; openDecision?: (id: string) => void; focusedRequestId?: string; focusedSessionId?: string; submit: (command: Command) => void; submitManagerConnected: (action: ManagerConnectedAction) => Promise<void> }) {
+export function Work({ state, token = '', onChanged = () => undefined, runs, selectRun, openLoop, openRequest, openDecision, focusedRequestId, focusedSessionId, submit, submitManagerConnected }: { state: ConsoleState; token?: string; onChanged?: () => void | Promise<void>; runs: Run[]; selectRun: (id: string) => void; openLoop: (id: string) => void; openRequest: (id: string) => void; openDecision?: (id: string) => void; focusedRequestId?: string; focusedSessionId?: string; submit: (command: Command) => void | boolean; submitManagerConnected: (action: ManagerConnectedAction) => Promise<void> }) {
   const [workItemId, setWorkItemId] = useState('');
   const [productId, setProductId] = useState('');
   const [sprintReadiness, setSprintReadiness] = useState<SprintReadiness>();
@@ -292,7 +297,7 @@ export function Work({ state, token = '', onChanged = () => undefined, runs, sel
   }, [state.managerConnected?.sequence]);
   const filter = { productId, podId: '' };
   const projects = [...new Map([...(state.hierarchy?.filters?.products ?? []).map(product => [product.id, product.name] as const), ...(state.workManagement?.projects ?? []).map(project => [project.productId, project.title] as const)].map(([id, name]) => [id, { id, name }])).values()];
-  return <section className="workspace"><SprintReadinessCard report={sprintReadiness} error={sprintReadinessError} /><TicketBoard projectControl={<label>Project<select value={productId} onChange={event => setProductId(event.target.value)}><option value="">All projects</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>} workManagement={state.workManagement} boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} /><EfficientDelivery state={state.efficientDelivery} token={token} onChanged={onChanged} /><ManagerConnected snapshot={state.managerConnected} workManagement={state.workManagement} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submitManagerConnected} /><div className="panel panel-primary section-header work-header"><div><HelpHeading level={2} scope="main">Start approved work</HelpHeading></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { submit({ type: 'start_work', workItemId: workItemId.trim() }); setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
+  return <section className="workspace"><SprintReadinessCard report={sprintReadiness} error={sprintReadinessError} /><TicketBoard projectControl={<label>Project<select value={productId} onChange={event => setProductId(event.target.value)}><option value="">All projects</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>} workManagement={state.workManagement} boards={state.jiraBoards ?? []} runs={runs} filter={filter} selectRun={selectRun} /><EfficientDelivery state={state.efficientDelivery} token={token} onChanged={onChanged} /><ManagerConnected snapshot={state.managerConnected} workManagement={state.workManagement} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submitManagerConnected} /><div className="panel panel-primary section-header work-header"><div><HelpHeading level={2} scope="main">Start approved work</HelpHeading></div><form className="start-work" onSubmit={(event) => { event.preventDefault(); if (workItemId.trim()) { if (submit({ type: 'start_work', workItemId: workItemId.trim() }) !== false) setWorkItemId(''); } }}><label>Eligible work ID<input value={workItemId} onChange={(event) => setWorkItemId(event.target.value)} placeholder="Enter an approved work item ID" /></label><button className="primary" type="submit" disabled={state.admissionPaused}>Start work</button></form></div>
   <ActivityFeed items={state.activity ?? []} filter={filter} selectRun={selectRun} selectLoop={openLoop} selectRequest={openRequest} selectDecision={openDecision} /><ManagerLoops loops={state.managerLoops} filter={filter} /><WorkHierarchy hierarchy={state.hierarchy} filter={filter} /></section>;
 }
 
@@ -310,18 +315,18 @@ export function SprintReadinessCard({ report, error }: { report?: SprintReadines
   return <section className="panel panel-primary sprint-readiness"><div className="panel-heading"><div><HelpHeading level={3} scope="work">Sprint readiness</HelpHeading><p>Read-only admission evidence. This card cannot approve, launch, or repair a sprint.</p></div><span className={`state state-${state}`}>{fresh ? `${report.mode} ready` : report ? `${report.mode} no-go` : 'unknown / no-go'}</span></div>{report?.graphDispatch && <p className="quiet">Queue replenishment: {report.graphDispatch.mode} / {report.graphDispatch.status}. {report.graphDispatch.detail}</p>}{error ? <p className="notice">Sprint readiness is unknown and treated as no-go: {error}</p> : fresh ? <p className="quiet">Observed readiness permits admission in {report.mode} mode until {report.validUntil}. Dispatch rechecks the evidence.</p> : <><p className="notice">Admission is not ready or its observation expired. Refreshing evidence does not grant approval.</p>{report?.blockers.length ? <ul className="findings">{report.blockers.map((blocker) => <li key={blocker.id}><strong>{blocker.problem}</strong><span>{blocker.owner}</span><p>{blocker.nextAction}</p></li>)}</ul> : <p className="quiet">No current blocker details were published; treat this as no-go until a fresh report is available.</p>}</>}</section>;
 }
 
-function ProviderRequests({ run, submit }: { run: Run; submit: (command: Command) => void }) {
+function ProviderRequests({ run, submit }: { run: Run; submit: (command: Command) => void | boolean }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const requests = run.providerRequests?.filter((request) => request.status === 'pending') ?? [];
   if (requests.length === 0) return <p className="quiet">No pending provider questions, permissions, or plans.</p>;
   return <div className="provider-requests">{requests.map((request) => {
     const response = answers[request.requestId] ?? request.options[0] ?? '';
     const selectResponse = request.options.length > 0;
-    return <form className="provider-request" key={request.requestId} onSubmit={(event) => { event.preventDefault(); if (response.trim()) { submit({ type: 'answer', runId: run.runId, requestId: request.requestId, answer: response.trim() }); setAnswers((current) => ({ ...current, [request.requestId]: '' })); } }}><div><span className="request-method">{request.method.replaceAll('_', ' ')}</span><time>{formatDate(request.observedAt)}</time></div><p>{request.prompt}</p><label>{selectResponse ? 'Response' : 'Your response'}{selectResponse ? <select value={response} onChange={(event) => setAnswers((current) => ({ ...current, [request.requestId]: event.target.value }))}>{request.options.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <textarea value={response} onChange={(event) => setAnswers((current) => ({ ...current, [request.requestId]: event.target.value }))} placeholder="Enter a bounded response…" maxLength={16000} />}</label><button className="primary" type="submit" disabled={!response.trim()}>Send response</button></form>;
+    return <form className="provider-request" key={request.requestId} onSubmit={(event) => { event.preventDefault(); if (response.trim()) { if (submit({ type: 'answer', runId: run.runId, requestId: request.requestId, answer: response.trim() }) !== false) setAnswers((current) => ({ ...current, [request.requestId]: '' })); } }}><div><span className="request-method">{request.method.replaceAll('_', ' ')}</span><time>{formatDate(request.observedAt)}</time></div><p>{request.prompt}</p><label>{selectResponse ? 'Response' : 'Your response'}{selectResponse ? <select value={response} onChange={(event) => setAnswers((current) => ({ ...current, [request.requestId]: event.target.value }))}>{request.options.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <textarea value={response} onChange={(event) => setAnswers((current) => ({ ...current, [request.requestId]: event.target.value }))} placeholder="Enter a bounded response…" maxLength={16000} />}</label><button className="primary" type="submit" disabled={!response.trim()}>Send response</button></form>;
   })}</div>;
 }
 
-export function RunDetail({ run, submit, blockers }: { run?: Run; submit: (command: Command) => void; blockers: Blocker[] }) {
+export function RunDetail({ run, submit, blockers }: { run?: Run; submit: (command: Command) => void | boolean; blockers: Blocker[] }) {
   const [message, setMessage] = useState('');
   if (!run) return <section className="workspace"><div className="panel panel-primary"><Empty title="Select a run" detail="Choose a run from Overview or Work to see its progress, evidence, and messages." /></div></section>;
   const timeline = [
@@ -334,7 +339,7 @@ export function RunDetail({ run, submit, blockers }: { run?: Run; submit: (comma
     <div className="detail-grid"><section className="panel panel-primary"><HelpHeading level={3} scope="main">Timeline</HelpHeading><ol className="timeline">{timeline.map((event, index) => <li key={`${event.label}-${index}`}><span /><div><strong>{event.label}</strong><p>{event.detail}</p><time>{formatDate(event.at)}</time></div></li>)}</ol></section><section className="panel panel-support inspection"><HelpHeading level={3} scope="main">Execution</HelpHeading><dl><dt>Provider</dt><dd>{run.provider ?? 'Not observed'}</dd><dt>Model</dt><dd>{run.model ?? 'Not observed'}</dd><dt>Profile</dt><dd>{run.profile ?? 'Not observed'}</dd><dt>Authority</dt><dd>{run.authority?.revoked ? 'Revoked' : `Epoch ${run.authority?.epoch ?? 'not observed'}`}</dd></dl><HelpHeading level={3} scope="main">Evidence</HelpHeading>{run.result?.verification?.length ? <ul className="evidence">{run.result.verification.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="quiet">No verification evidence was published for this run.</p>}<button onClick={() => submit({ type: 'open_record', runId: run.runId })}>Open authoritative record</button></section></div>
     <Blockers blockers={blockers} runId={run.runId} />
     <section className="panel panel-muted request-section"><HelpHeading level={3} scope="main">Provider requests</HelpHeading><ProviderRequests run={run} submit={submit} /></section>
-    <div className="command-area"><form className="panel panel-primary" onSubmit={(event) => { event.preventDefault(); if (message.trim()) { submit({ type: 'message', runId: run.runId, body: message.trim() }); setMessage(''); } }}><label>Send instruction for the next provider turn<textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="State the bounded instruction…" maxLength={16000} /></label><button className="primary" type="submit">Queue instruction</button></form><div className="panel capacity-panel run-actions"><button onClick={() => submit({ type: 'resume', runId: run.runId })}>Resume if eligible</button><button className="danger" onClick={() => submit({ type: 'cancel', runId: run.runId, reason: 'Owner requested cancellation from Console.' })}>Cancel run</button></div></div>
+    <div className="command-area"><form className="panel panel-primary" onSubmit={(event) => { event.preventDefault(); if (message.trim()) { if (submit({ type: 'message', runId: run.runId, body: message.trim() }) !== false) setMessage(''); } }}><label>Send instruction for the next provider turn<textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="State the bounded instruction…" maxLength={16000} /></label><button className="primary" type="submit">Queue instruction</button></form><div className="panel capacity-panel run-actions"><button onClick={() => submit({ type: 'resume', runId: run.runId })}>Resume if eligible</button><button className="danger" onClick={() => submit({ type: 'cancel', runId: run.runId, reason: 'Owner requested cancellation from Console.' })}>Cancel run</button></div></div>
   </section>;
 }
 
@@ -419,6 +424,40 @@ function App() {
   const [focusedSessionId, setFocusedSessionId] = useState<string>();
   const [focusedDecisionId, setFocusedDecisionId] = useState<string>();
   const [token, setToken] = useState(() => document.querySelector<HTMLMetaElement>('meta[name="faktori-console-token"]')?.content ?? '');
+  const [commandFeedback, setCommandFeedback] = useState<string>();
+  const showCommandFeedback = useCallback((message: string) => {
+    setCommandFeedback(message);
+    window.requestAnimationFrame(() => document.getElementById('command-feedback')?.focus());
+  }, []);
+  const content = useRef<HTMLDivElement>(null);
+  const focusConnectionSettings = useRef(false);
+  const pendingNavigationFocus = useRef(false);
+  const focusContent = useCallback(() => {
+    content.current?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+  useLayoutEffect(() => {
+    if (!pendingNavigationFocus.current) return;
+    pendingNavigationFocus.current = false;
+    focusContent();
+  }, [view, focusContent]);
+  const navigate = (next: ReturnType<typeof viewFromHash>): void => {
+    if (next === view) { focusContent(); return; }
+    pendingNavigationFocus.current = true;
+    setView(next);
+  };
+  const revealConnectionSettings = useCallback(() => {
+    const input = document.getElementById('console-command-token');
+    const details = input?.closest('details');
+    if (details) details.open = true;
+    input?.focus();
+  }, []);
+  useEffect(() => {
+    if (view !== 'settings' || !focusConnectionSettings.current) return;
+    focusConnectionSettings.current = false;
+    revealConnectionSettings();
+  }, [view, revealConnectionSettings]);
+  useEffect(() => { if (token) setCommandFeedback(undefined); }, [token]);
   const [pending, setPending] = useState<Pending[]>(readPending);
   const dispatching = useRef(new Set<string>());
 
@@ -447,16 +486,17 @@ function App() {
       .finally(() => dispatching.current.delete(commandKey));
   }, [refresh, token]);
   const submit = useCallback((command: Command) => {
-    if (!token) { window.alert('Enter the local Console command token before sending an owner command.'); return; }
+    if (!token) { showCommandFeedback('Add your local command token in Connection settings, then try the action again.'); return false; }
     const commandKey = JSON.stringify(command);
-    if (dispatching.current.has(commandKey)) return;
+    if (dispatching.current.has(commandKey)) return false;
     dispatching.current.add(commandKey);
     const entry: Pending = { id: makeId(), command, createdAt: new Date().toISOString(), status: 'pending' };
     setPending((current) => [...current, entry]);
     send(entry, commandKey);
-  }, [send, token]);
+    return true;
+  }, [send, token, showCommandFeedback]);
   const retry = (entry: Pending): void => {
-    if (!token) { window.alert('Enter the local Console command token before replaying an owner command.'); return; }
+    if (!token) { showCommandFeedback('Add your local command token in Connection settings, then retry the command.'); return; }
     const commandKey = JSON.stringify(entry.command);
     if (dispatching.current.has(commandKey)) return;
     dispatching.current.add(commandKey);
@@ -473,15 +513,15 @@ function App() {
     else await refresh();
   }, [applyState, refresh, token]);
 
-  if (!state) return <main className="loading"><HelpHeading level={1} scope="main">Faktori</HelpHeading><p>{error ?? 'Loading the coordinator projection…'}</p><button onClick={() => void refresh()}>Retry connection</button></main>;
+  if (!state) return <main className={`loading${error ? ' is-error' : ''}`}><div className="loading-mark"><img src={faktoriLogo} alt="FAKTORI" /></div><h1>{error ? 'Connection unavailable' : 'Connecting to your factory'}</h1><p className="loading-status" role={error ? 'alert' : 'status'}>{error ?? 'Loading the latest work, decisions, and delivery status.'}</p>{error ? <button type="button" onClick={() => void refresh()}>Retry connection</button> : <div className="loading-skeleton" aria-hidden="true"><span /><span /><span /></div>}</main>;
   const primaryViews = ['overview', 'projects', 'artifacts', 'decisions', 'work', 'sessions', 'factory', 'settings'] as const;
   const title = view === 'run' ? 'Run detail' : view[0].toUpperCase() + view.slice(1);
   return <main className="app-shell">
-    <a className="skip-link" href="#console-content">Skip to content</a>
-    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={() => setView('overview')}><img className="brand-combo" src={faktoriLogo} alt="FAKTORI" /></a><nav aria-label="Console views">{primaryViews.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => { if (item === 'projects') setSelectedProjectId(undefined); if (item === 'artifacts') setSelectedArtifactProjectId(undefined); setView(item); }}><Icon name={item} /><span>{item}</span></button>)}</nav></aside>
-    <div className="main-column" id="console-content"><header className="topbar"><div className="title-group"><HelpHeading level={1} scope="main">{title}</HelpHeading><p className="page-description">{({ projects: 'Goals and ordered work from your project catalog. Manager reports do not mark work accepted.', artifacts: 'Safe catalog observations and owner-published snapshots; neither is live filesystem browsing.', sessions: 'Session assignments and recorded contact—not live activity.', decisions: 'Resolve or delegate observed problems. Manager acknowledgement is recorded separately.', factory: 'Resources and operational health. Controls do not widen GM authority.', settings: 'Factory-wide configuration and provider assignments.' } as Record<string, string>)[view]}</p>{(view === 'projects' || view === 'artifacts' || view === 'sessions') && <details className="page-catalog-status"><HelpSummary scope="main">Catalog: {state.workManagement?.status ?? 'unavailable'}</HelpSummary><p>Revision {state.workManagement?.revision ?? 'not observed'}</p><p>Observed {formatDate(state.workManagement?.observedAt)}</p></details>}</div><div className="header-controls">{view === 'factory' && <button onClick={() => submit({ type: 'pause_admission', paused: !state.admissionPaused })}>{state.admissionPaused ? 'Resume admission' : 'Pause admission'}</button>}<button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
-    {error && <div className="alert" role="alert">{error}</div>}{pending.length > 0 && <div className="pending" role="status"><strong>{pending.length} command{pending.length === 1 ? '' : 's'} pending</strong>{pending.map((entry) => <span key={entry.id}>{entry.command.type.replaceAll('_', ' ')} {entry.status === 'failed' ? `failed: ${entry.detail}` : 'awaiting confirmation'}<button type="button" onClick={() => retry(entry)}>{entry.status === 'failed' ? 'Replay safely' : 'Retry with same identity'}</button></span>)}</div>}
-    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><HelpSummary scope="main">Connection settings</HelpSummary><label><span>Local command token</span><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} openDecisions={() => setView('decisions')} />}{view === 'projects' && <Projects workManagement={state.workManagement} selectedProjectId={selectedProjectId} onSelectProject={id => { setSelectedProjectId(id); window.location.hash = 'projects?project=' + encodeURIComponent(id); }} onBackToProjects={() => { setSelectedProjectId(undefined); window.location.hash = 'projects'; }} onRefresh={refresh} navigation={{ openRun: selectRun, openLoop, openRequest }} />}{view === 'artifacts' && <Artifacts workManagement={state.workManagement} initialProjectId={selectedArtifactProjectId} onProjectChange={id => { setSelectedArtifactProjectId(id); window.location.hash = 'artifacts' + (id ? '?project=' + encodeURIComponent(id) : ''); }} />}{view === 'decisions' && <DecisionInbox decisions={(state.workManagement as (WorkManagementState & { decisions?: DecisionProjection[] }) | undefined)?.decisions} token={token} onChanged={refresh} focusedDecisionId={focusedDecisionId} navigation={{ openRun: openDecisionRun, openSession: openDecisionSession }} />}{view === 'sessions' && <Sessions workManagement={state.workManagement} manager={state.managerConnected?.manager} lastHeartbeatAt={state.managerConnected?.lastHeartbeatAt} />}{view === 'work' && <Work state={state} token={token} onChanged={refresh} runs={visibleRuns} selectRun={selectRun} openLoop={openLoop} openRequest={openRequest} openDecision={openDecision} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submit} submitManagerConnected={submitManagerConnected} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
+    <a className="skip-link" href="#console-content" onClick={(event) => { event.preventDefault(); content.current?.focus(); }}>Skip to content</a>
+    <aside className="sidebar"><a className="wordmark" href="#overview" onClick={(event) => { event.preventDefault(); navigate('overview'); }}><img className="brand-combo" src={faktoriLogo} alt="FAKTORI" /></a><nav aria-label="Console views">{primaryViews.map((item) => <button key={item} type="button" className={view === item ? 'active' : ''} aria-current={view === item ? 'page' : undefined} onClick={() => { if (item === 'projects') setSelectedProjectId(undefined); if (item === 'artifacts') setSelectedArtifactProjectId(undefined); navigate(item); }}><Icon name={item} /><span>{item}</span></button>)}</nav></aside>
+    <div className="main-column" id="console-content" ref={content} tabIndex={-1}><header className="topbar"><div className="title-group"><HelpHeading level={1} scope="main">{title}</HelpHeading><p className="page-description">{({ overview: 'Active work, decisions, and delivery at a glance.', work: 'Follow accepted work from assignment through delivery.', projects: 'Goals and ordered work from your project catalog. Manager reports do not mark work accepted.', artifacts: 'Safe catalog observations and owner-published snapshots; neither is live filesystem browsing.', sessions: 'Session assignments and recorded contact—not live activity.', decisions: 'Resolve or delegate observed problems. Manager acknowledgement is recorded separately.', factory: 'Resources and operational health. Controls do not widen GM authority.', settings: 'Factory-wide configuration and provider assignments.' } as Record<string, string>)[view]}</p>{(view === 'projects' || view === 'artifacts' || view === 'sessions') && <details className="page-catalog-status"><HelpSummary scope="main">Catalog: {state.workManagement?.status ?? 'unavailable'}</HelpSummary><p>Revision {state.workManagement?.revision ?? 'not observed'}</p><p>Observed {formatDate(state.workManagement?.observedAt)}</p></details>}</div><div className="header-controls">{view === 'factory' && <button onClick={() => submit({ type: 'pause_admission', paused: !state.admissionPaused })}>{state.admissionPaused ? 'Resume admission' : 'Pause admission'}</button>}<button className="refresh-button" type="button" aria-label="Refresh" onClick={() => void refresh()}><Icon name="refresh" /><span>Refresh</span></button></div></header><div className="status-strip"><Status connection={connection} state={state} /></div>
+    {commandFeedback && <div className="command-feedback" id="command-feedback" role="alert" tabIndex={-1}><p>{commandFeedback}</p><button type="button" onClick={() => { if (view === 'settings') revealConnectionSettings(); else { focusConnectionSettings.current = true; setView('settings'); } }}>Open connection settings</button></div>}{error && <div className="alert" role="alert">{error}</div>}{pending.length > 0 && <div className="pending" role="status"><strong>{pending.length} command{pending.length === 1 ? '' : 's'} pending</strong>{pending.map((entry) => <span key={entry.id}>{entry.command.type.replaceAll('_', ' ')} {entry.status === 'failed' ? `failed: ${entry.detail}` : 'awaiting confirmation'}<button type="button" onClick={() => retry(entry)}>{entry.status === 'failed' ? 'Replay safely' : 'Retry with same identity'}</button></span>)}</div>}
+    {view === 'settings' && <Settings settings={state.settings} token={token} onSaved={() => void refresh()} connectionSettings={<details className="session-key"><HelpSummary scope="main">Connection settings</HelpSummary><label><span>Local command token</span><input id="console-command-token" type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="Required for actions" /></label><small>Kept only in this page session.</small></details>} />}{view === 'overview' && <Overview state={state} runs={visibleRuns} selectRun={selectRun} openWork={() => setView('work')} openDecisions={() => setView('decisions')} />}{view === 'projects' && <Projects workManagement={state.workManagement} selectedProjectId={selectedProjectId} onSelectProject={id => { setSelectedProjectId(id); window.location.hash = 'projects?project=' + encodeURIComponent(id); }} onBackToProjects={() => { setSelectedProjectId(undefined); window.location.hash = 'projects'; }} onRefresh={refresh} navigation={{ openRun: selectRun, openLoop, openRequest }} />}{view === 'artifacts' && <Artifacts workManagement={state.workManagement} initialProjectId={selectedArtifactProjectId} onProjectChange={id => { setSelectedArtifactProjectId(id); window.location.hash = 'artifacts' + (id ? '?project=' + encodeURIComponent(id) : ''); }} />}{view === 'decisions' && <DecisionInbox decisions={(state.workManagement as (WorkManagementState & { decisions?: DecisionProjection[] }) | undefined)?.decisions} token={token} onChanged={refresh} focusedDecisionId={focusedDecisionId} navigation={{ openRun: openDecisionRun, openSession: openDecisionSession }} />}{view === 'sessions' && <Sessions workManagement={state.workManagement} manager={state.managerConnected?.manager} lastHeartbeatAt={state.managerConnected?.lastHeartbeatAt} />}{view === 'work' && <Work state={state} token={token} onChanged={refresh} runs={visibleRuns} selectRun={selectRun} openLoop={openLoop} openRequest={openRequest} openDecision={openDecision} focusedRequestId={focusedRequestId} focusedSessionId={focusedSessionId} submit={submit} submitManagerConnected={submitManagerConnected} />}{view === 'run' && <RunDetail run={selectedRun} submit={submit} blockers={state.blockers ?? []} />}{view === 'factory' && <Factory state={state} runs={visibleRuns} submit={submit} />}</div>
   </main>;
 }
 

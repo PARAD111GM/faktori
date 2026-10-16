@@ -27,14 +27,14 @@ needed.
 1. Bind every observation to the exact revision, environment, authority, and
    criterion. Mark an unavailable required environment as `not_verified` with
    its blocker rather than weakening the criterion.
-2. For a bug, first capture a deterministic reproduction of the reported
-   behavior, then add the smallest behavior-level regression that fails for the
-   defect and passes after the fix. Preserve the original symptom; do not
+2. For a bug, capture the reported behavior through the complete affected
+   feature slice, then exercise its regression at that boundary. Do not use
+   micro-unit testing loops. Preserve the original symptom; do not
    replace its oracle with a fixture, mock success, internal call count, or
    looser assertion.
-3. Exercise the critical story through the highest useful boundary: a journey
-   for a user flow, an integration/contract test for a service seam, or a unit
-   test only for intricate isolated logic. Check UI behavior and accessible
+3. Exercise the critical story through the highest useful boundary: a complete
+   user journey or a full feature integration. Keep validation minimal and
+   rerun only after a material change or failed check. Check UI behavior and accessible
    names, keyboard interaction, focus, semantic feedback, and responsive
    failure states when the criterion exposes a UI.
 4. Add targeted negative evidence for high-risk boundaries: authority,

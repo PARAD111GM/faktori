@@ -1,4 +1,8 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
+import { mkdir, open } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 
 import type {
   ContainerIdentityObservation,
@@ -76,6 +80,10 @@ export interface CodexTransportLifecycle {
 }
 
 export interface NativeCodexProcessRunnerOptions {
+  /** Exact native executable; defaults to codex for existing callers. */
+  executable?: string;
+  /** Optional private operational directory for complete captured transport output. */
+  artifactsDirectory?: string;
   commands?: BoundedCommandRunner;
   identityProbe: NativeIdentityProbeContract;
   runNonce: string;
@@ -465,8 +473,42 @@ function interruptedResult(result: CommandResult): CodexProcessResult {
   return { exitCode: null, stdout: result.stdout, stderr: result.stderr, terminated: true };
 }
 
+function validateProviderArtifactsDirectory(directory: string): void {
+  if (typeof directory !== 'string' || directory.length > 4_096 || directory.includes('\u0000') || !isAbsolute(directory)) {
+    throw new Error('Provider artifacts directory must be an absolute path of at most 4096 characters without NUL');
+  }
+}
+
+/** Private, exclusive artifacts retain captured evidence without public summaries. */
+export async function persistPrivateProviderArtifact(directory: string, identity: readonly string[], value: unknown): Promise<string> {
+  validateProviderArtifactsDirectory(directory);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const directoryHandle = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try {
+    const info = await directoryHandle.stat();
+    if (!info.isDirectory() || (info.mode & 0o077) !== 0) throw new Error('Provider artifacts directory must be private (0700)');
+    // Hash identifiers rather than interpolating provider-controlled names; the
+    // random component permits repeated run identities without overwriting.
+    const name = createHash('sha256').update(JSON.stringify([identity, randomUUID()])).digest('hex');
+    const path = join(directory, `${name}.json`);
+    const handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    try {
+      await handle.writeFile(`${JSON.stringify(value)}\n`, 'utf8');
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await directoryHandle.sync();
+    return path;
+  } finally {
+    await directoryHandle.close();
+  }
+}
+
 /** One native Codex worker, with lifecycle persistence before output consumption. */
 export class NativeCodexProcessRunner {
+  readonly executable: string;
+  readonly artifactsDirectory?: string;
   readonly commands: BoundedCommandRunner;
   readonly identityProbe: NativeIdentityProbeContract;
   readonly runNonce: string;
@@ -475,6 +517,15 @@ export class NativeCodexProcessRunner {
   #active?: ActiveNativeCodexWorker;
 
   constructor(options: NativeCodexProcessRunnerOptions) {
+    const executable = options.executable === undefined ? 'codex' : options.executable;
+    if (typeof executable !== 'string' || executable.trim().length === 0 || executable.length > 1_000 || executable.includes('\u0000')) {
+      throw new Error('Native Codex executable must be a nonempty string of at most 1000 characters without NUL');
+    }
+    // Shape validation and Lean preflight availability do not prove vendor
+    // integrity. Preserve the owner's exact executable selection at launch.
+    this.executable = executable;
+    if (options.artifactsDirectory !== undefined) validateProviderArtifactsDirectory(options.artifactsDirectory);
+    this.artifactsDirectory = options.artifactsDirectory;
     this.commands = options.commands ?? new BoundedCommandRunner();
     this.identityProbe = options.identityProbe;
     this.runNonce = options.runNonce;
@@ -488,7 +539,7 @@ export class NativeCodexProcessRunner {
     let worker: NativeWorkerIdentity | undefined;
     let active: ActiveNativeCodexWorker | undefined;
     const result = await this.commands.run({
-      command: 'codex', args: request.args, cwd: request.cwd, env: request.environment, timeoutMs: request.timeoutMs,
+      command: this.executable, args: request.args, cwd: request.cwd, env: request.environment, timeoutMs: request.timeoutMs,
       stdoutMaxBytes: this.stdoutMaxBytes, stderrMaxBytes: this.stderrMaxBytes, detached: true,
       onLaunched: async (pid): Promise<void> => {
         const observed = await this.identityProbe.inspect(pid);
@@ -506,6 +557,16 @@ export class NativeCodexProcessRunner {
     });
     const explicitlyCancelled = active?.cancelled === true;
     this.#active = undefined;
+    if (this.artifactsDirectory !== undefined) {
+      // This is every captured UTF-8 output string, not an unbounded byte log:
+      // transport caps still apply and an overflow is recorded explicitly.
+      await persistPrivateProviderArtifact(this.artifactsDirectory, ['native', request.runId, this.runNonce], {
+        format: 'faktori.native-provider-artifact/v1', executable: this.executable,
+        runId: request.runId, runNonce: this.runNonce, observedAt: new Date().toISOString(),
+        capture: { representation: 'utf8_decoded_strings', stdoutMaxBytes: this.stdoutMaxBytes, stderrMaxBytes: this.stderrMaxBytes, outputLimitExceeded: result.outputLimitExceeded },
+        explicitlyCancelled, ...(worker === undefined ? {} : { worker }), result,
+      });
+    }
     if (explicitlyCancelled) return interruptedResult(result);
     if (result.timedOut || result.outputLimitExceeded || result.spawnError !== undefined) return interruptedResult(result);
     return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };

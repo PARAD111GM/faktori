@@ -48,7 +48,7 @@ installation or operation of an owner's factory.
 - Keep construction estimates only in the construction records. Never copy or infer an estimate into a native goal `token_budget`; a native hard cap requires an explicit owner request.
 - Use apply_patch for file edits, small conventional commits, no co-author trailers, and no force pushes.
 - Every merge must include release notes in `docs/releases/` and an updated README release-note link. Small patches increment the patch version by one (for example, 0.2.1 to 0.2.2); keep package.json and the root package-lock.json versions aligned. Release notes distinguish source changes from installed/runtime verification and document required update steps.
-- Implement the simplest behavior that meets the specification. Write behavior-level tests; focus deeper tests on authority, concurrency, credentials and recovery.
+- Implement complete feature slices, then run minimal acceptance through the full slice. Do not use micro-unit testing loops. Include necessary authority, credentials, recovery and failure cases in the slice acceptance; rerun only after a material change or failed check.
 - Do not buy services, switch to separately billed inference, alter existing provider credentials, or mutate active product infrastructure.
 - Provider authentication remains in the unmodified vendor CLI. Never print, copy, commit, or export credentials/session tokens into Faktori records.
 - Subagents do not merge or publish. The phase orchestrator reports a candidate commit; the manager verifies and integrates it.
@@ -61,6 +61,6 @@ The committed specification defines the product. Construction progress and per-p
 ## Commands
 
 Use the package scripts under the pinned Node 24/npm 12 toolchain. `npm run check`
-strictly typechecks the TypeScript runtime, runs behavior tests, emits the
+strictly typechecks the TypeScript runtime, runs complete feature-slice acceptance, emits the
 installable package, and verifies the packed CLI from a clean temporary install.
 Do not invent successful checks or start a later phase before manager acceptance.

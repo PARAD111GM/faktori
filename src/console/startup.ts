@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { readFile, realpath } from 'node:fs/promises';
+import { isAbsolute, resolve, sep } from 'node:path';
 
 import { resolveFactoryConfig, type FactoryConfiguration, type FactoryRoleAssignment, type ResolvedFactoryConfiguration } from '../config/index.ts';
 import type { AdmissionLimits, CoordinatorIdentity, DurableCoordinator, ProcessProbe, ProcessStatus } from '../runtime/index.ts';
@@ -13,6 +13,9 @@ import { providerContextPayloadDigest, type ProviderCurrentContext, type Provide
 import { buildDockerExecutionPlan, type ContainerIdentityProbe, type CredentialProfile, type NativeIdentityProbe as NativeIdentityProbeContract } from '../execution/index.ts';
 import { NativeClaudeProcessRunner } from '../execution/claude-process.ts';
 import { CursorAcpStdioTransport } from '../execution/cursor-acp-stdio.ts';
+import { CodexAppServerStdioTransport } from '../execution/codex-app-server.ts';
+import { TaskSupervisor, parseNativeSupervisionConfiguration, type NativeSupervisionConfiguration } from '../execution/task-supervisor.ts';
+import { CodexAppServerAdapter } from '../providers/codex-app-server.ts';
 import { BoundedCommandRunner, DockerCliIdentityProbe, DockerCliRunner, DockerCodexProcessRunner, NativeCodexProcessRunner, NativeIdentityProbe } from '../execution/transports.ts';
 import { CoordinatorGMHealthObserver, CoordinatorGMNightlyStore, CoordinatorGMStore, FactoryGM, NightlyGM, coordinatorGMNightlyAttempts, coordinatorGMState, observeFactoryDeterministically, persistDeterministicFindings, projectGMNightlyState, type GMNightlyReviewPort, type GMProviderDiagnosisPort } from '../gm/index.ts';
 import { observeDurableDockerTermination, observeDurableNativeTermination, prepareDurableDockerTermination, prepareDurableNativeTermination, type DurableDockerTerminationPreparation, type DurableNativeTerminationPreparation } from '../runtime/cancellation.ts';
@@ -34,7 +37,7 @@ import { GitHubWorkObserver } from './github-observer.ts';
 import { spawnGh } from '../integrations/github.ts';
 import { DeliverySynchronizationRuntime, parseDeliverySynchronizationConfiguration, type DeliverySynchronizationConfiguration, type DeliverySynchronizationDependencies } from './delivery-synchronization.ts';
 import { ConsoleSubscriptionRouting, parseSubscriptionRouting, type SubscriptionRoutingConfiguration } from './subscription-routing.ts';
-import { ConsoleWorkflowRuntime, parseWorkflowRuntimeConfiguration, type WorkflowRuntimeConfiguration } from './workflow-runtime.ts';
+import { ConsoleWorkflowRuntime, parseWorkflowRuntimeConfiguration, type WorkflowRuntimeConfiguration, type WorkflowTrustedReadinessPort } from './workflow-runtime.ts';
 import { PersistentPreviewRuntime, parsePersistentPreviewRuntimeConfiguration, type PersistentPreviewRuntimeConfiguration, type PersistentPreviewRuntimeSnapshot } from './preview-runtime.ts';
 import { ConsoleConsultationRuntime, type ConsultationMapping } from './consultation-runtime.ts';
 import type { ConsultationPacket } from '../runtime/consultation.ts';
@@ -82,6 +85,8 @@ export type LocalProviderRoute =
 /** Owner-controlled provider routes. Browser commands can select only these IDs. */
 export interface LocalConsoleRuntimeConfiguration {
   providers: LocalProviderRoute[];
+  /** Explicit owner-controlled opt-in; the normal native Codex route remains exec. */
+  nativeSupervision?: NativeSupervisionConfiguration;
   routing?: SubscriptionRoutingConfiguration;
   consultations?: ConsultationMapping[];
   workItems: Array<{ workItemId: string; intent: RunIntent; context: ProviderCurrentContext; dependsOnWorkItemIds: string[] }>;
@@ -256,6 +261,12 @@ function runtime(value: unknown, factoryId: string): LocalConsoleRuntimeConfigur
   const providers = rawProviders.map(providerRoute);
   if (new Set(providers.map((provider) => `${provider.id}:${provider.profile}`)).size !== providers.length) throw new Error('runtime provider route ID/profile pairs must be unique');
   const providerRoutes = new Set(providers.map((provider) => `${provider.id}:${provider.profile}`));
+  const nativeSupervision = input?.nativeSupervision === undefined ? undefined : parseNativeSupervisionConfiguration(input.nativeSupervision);
+  if (nativeSupervision !== undefined) {
+    const route = providers.find(provider => provider.id === 'codex' && provider.profile === 'native');
+    if (nativeSupervision.factoryId !== factoryId || !route || route.id !== 'codex' || route.profile !== 'native'
+      || route.contextIsolation !== 'bounded' || !route.compatibleModels.includes(nativeSupervision.model)) throw new Error('native_supervision_route_or_factory_mismatch');
+  }
   if (!Array.isArray(input?.workItems)) throw new Error('runtime must include explicit eligible workItems');
   const workItems = input.workItems.map((item) => {
     const candidate = object(item); const intent = candidate?.intent as RunIntent | undefined; const context = candidate?.context as ProviderCurrentContext | undefined;
@@ -331,7 +342,7 @@ function runtime(value: unknown, factoryId: string): LocalConsoleRuntimeConfigur
       return mapping;
     });
   })();
-  return { providers, workItems, resumePlans, ...(routing ? { routing } : {}), ...(consultations ? { consultations } : {}), ...(gm === undefined ? {} : { gm }) };
+  return { providers, workItems, resumePlans, ...(nativeSupervision === undefined ? {} : { nativeSupervision }), ...(routing ? { routing } : {}), ...(consultations ? { consultations } : {}), ...(gm === undefined ? {} : { gm }) };
 }
 
 /** Explicit test seam. Production startup never supplies a transcript or mock runner. */
@@ -436,6 +447,14 @@ export function parseLocalConsoleConfiguration(value: unknown): LocalConsoleConf
       throw new Error(`runtime.gm.reviewRoutes[${index}].intent.budget.estimatedTokens must fit limits.maxTokens (${configuredLimits.maxTokens}); raise the configured token limit or lower the GM route estimate before startup`);
     }
   });
+  if (configuredRuntime?.nativeSupervision !== undefined) {
+    const profile = configuredRuntime.nativeSupervision;
+    const workspace = resolve(profile.workspacePath);
+    for (const protectedPath of [journalPath, projectionPath, profile.artifactsDirectory, profile.witness?.path, profile.mcpExclusion?.path].filter((path): path is string => path !== undefined)) {
+      const target = resolve(protectedPath);
+      if (target === workspace || target.startsWith(workspace + sep)) throw new Error('native_supervision_control_storage_must_be_outside_workspace');
+    }
+  }
   if (configuredRuntime?.gm?.mode === 'nightly' && configuredRuntime.gm.schedule?.enabled && commandToken === undefined) throw new Error('enabled nightly GM requires an explicit commandToken for the local scheduler route');
   const managerLoops = managerLoopSources(input.managerLoops, factoryConfiguration);
   const registry = managerLoopRegistry(input.managerLoopRegistry);
@@ -469,6 +488,7 @@ export interface StartedConsole {
 
 interface ConfiguredRuntime {
   ownerActions: ConsoleOwnerActions;
+  trustedReadiness?: WorkflowTrustedReadinessPort;
   routing?: ConsoleSubscriptionRouting;
   consultations?: ConsoleConsultationRuntime;
   diagnosis?: GMProviderDiagnosisPort;
@@ -617,11 +637,13 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
   const nativeProbes = new Map<string, NativeIdentityProbeContract>();
   const containerProbes = new Map<string, ContainerIdentityProbe>();
   const adapters = new Map<string, ProviderTurnAdapter>();
+  let nativeSupervisor: TaskSupervisor | undefined;
   const cursorRoute = configuration.providers.find((route) => route.id === 'cursor');
   const requestBroker = cursorRoute === undefined ? undefined : new ConsoleProviderRequestBroker({ coordinator, timeoutMs: cursorRoute.requestTimeoutMs });
   for (const route of configuration.providers) {
     const key = providerRouteKey(route.id, route.profile);
     const injected = dependencies.providerAdapters?.[route.id];
+    if (configuration.nativeSupervision && route.id === 'codex' && route.profile === 'native' && injected) throw new Error('native_supervision_cannot_use_injected_provider');
     const commands = new BoundedCommandRunner();
     if (injected !== undefined) {
       adapters.set(key, injected);
@@ -659,6 +681,17 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
     const identityProbe = dependencies.nativeIdentityProbe ?? new NativeIdentityProbe({ commands, cwd: process.cwd(), env: route.environment });
     nativeProbes.set(key, identityProbe);
     if (route.id === 'codex') {
+      if (configuration.nativeSupervision !== undefined) {
+        if (identityProbe.inspectProcessGroup === undefined) throw new Error('native_supervision_requires_process_group_inspection');
+        const profile = configuration.nativeSupervision;
+        const transport = new CodexAppServerStdioTransport({ executable: profile.executable, environment: route.environment,
+          runNonce: route.runNonce, identityProbe, maxOutputBytes: profile.limits.maxOutputBytes,
+          ...(profile.mcpExclusion === undefined ? {} : { mcpExclusion: profile.mcpExclusion }),
+          killProcessGroup: (group, signal) => process.kill(-group, signal) });
+        nativeSupervisor = new TaskSupervisor({ coordinator, configuration: profile, transport, workItems: configuration.workItems });
+        adapters.set(key, new CodexAppServerAdapter({ supervisor: nativeSupervisor }));
+        continue;
+      }
       const runner = dependencies.codexRunner ?? new NativeCodexProcessRunner({ identityProbe, runNonce: route.runNonce });
       adapters.set(key, new CodexAdapter({ limits: coordinator.limits, environment: route.environment, compatibleModels: route.compatibleModels, contextIsolation: route.contextIsolation, runner }));
       continue;
@@ -916,6 +949,7 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
 
   return {
     ownerActions,
+    ...(nativeSupervisor === undefined ? {} : { trustedReadiness: nativeSupervisor }),
     ...(routing ? { routing } : {}),
     ...(consultations ? { consultations } : {}),
     ...(diagnosis === undefined ? {} : { diagnosis }),
@@ -927,6 +961,7 @@ function configuredRuntime(coordinator: DurableCoordinator, configuration: Local
       requestBroker?.close();
       await Promise.allSettled([...active].map(async ([runId, delivery]) => { await delivery.cancel(runId); await observePrepared(runId); }));
       await Promise.allSettled([...background]);
+      await nativeSupervisor?.close();
     },
   };
 }
@@ -997,7 +1032,8 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
     }
     managerStore = configuration.managerConnected ? await ManagerConnectedStore.open(configuration.managerConnected) : undefined;
     if (configuration.workflow && configured && configuration.runtime) queueBridge = new ConsoleQueueBridge({ coordinator,
-      configuration: configuration.workflow, workItems: configuration.runtime.workItems, actions: configured.ownerActions, jira: jiraObserver, manager: managerStore });
+      configuration: configuration.workflow, workItems: configuration.runtime.workItems, actions: configured.ownerActions, jira: jiraObserver, manager: managerStore,
+      ...(configured.trustedReadiness === undefined ? {} : { trustedReadiness: configured.trustedReadiness }) });
     if (configuration.previews) previews = new PersistentPreviewRuntime({ coordinator, configuration: configuration.previews });
     if (configured?.routing || configured?.consultations || queueBridge || previews) deliveryControl = new DeliveryControl(coordinator,
       () => ({ routing: configured?.routing?.snapshot(), workflow: queueBridge?.runtime.snapshot(), previews: previewState,
@@ -1111,9 +1147,25 @@ export async function startLocalConsole(configuration: LocalConsoleConfiguration
 }
 
 export async function startLocalConsoleFromFile(path: string, dependencies: LocalConsoleDependencies = {}): Promise<StartedConsole> {
-  const content = await readFile(path, 'utf8');
+  const configurationPath = await realpath(path);
+  const content = await readFile(configurationPath, 'utf8');
   const parsed = JSON.parse(content) as unknown;
   const configuration = parseLocalConsoleConfiguration(parsed);
-  const settingsEditor = new FileConsoleSettingsEditor({ path, loadedContent: content, validate: parseLocalConsoleConfiguration });
+  const nativeProfile = configuration.runtime?.nativeSupervision;
+  if (nativeProfile) {
+    const workspacePath = await realpath(nativeProfile.workspacePath);
+    if (configurationPath === workspacePath || configurationPath.startsWith(`${workspacePath}${sep}`)) {
+      throw new Error('Native supervision owner configuration must remain outside the writable workspace');
+    }
+  }
+  const validateSettings = (value: unknown): LocalConsoleConfiguration => {
+    const next = parseLocalConsoleConfiguration(value);
+    const nextWorkspace = next.runtime?.nativeSupervision?.workspacePath;
+    if (nextWorkspace && (configurationPath === resolve(nextWorkspace) || configurationPath.startsWith(`${resolve(nextWorkspace)}${sep}`))) {
+      throw new Error('Native supervision owner configuration must remain outside the writable workspace');
+    }
+    return next;
+  };
+  const settingsEditor = new FileConsoleSettingsEditor({ path: configurationPath, loadedContent: content, validate: validateSettings });
   return startLocalConsole(configuration, undefined, { ...dependencies, settingsEditor });
 }

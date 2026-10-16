@@ -43,6 +43,34 @@ command, credential, or rollback from a branch name or past release.
 
 ## Scale and handoff
 
+### Native artifacts and distribution
+
+For iOS/Android, carry requirements discovery, separately accepted definition
+and design, exact source and independent candidate verification into the
+native release adapter (repository reference: `docs/production/native-release.md`). Prepare the
+build/sign/export plan before requesting its concrete owner approval. Use
+`product native-release-build` only with that exact phase and current approval.
+Observe signing through the configured SDK tools and seal the resulting IPA/AAB.
+
+Prepare upload from those actual bytes with
+`product native-release-upload-prepare`; request a separate owner approval for
+the artifact, publisher/account/app/build, track and upload command. Design or
+build approval does not authorize upload. Existing vendor authentication owns
+credentials; do not copy them into the product, model context or factory records.
+Missing accounts/signing resources remain explicit release prerequisites.
+
+Retain pending store review as pending. Use
+`product native-release-inspect` for safe stored inspection. Prepare a separate
+read-only approval for `product native-release-reconcile`, bound to the original
+receipt and protected observer; never resubmit an interrupted or ambiguous upload.
+Bind observed availability
+and the independent target journey before `product observe` and `product adopt`.
+The next discovery cycle inherits the observed baseline and client/backend
+contracts. Simulator/emulator `native_local` evidence and synthetic release
+fixtures cannot qualify real signing, physical devices or store distribution.
+
+### Evidence size
+
 Use compact evidence for an approved local or preview release: exact revision,
 environment, deploy observation, and smoke result. Use normal evidence for a
 shared release: the compact record plus reviewer/check references and a release

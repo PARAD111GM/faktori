@@ -1,0 +1,19 @@
+{
+  "format": "faktori.product-delivery-request/v1",
+  "definitionDigest": "48d5496bc85caf74b98fc5e4096e40ff5ca831f2a1c14852b9405c073b0cf13a",
+  "execution": {},
+  "releasePlan": {
+    "targets": [
+      {
+        "platform": "web",
+        "environment": "Owner-selected disposable staging environment",
+        "resourceRevision": "0000000000000000000000000000000000000000",
+        "releaseOwner": "owner-to-be-selected",
+        "artifactContract": "Pin the exact independently accepted build artifact and its digest before release.",
+        "distributionContract": "Use the owner's selected web runtime and release route; no deployment is authorized by this template.",
+        "postDeployAcceptance": "Exercise all accepted product journeys against the deployed revision, including persistence, failure and recovery scenarios.",
+        "rollbackPlan": "Retain the preceding artifact and data recovery plan; use only the owner's separately granted recovery authority."
+      }
+    ]
+  }
+}

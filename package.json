@@ -1,6 +1,6 @@
 {
   "name": "faktori",
-  "version": "0.2.4",
+  "version": "0.2.18",
   "faktoriStateFormatVersion": 1,
   "private": false,
   "description": "A self-hosted, vendor-neutral software factory for small teams.",
@@ -31,8 +31,18 @@
     "README.md"
   ],
   "exports": {
-    "./preview": { "types": "./dist/preview/index.d.ts", "import": "./dist/preview/index.js" },
-    "./workflow": { "types": "./dist/workflow/index.d.ts", "import": "./dist/workflow/index.js" },
+    "./production": {
+      "types": "./dist/production/index.d.ts",
+      "import": "./dist/production/index.js"
+    },
+    "./preview": {
+      "types": "./dist/preview/index.d.ts",
+      "import": "./dist/preview/index.js"
+    },
+    "./workflow": {
+      "types": "./dist/workflow/index.d.ts",
+      "import": "./dist/workflow/index.js"
+    },
     "./verification": {
       "types": "./dist/verification/index.d.ts",
       "import": "./dist/verification/index.js"
@@ -112,6 +122,18 @@
     "./loop": {
       "types": "./dist/loop/index.d.ts",
       "import": "./dist/loop/index.js"
+    },
+    "./execution/codex-app-server": {
+      "types": "./dist/execution/codex-app-server.d.ts",
+      "import": "./dist/execution/codex-app-server.js"
+    },
+    "./execution/task-supervisor": {
+      "types": "./dist/execution/task-supervisor.d.ts",
+      "import": "./dist/execution/task-supervisor.js"
+    },
+    "./providers/codex-app-server": {
+      "types": "./dist/providers/codex-app-server.d.ts",
+      "import": "./dist/providers/codex-app-server.js"
     }
   },
   "engines": {
@@ -125,8 +147,12 @@
     "console:build": "vite build --config console/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit --project console/tsconfig.json",
     "test": "vitest run",
+    "accept:production": "node scripts/accept-production-slice.mjs",
+    "accept:console": "node scripts/accept-console-experience.mjs",
+    "accept:design-draft": "node scripts/accept-design-draft.mjs",
+    "accept:existing-adoption": "node scripts/accept-existing-product-adoption.mjs",
     "skills:verify": "node scripts/verify-skill-kit.mjs",
-    "check": "npm run typecheck && npm run build && npm test && npm run pack:verify",
+    "check": "npm run typecheck && npm run build && npm run accept:production && npm run pack:verify",
     "pack:verify": "node scripts/verify-packed-cli.mjs",
     "prepack": "npm run build",
     "build:status": "node scripts/update-build-status.mjs",
@@ -134,11 +160,12 @@
     "build:dashboard:phase8": "node scripts/render-build-dashboard.mjs --checklist construction/checklist.json --summary construction/phase-8-summary.json --output construction/phase-8-dashboard.html",
     "build:usage": "node scripts/build-usage.mjs summarize --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 4200000 --phase 7",
     "build:usage:phase8": "node scripts/build-usage.mjs summarize --input .build/usage/phase-8-records.jsonl --output construction/phase-8-summary.json --estimate 1700000 --phase 8",
-    "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 4200000 --phase 7"
+    "build:usage:watch": "node scripts/build-usage.mjs watch --input .build/usage/records.jsonl --output construction/phase-summary.json --estimate 4200000 --phase 7",
+    "accept:native-supervision": "node scripts/accept-native-supervision.mjs"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
-    "fastify": "5.12.3",
+    "fastify": "5.12.7",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

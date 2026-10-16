@@ -7,7 +7,7 @@
 The Fourth Industrial Revolution has reached your backlog.<br>
 Self-hosted. Open source. Human management still required.
 
-[Agent installation guide](INSTALL.md) · [v0.2.4 release notes](docs/releases/v0.2.4.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
+[Agent installation guide](INSTALL.md) · [v0.2.18 release notes](docs/releases/v0.2.18.md) · [Remaining qualification plan](docs/production/final-qualification-plan.md) · [Attended operator runbook](docs/production/attended-operator-runbook.md) · [Public qualification evidence](docs/production/attended-public-qualification.md) · [Efficient delivery setup](docs/subscription-efficient-delivery.md) · [Recovery setup](docs/recovery-setup.md) · [Runtime verification](docs/runtime-verification.md) · [Explore the skills](docs/skills.md) · [Architecture](docs/architecture/README.md) · [Status](#where-we-are)
 
 </div>
 
@@ -107,7 +107,7 @@ npm rebuild better-sqlite3
 npm run build
 npm run skills:verify
 npm run typecheck
-npm test -- --maxWorkers=4
+npm run accept:production
 npm run pack:verify
 ```
 
@@ -155,9 +155,55 @@ repository; product artifacts normally live beside product code.
 
 ## Where we are
 
-**Early development. Useful foundations; release validation still in progress.**
+**Attended release candidate. Full production qualification remains in progress.**
+
+The [current production gates](docs/production/current-gates.md) distinguish
+attended web/native qualification from the linked discovery-to-production and
+ongoing live-product lifecycle that remains to be qualified.
 
 The ribbon-cutting committee has been asked to wait for evidence.
+
+v0.2.11 carries separately accepted product experience and architecture into
+the existing delivery loop, with pinned design bytes, native/live constraints
+and targeted invalidation when designs change.
+v0.2.12 connects observed local baselines to separately adopted product knowledge
+and the next owner-requested feature discovery, with durable recovery and exact
+release bindings. Public qualification remains separate from source checks.
+
+v0.2.10 connects full definition drafting to the approved native model route,
+with private evidence, exact replay and preserved owner/live-product context.
+The resulting definition remains proposed for separate review and acceptance.
+
+v0.2.9 adds a complete sourced product-definition draft handoff from the saved
+interview. Owner intent, produced platform targets and live-product context stay
+bound to the exact session; model interpretations remain proposed.
+
+v0.2.8 adds an attended `discovery propose` command using the explicitly selected
+native CLI route. It retains provider evidence and appends a validated proposal
+to the saved interview; owner answers and definition acceptance remain separate.
+
+v0.2.7 honors the exact owner-selected native CLI executable during launch and
+adds [digest-bound model proposal import](docs/production/discovery-model-handoff.md).
+App model catalogs and separately installed CLI catalogs can differ: observe the
+selected binary and route before claiming model availability. Discovery outputs
+remain proposals until an owner decision accepts scope.
+
+v0.2.6 connects a raw idea to a [resumable requirements interview](docs/production/discovery-session.md),
+a sourced [product definition](docs/production/product-discovery.md), and an
+[execution handoff](docs/production/product-delivery.md) into the existing Lean loop.
+Accepted scope, owner decisions, full inherited constraints and exact artifact
+dependencies travel together. Web/native mobile release contracts and live-product
+compatibility are explicit. [Operations](docs/production/product-operations.md)
+and an [intervention ledger](docs/production/interventions.md) keep missing resource
+decisions and unobserved release evidence visible. Run `npm run accept:production`
+for the consolidated local feature journey. Live qualification remains pending.
+
+v0.2.5 adds a source-reviewed [16-skill capability map](docs/production/skill-capability-map.md)
+and `faktori spike prepare`, a read-only raw-idea preparation command. It connects
+existing lifecycle handoffs, keeps resource declarations separate from observations,
+and leaves execution and production readiness false. The
+[attended web runbook](docs/production/attended-web-spike.md) describes the first
+requirements-discovery-to-production exercise; this increment does not perform it.
 
 v0.2.4 adds opt-in subscription-aware routing, bounded senior advice, deterministic
 role queues and persistent localhost review with feature-sized feedback batches.

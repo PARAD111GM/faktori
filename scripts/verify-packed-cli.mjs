@@ -31,6 +31,55 @@ try {
   const tarball = join(scratch, packed.filename);
   const entries = run('tar', ['-tf', tarball], scratch).split('\n').filter(Boolean);
   const requiredEntries = [
+    'package/dist/production/index.js',
+    'package/docs/production/skill-capability-map.md',
+    'package/docs/production/attended-web-spike.md',
+    'package/docs/releases/v0.2.5.md',
+    'package/docs/releases/v0.2.6.md',
+    'package/docs/releases/v0.2.7.md',
+    'package/docs/releases/v0.2.8.md',
+    'package/docs/releases/v0.2.9.md',
+    'package/docs/releases/v0.2.10.md',
+    'package/docs/releases/v0.2.11.md',
+    'package/docs/releases/v0.2.12.md',
+    'package/docs/releases/v0.2.13.md',
+    'package/docs/releases/v0.2.14.md',
+    'package/docs/releases/v0.2.15.md',
+    'package/docs/releases/v0.2.16.md',
+    'package/docs/releases/v0.2.17.md',
+    'package/docs/releases/v0.2.18.md',
+    'package/docs/production/final-qualification-plan.md',
+    'package/docs/production/attended-operator-runbook.md',
+    'package/docs/production/owner-shopping-list-increment.md',
+    'package/docs/production/native-release.md',
+    'package/dist/production/native-release.js',
+    'package/docs/production/qualification-review-packet.md',
+    'package/docs/production/native-delivery.md',
+    'package/dist/production/native-delivery.js',
+    'package/docs/production/native-supervision.md',
+    'package/docs/production/current-gates.md',
+    'package/dist/execution/codex-app-server.js',
+    'package/dist/execution/task-supervisor.js',
+    'package/dist/providers/codex-app-server.js',
+    'package/docs/production/design-draft.md',
+    'package/docs/production/existing-product-adoption.md',
+    'package/dist/production/design-draft.js',
+    'package/dist/production/design-provider.js',
+    'package/docs/production/live-product.md',
+    'package/dist/production/live-product.js',
+    'package/docs/production/product-design.md',
+    'package/dist/production/design.js',
+    'package/dist/production/definition-draft.js',
+    'package/dist/production/definition-provider.js',
+    'package/dist/production/discovery-provider.js',
+    'package/docs/production/discovery-model-handoff.md',
+    'package/dist/production/discovery-session.js',
+    'package/dist/production/delivery.js',
+    'package/dist/production/operations.js',
+    'package/dist/production/interventions.js',
+    'package/examples/production/product-definition.json',
+    'package/examples/production/discovery-session.json',
+    'package/examples/production/attended-spike.json',
     'package/CLAUDE.md',
     'package/docs/releases/v0.2.4.md',
     'package/docs/subscription-efficient-delivery.md',
@@ -71,6 +120,21 @@ try {
   await writeFile(join(consumer, 'package.json'), '{"name":"faktori-pack-smoke","private":true}\n');
   runNpm(['install', '--ignore-scripts', '--offline', '--no-audit', '--no-fund', '--package-lock=false', tarball], consumer);
   await verifySkillKit(join(consumer, 'node_modules', 'faktori'));
+
+  const productionImport = spawnSync(process.execPath, ['--input-type=module', '-e', "const root=await import('faktori'); const production=await import('faktori/production'); const result=production.prepareAttendedSpike({format:'faktori.attended-spike-request/v1',spikeId:'packed-spike',resources:[{kind:'workspace',status:'owner_selected'}]}); if(typeof root.prepareAttendedSpike!=='function'||result.status!=='needs_idea'||result.executionReady!==false||result.productionReady!==false||!result.unresolvedDecisions.includes('resource:workspace')||!result.unresolvedDecisions.includes('execution_authority')||!result.unresolvedDecisions.includes('approved_command_handoff')) process.exit(2)"], { cwd: consumer, encoding: 'utf8' });
+  if (productionImport.status !== 0) throw new Error(productionImport.stderr || 'installed spike preparation export failed');
+  const spikePath = join(consumer, 'node_modules', 'faktori', 'examples', 'production', 'attended-spike.json');
+  const spikeBefore = await readFile(spikePath, 'utf8');
+  const spikeResult = spawnSync(process.execPath, [join(consumer, 'node_modules', 'faktori', 'dist', 'cli.js'), 'spike', 'prepare', spikePath], { cwd: consumer, encoding: 'utf8', timeout: 15000 });
+  if (spikeResult.status !== 0) throw new Error(spikeResult.stderr || 'installed spike preparation CLI failed');
+  const spike = JSON.parse(spikeResult.stdout);
+  if (spike.status !== 'needs_idea' || spike.executionReady !== false || spike.productionReady !== false || spike.resourceEvidence !== 'declared_not_observed' || spike.stages.some(stage => stage.state !== 'not_started') || await readFile(spikePath, 'utf8') !== spikeBefore) throw new Error('installed preparation inferred execution or changed its input');
+
+  const productSlice = spawnSync(process.execPath, [join(root, 'scripts', 'accept-production-slice.mjs')], {
+    cwd: root, encoding: 'utf8', timeout: 600000,
+    env: { ...process.env, FAKTORI_ACCEPT_CLI: join(consumer, 'node_modules', 'faktori', 'dist', 'cli.js'), FAKTORI_ACCEPT_MODULE: join(consumer, 'node_modules', 'faktori', 'dist', 'index.js') },
+  });
+  if (productSlice.status !== 0) throw new Error(`Installed full product feature slice failed (status=${productSlice.status}, signal=${productSlice.signal}, error=${productSlice.error?.code ?? 'none'}):\n${productSlice.stderr || productSlice.stdout}`);
 
   const importResult = spawnSync(process.execPath, ['--input-type=module', '-e', "const runtime=await import('faktori/runtime'); const diagnostics=await import('faktori/diagnostics'); const transports=await import('faktori/execution/transports'); const maintenance=await import('faktori/maintenance'); if(typeof runtime.CoordinatorCodexDelivery!=='function'||typeof runtime.createRunManifest!=='function'||typeof diagnostics.evaluatePreflight!=='function'||typeof transports.DockerCodexProcessRunner!=='function'||typeof maintenance.createFactoryBackup!=='function'||typeof maintenance.previewRuntimeUpdate!=='function') process.exit(2)"], {
     cwd: consumer,

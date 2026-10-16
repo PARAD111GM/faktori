@@ -1,0 +1,11 @@
+{
+  "sessionId": "field-service.discovery",
+  "productId": "field-service",
+  "ownerId": "product-owner",
+  "rawIdea": "Build a field-service scheduling product for small repair teams. Dispatchers need a web workspace and technicians need native iOS and Android clients. Begin by interviewing me about the actual workflow, including failed visits and poor connectivity; I have not approved scope, architecture, budget or release actions yet.",
+  "ideaSource": {
+    "reference": "owner-brief:field-service",
+    "revision": "1"
+  },
+  "platforms": ["web", "ios", "android"]
+}

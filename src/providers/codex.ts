@@ -171,6 +171,19 @@ function classifyKnownError(code: string | undefined, message: string | undefine
   return undefined;
 }
 
+function isTransientReconnect(event: JsonRecord, fields: { code?: string; message?: string }): boolean {
+  // Recognize only the vendor's retry-progress envelope for transient HTTP
+  // server errors. Arbitrary errors and fatal/auth/quota/authority evidence
+  // remain sticky even if a later event claims success.
+  if (event.type !== 'error' || Object.hasOwn(event, 'error') || Object.hasOwn(event, 'code') || Object.hasOwn(event, 'error_code')
+    || fields.code !== undefined || fields.message === undefined) return false;
+  const progress = /^Reconnecting\.\.\. ([1-9]\d*)\/([1-9]\d*) \(unexpected status (?:500|502|503|504)\b[\s\S]*\)$/.exec(fields.message);
+  const classified = classifyKnownError(undefined, fields.message);
+  return progress !== null && Number(progress[1]) <= Number(progress[2])
+    && (classified === undefined || classified === 'unavailable')
+    && !/fatal|not.?installed|spawn|turn[._ ]failed/i.test(fields.message);
+}
+
 function explicitSuccessOutcome(event: JsonRecord): Outcome | undefined {
   if (!NATIVE_SUCCESS_TERMINAL_TYPES.has(asNonEmptyString(event.type) ?? '')) return undefined;
   const outcome = event.outcome;
@@ -366,6 +379,7 @@ function parseEvents(stdout: string): { events: CodexNormalizedEvent[]; malforme
 
 function finalFrom(events: CodexNormalizedEvent[], malformedEventCount: number, processResult: CodexProcessResult): { final: ProviderFinalResult; errorEvidence?: string } {
   let observedError: Outcome | undefined;
+  let pendingReconnectError: Outcome | undefined;
   let explicitSuccess: Outcome | undefined;
   let recognizedSuccessTerminal = false;
   let errorEvidence: string | undefined;
@@ -381,15 +395,24 @@ function finalFrom(events: CodexNormalizedEvent[], malformedEventCount: number, 
     explicitSuccess = explicitSuccessOutcome(event.raw) ?? explicitSuccess;
     const fields = errorFields(event.raw);
     if (fields) {
-      observedError = classifyKnownError(fields.code, fields.message) ?? 'failed';
+      const classified = classifyKnownError(fields.code, fields.message) ?? 'failed';
+      if (isTransientReconnect(event.raw, fields)) pendingReconnectError = classified;
+      else observedError = classified;
       errorEvidence = sanitizeErrorEvidence([fields.code, fields.message].filter((value): value is string => value !== undefined).join(': ')) ?? errorEvidence;
+    } else if (type !== undefined && ERROR_EVENT_TYPES.has(type)) observedError = type === 'turn.cancelled' ? 'cancelled' : 'failed';
+    if (type === 'turn.completed') {
+      const errorBearingTerminal = ['error', 'code', 'error_code'].some((key) => Object.hasOwn(event.raw, key));
+      if (errorBearingTerminal) observedError ??= 'failed';
+      else if ((event.raw.outcome === undefined || explicitSuccessOutcome(event.raw) !== undefined)
+        && !nativeReceiptFromEvent(event.raw)) pendingReconnectError = undefined;
     }
     sessionId = sessionFromEvent(event.raw) ?? sessionId;
-    summary = summaryFromEvent(event.raw) ?? summary;
+    if (!ERROR_EVENT_TYPES.has(type ?? '')) summary = summaryFromEvent(event.raw) ?? summary;
     verification = verificationFromEvent(event.raw) ?? verification;
     usage = usageFromEvent(event.raw) ?? usage;
     nativeCancellationReceipt = nativeReceiptFromEvent(event.raw) || nativeCancellationReceipt;
   }
+  observedError ??= pendingReconnectError;
 
   const stderrEvidence = processResult.exitCode !== 0 ? sanitizeErrorEvidence(processResult.stderr ?? '') : undefined;
   const stderrOutcome = processResult.exitCode !== 0 ? classifyKnownError(undefined, stderrEvidence) : undefined;
@@ -412,7 +435,7 @@ function finalFrom(events: CodexNormalizedEvent[], malformedEventCount: number, 
       ...(sessionId ? { sessionId } : {}),
       ...(summary ? { summary } : {}),
       ...(verification ? { verification } : {}),
-      ...(errorEvidence ?? stderrEvidence ? { summary: errorEvidence ?? stderrEvidence } : {}),
+      ...(!SUCCESS_OUTCOMES.has(outcome) && (errorEvidence ?? stderrEvidence) ? { summary: errorEvidence ?? stderrEvidence } : {}),
       usage: usage ?? { availability: 'unavailable', unavailableReason: 'Codex JSONL did not emit usage telemetry' },
       nativeCancellationReceipt,
     },

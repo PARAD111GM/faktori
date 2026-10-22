@@ -1,0 +1,152 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const explicitModule = process.env.FAKTORI_DESIGN_MODULE;
+const cliPath = resolve(process.env.FAKTORI_ACCEPT_CLI ?? (explicitModule ? join(dirname(dirname(resolve(explicitModule))), `cli.${explicitModule.endsWith('.js') ? 'js' : 'ts'}`) : 'src/cli.ts'));
+const modulePath = resolve(explicitModule ?? join(dirname(cliPath), 'production', `design.${cliPath.endsWith('.js') ? 'js' : 'ts'}`));
+const cliRaw = (...args) => execFileSync(process.execPath, [cliPath, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 4_000_000 });
+const cli = (...args) => JSON.parse(cliRaw(...args));
+const moduleUrl = pathToFileURL(modulePath);
+const extension = modulePath.endsWith('.js') ? 'js' : 'ts';
+const kitRoot = dirname(dirname(dirname(modulePath)));
+const { assembleContextPacket } = await import(new URL(`../context/index.${extension}`, moduleUrl).href);
+const { inspectProductDefinition, compileProductHierarchy } = await import(new URL(`./discovery.${extension}`, moduleUrl).href);
+const { compileProductDelivery } = await import(new URL(`./delivery.${extension}`, moduleUrl).href);
+const { runLeanLoop } = await import(new URL(`../loop/index.${extension}`, moduleUrl).href);
+const { parseProductDesign, productDesignDigest, serializeProductDesign, inspectProductDesign, inspectProductDesignChange, compileProductDesignHandoff } = await import(pathToFileURL(modulePath).href);
+await mkdir(resolve('.build/product-design-acceptance'), { recursive: true, mode: 0o700 });
+const root = await mkdtemp(resolve('.build/product-design-acceptance/run-')); await chmod(root, 0o700);
+const targets = ['web', 'ios', 'android'];
+const sharedAreas = ['domain', 'api', 'auth', 'data', 'integration', 'error', 'environment', 'migration', 'monitoring'];
+const targetAreas = ['ui', 'navigation', 'device', 'runtime', 'release'];
+const results = [];
+const hash = bytes => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+async function save(path, value, canonical = false) { const bytes = canonical ? serializeProductDesign(value) : JSON.stringify(value); await writeFile(path, bytes, { mode: 0o600 }); return { path, digest: hash(bytes) }; }
+function makeDesign(definition, digest) {
+  const requirementIds = definition.scope.includedRequirementIds;
+  const record = (id, text) => ({ id, text, sourceIds: ['owner-taste'] });
+  const decisions = sharedAreas.map(area => ({ ...record(area, `${area}: household-owned persistence contract; errors retain edits; migration and rollback preserve live data`), area, target: 'shared', applicability: area === 'integration' ? 'not_applicable' : 'applicable', rationale: area === 'integration' ? 'No third-party service in the accepted scope' : 'One shared domain/backend contract supports all clients', requirementIds, apiContractIds: [], ...(area === 'api' ? { contract: { id: 'household-api-v1', text: 'GET /items and POST /items accept validated names and stable idempotency keys. Session auth and household membership gate both. Replies expose stable IDs; denied/error replies never claim persistence.', revision: `sha256:${'b'.repeat(64)}` } } : {}) }));
+  decisions.push(...targets.flatMap(target => targetAreas.map(area => ({ ...record(`${target}-${area}`, `${target} ${area}: uses household-api-v1; native UI and platform navigation, device permissions and distribution are explicit target concerns`), area, target, applicability: 'applicable', rationale: 'Share domain/API revision while retaining native UI and owner-selected runtime/distribution', requirementIds, apiContractIds: ['api'] }))));
+  const experiences = targets.map(platform => ({ ...record(`${platform}-shopping`, 'Sign in, open household list, add, recover and reload'), journeyId: 'shopping', platform, requirementIds, informationArchitecture: 'Authentication -> household list with existing items and add form', navigation: 'Back preserves the saved list; sign out clears private client state; reconnect refreshes the household', accessibility: 'Keyboard and native assistive navigation; meaningful labels; move focus to validation; announce errors and loading; preserve readable contrast and scaling', visualReference: { applicability: 'referenced', rationale: 'Preserve the owner requested calm list layout; source is a declaration, prototype observation pending', sourceIds: ['owner-taste'] }, states: ['loading', 'empty', 'success', 'error', 'denied', 'recovery'].map(kind => ({ kind, behavior: { loading: 'Busy indicator; preserve draft and disable duplicate submit', empty: 'Explain no saved items; add remains available', success: 'Display only saved authorized items after backend confirmation', error: 'Preserve draft; validation or server failure announced with retry', denied: 'Prompt sign in; never expose another household list', recovery: 'Retry same immutable save ID/payload, then refresh exactly once' }[kind], scenarioIds: definition.acceptanceScenarios.filter(s => kind === 'success' ? s.kind === 'positive' : kind === 'error' ? s.kind === 'negative' : kind === 'recovery' ? s.kind === 'recovery' : false).map(s => s.id) })) }));
+  const groups = [['save', ['persist-items', 'valid-items']], ['recover-isolate', ['save-recovery', 'household-isolation']], ['accessibility', ['accessible-list']]];
+  const slices = groups.map(([id, requirementIds]) => ({ ...record(id, `Complete ${id} user behavior across domain, backend, data and each target UI`), journeyIds: ['shopping'], requirementIds, scenarioIds: definition.acceptanceScenarios.filter(s => s.requirementIds.every(r => requirementIds.includes(r))).map(s => s.id), platforms: targets, decisionIds: decisions.map(d => d.id), layers: ['domain', 'backend', 'data', 'ui', 'runtime'], owner: 'synthetic-implementation-owner', verification: 'One complete signed-in backend/client journey including negative and recovery scenarios; evidence remains pending', releaseEvidence: 'Exact artifact/config revision, client/backend compatibility, distribution, observed regression and compatible rollback required after separate owner release authority', dependsOn: id === 'recover-isolate' ? [{ sliceId: 'save', contract: { id: 'saved-item-contract', text: 'Consume only stable IDs and idempotent saved-item results from household-api-v1; do not copy provider workspace state', revision: `sha256:${'b'.repeat(64)}` } }] : [] }));
+  const design = { format: 'faktori.product-design/v1', productId: definition.productId, revision: 'design-1', definitionDigest: digest, sources: [{ id: 'owner-taste', reference: 'synthetic://owner/design-direction', revision: 'taste-1' }], experiences, decisions, tradeoffs: [{ ...record('native-choice', 'Reuse domain/backend while retaining target UI'), decisionIds: ['api', 'ios-ui', 'android-ui'], alternatives: ['Separate incompatible APIs would duplicate compatibility and migration risks'], consequence: 'Platform UI/device/release still require independent observed qualification' }], openQuestions: [], slices };
+  if (definition.existingProduct) { const live = definition.existingProduct; design.compatibility = { baselineRevision: live.baseline.revision, supportedClientIds: live.supportedClients.map(r => r.id), contractIds: live.contracts.map(r => r.id), schemaConstraintIds: live.schemaConstraints.map(r => r.id), concurrentWorkIds: live.concurrentWork.map(r => r.id), migrationDecisionId: 'migration', regressionScenarioIds: definition.acceptanceScenarios.map(s => s.id) }; }
+  return design;
+}
+function approval(definitionDigest, design) { return { ownerId: 'synthetic-owner', reference: 'synthetic://owner/design-acceptance', revision: 'acceptance-1', status: 'accepted', definitionDigest, designDigest: productDesignDigest(design) }; }
+for (const mode of ['new', 'live']) {
+  const workspace = join(root, mode); await mkdir(workspace, { mode: 0o700 });
+  const definition = JSON.parse(await readFile(join(kitRoot, 'examples/production/product-definition.json'), 'utf8'));
+  definition.platforms.targets = targets;
+  const accepted = (id, text) => ({ id, text, sourceIds: ['owner-brief'], status: 'accepted' });
+  definition.platforms.deviceEnvelope = [accepted('device-envelope', 'Synthetic owner selects iOS/Android phone OS test envelope; actual device execution pending')];
+  definition.platforms.nativeCapabilities = [accepted('native-capabilities', 'Native UI and accessibility; no sensitive device permission required')];
+  definition.platforms.distribution = [accepted('native-distribution', 'Local simulator/emulator qualification; signing and publication remain unapproved')];
+  definition.scope.exclusions[0].text = 'Billing and invitations excluded';
+  for (const r of definition.requirements) r.platforms = targets;
+  for (const s of definition.acceptanceScenarios) s.platforms = targets;
+  if (mode === 'live') definition.existingProduct = { baseline: { reference: 'synthetic://deployed-baseline', revision: 'a'.repeat(40) }, deployedArtifact: accepted('deployed-image', 'Synthetic declared prior image'), supportedClients: [accepted('v1-clients', 'Keep existing web, iOS and Android clients compatible')], contracts: [accepted('v1-api', 'Preserve versioned household API and stable item IDs')], schemaConstraints: [accepted('v1-schema', 'Retain membership, item ownership and stored data with additive schema changes')], incidents: [], telemetry: [], concurrentWork: [accepted('other-work', 'Other owner work owns billing; do not edit or migrate it')] };
+  const discovered = inspectProductDefinition(definition); assert.equal(discovered.readyForDesign, true, JSON.stringify(discovered));
+  const design = makeDesign(definition, discovered.definitionDigest);
+  const ownerApproval = approval(discovered.definitionDigest, design);
+  const inspected = inspectProductDesign(definition, design, ownerApproval);
+  assert.equal(inspected.readyForDelivery, true, JSON.stringify(inspected.gaps));
+  assert.equal(inspected.productionReady, false); assert.equal(inspected.runtimeEvidence, 'not_observed');
+  const originalHierarchy = compileProductHierarchy(definition);
+  assert.deepEqual(inspected.hierarchy.nodes[0].constraints, originalHierarchy.nodes[0].constraints);
+  const scoped = assembleContextPacket(inspected.hierarchy, 'design-slice.recover-isolate');
+  assert.equal(scoped.dependencyContracts.length, 1); assert.equal(scoped.dependencyContracts[0].dependsOnNodeId, 'design-slice.save');
+  assert.equal(scoped.designReferences.length, 1);
+  assert.ok(!scoped.artifacts.some(a => a.id.includes('accessibility-slice')));
+  const definitionArtifact = await save(join(workspace, 'definition.json'), definition);
+  const proposalArtifact = await save(join(workspace, 'design-proposal.json'), design);
+  const ownerArtifact = await save(join(workspace, 'owner-design-approval.json'), ownerApproval);
+  const designArtifact = await save(join(workspace, 'design.json'), design, true);
+  assert.equal(designArtifact.digest, `sha256:${ownerApproval.designDigest}`);
+  const canonicalBytes = cliRaw('product', 'design-canonical', proposalArtifact.path);
+  assert.equal(canonicalBytes, serializeProductDesign(design));
+  await writeFile(designArtifact.path, canonicalBytes, { mode: 0o600 });
+  assert.equal(cli('product', 'design-inspect', definitionArtifact.path, designArtifact.path).readyForDelivery, false);
+  assert.deepEqual(cli('product', 'design-inspect', definitionArtifact.path, designArtifact.path, ownerArtifact.path), inspected);
+  const deliveryRequest = { format: 'faktori.product-delivery-request/v1', definitionDigest: discovered.definitionDigest, definitionArtifact,
+    execution: { loopId: `synthetic-design-${mode}`, workspace: { path: workspace, nativeAccessApproved: true }, artifactsDirectory: join(workspace, 'artifacts'), approval: { approved: true, approvedBy: 'synthetic-owner', scopeRevision: definition.revision }, candidate: { baseRevision: 'a'.repeat(40), dependencies: [], environmentInputs: [], inputCompleteness: 'complete' }, provider: { kind: 'codex', model: 'gpt-6.1-sol', reasoning: 'high', contextIsolation: 'bounded', executable: '/synthetic/never-executed/codex', knownQuota: 'unknown' }, roleRoutes: { implementer: [{ id: 'builder', model: 'gpt-6.1-sol', reasoning: 'high', suitability: 'bounded', availability: 'available', justification: 'Fixture compilation only' }], reviewer: [{ id: 'reviewer', model: 'gpt-6.1-sol', reasoning: 'high', suitability: 'bounded', availability: 'available', justification: 'Fixture compilation only' }] }, review: { sensitive: false, requiredPasses: 1 }, toolchain: [], limits: { maxRuntimeMinutes: 1, maxTokens: 0, maxRepairRounds: 0 }, acceptanceCommand: { command: process.execPath, args: ['synthetic-not-run.mjs'] } }, releasePlan: { targets: targets.map(platform => ({ platform, environment: 'synthetic-local-only', resourceRevision: 'b'.repeat(40), releaseOwner: 'synthetic-owner', artifactContract: 'Pinned image or native package and shared API revision', distributionContract: 'Declared controlled test target; signing and publication remain separate', postDeployAcceptance: 'Complete persisted signed-in isolation and recovery across each client', rollbackPlan: 'Compatible prior image/client and retained database with additive migration recovery' })), ...(mode === 'live' ? { compatibility: { baselineRevision: definition.existingProduct.baseline.revision, supportedClientContract: 'Retain old clients with versioned compatible API', migrationPlan: 'Additive migration preserves items/membership; stop and recover compatible snapshot on failure', regressionAcceptance: 'Every accepted prior client scenario remains observable after update', concurrentWorkBoundary: 'Other owner billing work remains untouched' } } : {}) } };
+  const request = { format: 'faktori.product-design-handoff-request/v1', designDigest: ownerApproval.designDigest, designArtifact, approval: ownerApproval, deliveryRequest };
+  // The source wrapper contains owner design declarations; its file is pinned by existing request dependency.
+  deliveryRequest.requestArtifact = await save(join(workspace, 'handoff-request.json'), request);
+  const baseline = compileProductDelivery(definition, deliveryRequest);
+  const compiled = compileProductDesignHandoff(definition, design, request);
+  assert.equal(compiled.status, 'ready_for_loop', JSON.stringify(compiled.requiredBindings));
+  const cliCompiled = cli('product', 'design-compile', definitionArtifact.path, designArtifact.path, deliveryRequest.requestArtifact.path);
+  assert.deepEqual(cliCompiled, compiled);
+  const cliLoop = cli('product', 'design-loop-config', definitionArtifact.path, designArtifact.path, deliveryRequest.requestArtifact.path);
+  assert.equal(cliLoop.status, 'ready_for_loop');
+  assert.deepEqual(cliLoop.configuration, compiled.delivery.leanConfiguration);
+  assert.equal(cliLoop.configuration.candidate.dependencies.find(d => d.id === 'product-delivery-request').digest, hash(await readFile(deliveryRequest.requestArtifact.path)));
+  const loop = compiled.delivery.leanConfiguration;
+  assert.equal(loop.candidate.dependencies.find(d => d.id === 'product-design').digest, designArtifact.digest);
+  assert.deepEqual(loop.implementationBrief.constraints.slice(0, baseline.leanConfiguration.implementationBrief.constraints.length), baseline.leanConfiguration.implementationBrief.constraints);
+  assert.equal(loop.verification.length, 1); assert.deepEqual(loop.requirements, baseline.leanConfiguration.requirements);
+  assert.equal(compiled.delivery.context.designReferences.length, 1);
+  const handoff = JSON.parse(loop.implementationBrief.constraints.filter(s => s.startsWith('Complete owner-accepted design JSON part ')).map(s => s.slice(s.indexOf(': ') + 2)).join(''));
+  assert.deepEqual(handoff.design, parseProductDesign(design)); assert.deepEqual(handoff.ownerDesignDeclaration, ownerApproval);
+  assert.equal(handoff.executionAuthority, 'only_existing_owner_execution_bindings');
+  assert.equal(compiled.artifactEvidence, 'declared_not_read');
+  const missingApproval = compileProductDesignHandoff(definition, design, { ...request, approval: undefined });
+  assert.equal(missingApproval.status, 'needs_design'); assert.equal(missingApproval.delivery.leanConfiguration, undefined);
+  assert.equal(compileProductDesignHandoff(definition, design, { ...request, designArtifact: undefined }).status, 'needs_bindings');
+  assert.equal(compileProductDesignHandoff(definition, design, { ...request, deliveryRequest: { format: deliveryRequest.format, definitionDigest: discovered.definitionDigest } }).status, 'needs_bindings');
+  assert.throws(() => compileProductDesignHandoff(definition, design, { ...request, designDigest: '0'.repeat(64) }), /exact inspected/);
+  assert.throws(() => compileProductDesignHandoff(definition, design, { ...request, designArtifact: { ...designArtifact, digest: `sha256:${'0'.repeat(64)}` } }), /canonical/);
+  assert.throws(() => parseProductDesign({ ...design, approved: true }), /unsupported/);
+  assert.throws(() => parseProductDesign({ ...design, experiences: [{ ...design.experiences[0], approved: true }] }), /unsupported/);
+  const bad = structuredClone(design); bad.experiences[0].states = bad.experiences[0].states.filter(s => s.kind !== 'loading'); bad.decisions = bad.decisions.filter(d => d.area !== 'api'); bad.slices[0].layers = ['ui'];
+  const denied = inspectProductDesign(definition, bad, approval(discovered.definitionDigest, bad));
+  assert.equal(denied.readyForDelivery, false); assert.ok(denied.gaps.some(g => g.reason.includes('loading'))); assert.ok(denied.gaps.some(g => g.reason.includes('api'))); assert.ok(denied.gaps.some(g => g.reason.includes('vertical')));
+  const cycle = structuredClone(design); cycle.slices[0].dependsOn.push({ sliceId: 'recover-isolate', contract: { id: 'cycle', text: 'Invalid circular consumption', revision: '1' } });
+  assert.ok(inspectProductDesign(definition, cycle, approval(discovered.definitionDigest, cycle)).gaps.some(g => g.reason.includes('cycle')));
+  const revision = structuredClone(design); revision.revision = 'design-2'; revision.slices[0].owner = 'replacement-owner';
+  const recovery = inspectProductDesignChange(design, revision); assert.deepEqual(recovery.affectedSliceIds, ['recover-isolate', 'save']); assert.equal(recovery.ownerReacceptanceRequired, true);
+  const revisedArtifact = await save(join(workspace, 'design-next.json'), revision);
+  assert.deepEqual(cli('product', 'design-change', designArtifact.path, revisedArtifact.path), recovery);
+  assert.equal(inspectProductDesign(definition, revision, ownerApproval).readyForDelivery, false);
+  if (mode === 'live') { const incompatible = structuredClone(design); incompatible.compatibility.schemaConstraintIds = []; assert.ok(inspectProductDesign(definition, incompatible, approval(discovered.definitionDigest, incompatible)).gaps.some(g => g.path === 'design.compatibility.schemaConstraintIds')); }
+  // Run only actual existing preflight. A nonexistent provider and no git baseline guarantee zero model launches.
+  const first = await runLeanLoop(loop); assert.equal(first.status, 'blocked');
+  let preflight = JSON.parse(await readFile(join(workspace, 'artifacts', 'preflight.json'), 'utf8'));
+  assert.equal(preflight.checks.find(c => c.id === 'dependency.product-design').passed, true);
+  assert.equal(preflight.checks.find(c => c.id === 'provider.executable').passed, false);
+  await writeFile(designArtifact.path, `${serializeProductDesign(design)} `);
+  const changedBytes = await runLeanLoop(loop); assert.equal(changedBytes.status, 'blocked');
+  preflight = JSON.parse(await readFile(join(workspace, 'artifacts', 'preflight.json'), 'utf8'));
+  assert.equal(preflight.checks.find(c => c.id === 'dependency.product-design').passed, false);
+  assert.equal(preflight.checks.find(c => c.id === 'dependency.product-design').detail, 'file_digest_mismatch');
+  await writeFile(designArtifact.path, serializeProductDesign(design));
+  // The compiler lexical boundary cannot resolve parent-directory symlinks;
+  // the shared loop's realpath guard must reject this otherwise matching file.
+  const outside = join(root, `${mode}-outside-workspace`); await mkdir(outside, { mode: 0o700 });
+  await writeFile(join(outside, 'design.json'), canonicalBytes, { mode: 0o600 });
+  const alias = join(workspace, 'outside-alias'); await symlink(outside, alias);
+  const escapedPath = join(alias, 'design.json');
+  const escapedRequest = JSON.parse(await readFile(deliveryRequest.requestArtifact.path, 'utf8'));
+  delete escapedRequest.designArtifact;
+  const escapedRequestArtifact = await save(join(workspace, 'escape-request.json'), escapedRequest);
+  const escaped = cli('product', 'design-loop-config', definitionArtifact.path, escapedPath, escapedRequestArtifact.path);
+  assert.equal(escaped.status, 'ready_for_loop');
+  assert.equal(escaped.configuration.candidate.dependencies.find(d => d.id === 'product-design').path, escapedPath);
+  escaped.configuration.loopId += '-escape'; escaped.configuration.artifactsDirectory = join(workspace, 'escape-artifacts');
+  const escapedResult = await runLeanLoop(escaped.configuration); assert.equal(escapedResult.status, 'blocked');
+  const escapedPreflight = JSON.parse(await readFile(join(workspace, 'escape-artifacts', 'preflight.json'), 'utf8'));
+  assert.equal(escapedPreflight.checks.find(c => c.id === 'dependency.product-design').passed, false);
+  assert.equal(escapedPreflight.checks.find(c => c.id === 'dependency.product-design').detail, 'product_artifact_outside_approved_workspace');
+  assert.equal(escapedPreflight.checks.find(c => c.id === 'provider.executable').passed, false);
+  results.push({ mode, status: 'passed', targets, designDigest: ownerApproval.designDigest, cliJourney: true, pinnedOuterRequest: true, inheritedConstraintsPreserved: true, exactCanonicalDesignFileBinding: true, existingPreflightObservedValidThenTampered: true, parentSymlinkEscapeBlocked: true, noProviderLaunch: true, recoveryAffectedOnlyConsumers: true, evidence: workspace });
+}
+const report = { format: 'faktori.product-design-feature-qualification/v1', status: 'passed', evaluatorAuthority: 'model-authored-human-uncalibrated', runtimeEvidence: 'source/installed CLI compilation and real existing file dependency preflight only; provider/UI/device/deploy unrun', cliPath, cliDigest: hash(await readFile(cliPath)), modulePath, moduleDigest: hash(await readFile(modulePath)), results };
+await writeFile(join(root, 'acceptance.json'), JSON.stringify(report, null, 2), { mode: 0o600 });
+console.log(JSON.stringify({ ...report, evidence: join(root, 'acceptance.json') }));
+

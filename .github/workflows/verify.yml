@@ -25,3 +25,16 @@ jobs:
           npm install --prefix "$candidate_cache_dir" --omit=dev --ignore-scripts --package-lock=false --no-audit --no-fund
       - run: npm run check
       - run: npm run skills:verify
+      - name: Prepare browser for complete Console journey
+        run: npx playwright install --with-deps chromium
+      - name: Qualify responsive Console experience
+        run: npm run accept:console
+      - name: Retain Console journey evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-experience
+          path: |
+            .build/polish-v0218/console-experience.json
+            output/playwright/console-experience/
+          if-no-files-found: ignore

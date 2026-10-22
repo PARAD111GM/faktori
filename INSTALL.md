@@ -1,12 +1,20 @@
 # Install Faktori — instructions for coding agents
 
-For v0.2.4, follow [Subscription-efficient delivery](docs/subscription-efficient-delivery.md)
-after the baseline installation checks. Ask which tools supply each capability,
-not whether the user has Jira or Slack. One subscription plus GitHub/local work
-tracking is valid. Start with one attended builder. Keep existing workers,
-credentials, journals and authority unchanged; enable new admissions only after
-their configured capability checks pass. Package installation is not proof of
-unattended execution or product acceptance.
+For the current development candidate (package version 0.2.17), follow
+[Subscription-efficient delivery](docs/subscription-efficient-delivery.md) after
+the baseline installation checks. This identifies the checkout's package
+version; it does not claim a published release or installed runtime. Ask which
+tools supply each capability, not whether the user has Jira or Slack. One
+subscription plus GitHub/local work tracking is valid. Start with one attended
+builder. Keep existing workers, credentials, journals and authority unchanged;
+enable new admissions only after their configured capability checks pass.
+Package installation is not proof of unattended execution or product
+acceptance.
+
+After factory setup, use the [attended operator runbook](docs/production/attended-operator-runbook.md)
+for the installed requirements-discovery-to-delivery path. It covers new web/native
+products and changes to an existing live product; the original spike is historical
+preparation, not the current operator entry point.
 
 For a delivery-recovery upgrade, also read [Recovery setup](docs/recovery-setup.md).
 Before enabling unattended graph admission, follow [Runtime verification and
@@ -35,8 +43,9 @@ backlog. Read it before installing dependencies or provisioning resources.
    factory configuration, credentials, or product code in the public Faktori repo.
 
 Use `main` unless the owner explicitly selects another revision. Phase branches
-are development candidates, not installation upgrades. This remains an early
-development kit; do not describe installation as full release acceptance.
+are development candidates, not installation upgrades. Version 0.2.17 is the
+current source package candidate in this checkout; do not infer that it is
+published, installed, or fully release accepted.
 
 ## 2. Discover prerequisites, then confirm decisions
 
@@ -86,26 +95,23 @@ run these commands **from the Faktori source root**, stopping on a failure:
 ```sh
 npm ci --ignore-scripts
 npm rebuild better-sqlite3
-npm run build
+npm run check
 npm run skills:verify
-npm run typecheck
-npm test -- --maxWorkers=4
-npm run pack:verify
 npm run faktori -- config resolve examples/config/solo.json
 npm run faktori -- preflight examples/diagnostics/preflight-projection.json
 ```
 
 Keep the committed lockfile. Disable dependency lifecycle scripts during the
 general install; explicitly rebuild only the pinned SQLite dependency. Do not
-globally enable scripts to work around a failed native build. The build must
-precede the tests because installed-runtime tests need emitted files.
+globally enable scripts to work around a failed native build.
 
-Expected results: emitted runtime and Console assets; valid skill catalog;
-passing typecheck and tests; a clean installed-package CLI check, including real
-SQLite operations; resolved example configuration; and a fail-closed read-only
-preflight example. The final two commands are diagnostic examples, not an
-approved owner configuration, a running factory, or proof of execution/live
-readiness.
+`npm run check` is the single source qualification gate: it runs typechecking,
+the build, production-slice acceptance, and packed-package verification. The
+separate `skills:verify` command validates the bundled skill catalog. Expected
+results are a successful gate and skill check, resolved example configuration,
+and a fail-closed read-only preflight example. The final two commands are
+diagnostic examples, not an approved owner configuration, a running factory, or
+proof of execution/live readiness.
 
 These are **source checkout commands**. A packed distribution omits development
 scripts and source files: do not run this sequence inside an installed tarball.

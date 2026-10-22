@@ -19,6 +19,13 @@ ancestor constraints and makes dependencies reviewable.
 - Route vague or materially ambiguous intent through the **interview skill**.
   Preserve inherited facts as source references, record owner decisions, and
   keep unknowns explicit rather than silently resolving them.
+- For a new product or live feature, use
+  `<faktori-kit-root>/docs/production/attended-operator-runbook.md` as the executable
+  route. Resume saved discovery; use `faktori discovery inspect` to identify
+  unresolved scope and owner definition decisions before planning. Existing
+  products preserve the observed baseline, supported clients, schema and
+  concurrent work through `product next-discovery`; do not rebuild their context
+  from an unsourced fresh brief.
 
 ## Shape the smallest useful graph
 
@@ -57,6 +64,18 @@ their entire scope. Do not start a second implementation of already-owned work.
   criteria, non-goals, dependencies, owner decisions, unknowns, and escalation
   gates. Example: `work-item rounding-bug depends on minor-unit-contract;
   currency-contract excluded; merge authority remains human.`
-- Hand the packet to the **plan skill**. Escalate missing parent authority,
+- Hand the packet to the **plan skill**, then the **design skill**. For production
+  product work, obtain a proposed design with the configured attended
+  `faktori product design-propose` route, canonicalize it, and record separate
+  owner acceptance bound to both definition and design digests. Use
+  `product design-compile` and `product design-loop-config` to carry accepted
+  requirements, design, inherited constraints and whole-feature acceptance into
+  the existing `faktori loop run` path. Resolve reported bindings before launch;
+  compiled readiness is not execution, verification or release evidence.
+  After configured build and independent full-slice acceptance, use the existing
+  publication/delivery contracts and separately authorized release, then
+  `product observe`, separately approved `product adopt`, and an owner-requested
+  `product next-discovery`. Keep web/iOS/Android delivery evidence distinct.
+  Escalate missing parent authority,
   contradictory inherited constraints, unapproved design references, a cycle,
   undefined acceptance behavior, or an uncontractable dependency.

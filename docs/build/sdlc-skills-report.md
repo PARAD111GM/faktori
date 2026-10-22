@@ -7,6 +7,11 @@ review, and portable handoff: fifteen bundled skills covering factory setup,
 Plan, Design, Build, Test, Deploy, Maintain, and bounded factory operation.
 See [the routing guide](../skills.md) and [evaluation scenarios](../skills-evaluation.md).
 
+Catalog note (October 12, 2026): this historical scope and archive verification
+covered fifteen skills. The current catalog also includes the later update skill,
+for sixteen total; see [the current capability map](../production/skill-capability-map.md).
+The historical verification statements below are preserved, not upgraded.
+
 The kit follows the requested skill-creator conventions: explicit triggers,
 imperative procedures, proportional scope, progressive disclosure, initialized
 new packages, locally bundled resources, and validated archives. Superpowers

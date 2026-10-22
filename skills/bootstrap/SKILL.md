@@ -82,7 +82,12 @@ that the installed runtime does not have.
   For example: `local scaffold observed at <root>; remote GitHub repository:
   pending/unsupported; owner approval: approval@<revision>.`
 - Hand the accepted factory profile and its documented kit-root paths to the
-  **product-creation skill**. A later product inherits factory defaults, reports
+  **product-creation skill**. Continue the first product through
+  `<faktori-kit-root>/docs/production/attended-operator-runbook.md`: start saved
+  requirements discovery from the owner's idea, obtain separate definition and
+  design acceptance, then compile the configured attended delivery loop. Factory
+  provisioning does not replace product discovery or authorize implementation.
+  A later product inherits factory defaults, reports
   incremental cost and workload, and creates no pod automatically; apply its
   approved bundle with `faktori product new`. Escalate instead of widening
   authority for missing approval, changed source snapshots, budget uncertainty,

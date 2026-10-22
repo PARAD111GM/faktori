@@ -1,5 +1,18 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, readFile, realpath } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { isAbsolute, resolve } from 'node:path';
+import { prepareAttendedSpike, inspectProductDefinition, compileProductHierarchy, assembleProductContext, compileProductDelivery, serializeProductDeliveryLoop, inspectProductOperations, appendSpikeIntervention, readSpikeInterventions } from './production/index.ts';
+import { prepareProductDiscoverySession, saveProductDiscoverySession, loadProductDiscoverySession, recordProductDiscoveryAnswer, recordProductDiscoveryProposal, renderProductDiscoveryPrompt, productDiscoveryProposalOutputSchema } from './production/index.ts';
+import { runProductDiscoveryProposal } from './production/index.ts';
+import { importProductDefinitionDraft, renderProductDefinitionDraftPrompt, productDefinitionDraftOutputSchema } from './production/index.ts';
+import { runProductDefinitionDraft } from './production/index.ts';
+import { inspectProductDesign, inspectProductDesignChange, serializeProductDesign, compileProductDesignHandoff } from './production/index.ts';
+import { renderProductDesignDraftPrompt, productDesignDraftOutputSchema, importProductDesignDraft, runProductDesignDraft } from './production/index.ts';
+import { observeProductBaseline, adoptProductBaseline, beginProductIncrement, readProductLiveJournal, productBaselineObservationScopeDigest } from './production/index.ts';
+import { captureNativeArtifact } from './production/index.ts';
+import { prepareNativeRelease, prepareNativeReleaseUpload, executeNativeRelease, inspectNativeRelease, reconcileNativeRelease } from './production/index.ts';
 import { captureCandidateSnapshot, verifyCandidateRuntime } from './verification/index.ts';
 import { readSprintReadiness } from './sprint/readiness.ts';
 import { observeCodexGoal } from './sprint/codex-goal.ts';
@@ -43,6 +56,46 @@ import {
 } from './index.ts';
 
 const HELP = `Usage:
+  faktori spike prepare <request.json>
+  faktori spike intervention <absolute-ledger.jsonl> <entry.json>
+  faktori spike interventions <absolute-ledger.jsonl>
+  faktori discovery inspect <product-definition.json>
+  faktori discovery session <idea-request.json>
+  faktori discovery save <session.json> <absolute-history.jsonl>
+  faktori discovery resume <absolute-history.jsonl>
+  faktori discovery answer <absolute-history.jsonl> <answer.json>
+  faktori discovery proposal <absolute-history.jsonl> <proposal.json>
+  faktori discovery import-proposal <absolute-history.jsonl> <model-response.json> <proposal-id>
+  faktori discovery propose <operator-config.json>
+  faktori discovery prompt <absolute-history.jsonl>
+  faktori discovery definition-prompt <absolute-history.jsonl>
+  faktori discovery draft <operator-config.json>
+  faktori discovery import-definition <absolute-history.jsonl> <private-model-response.json> <expected-session-digest>
+  faktori discovery hierarchy <product-definition.json>
+  faktori discovery context <product-definition.json> <node-id>
+  faktori product compile <product-definition.json> <delivery-request.json>
+  faktori product loop-config <product-definition.json> <delivery-request.json>
+  faktori product operations <operations-request.json>
+  faktori product design-inspect <product-definition.json> <design.json> [owner-approval.json]
+  faktori product design-prompt <product-definition.json>
+  faktori product import-design <product-definition.json> <private-model-response.json> <expected-definition-digest>
+  faktori product design-propose <private-operator-config.json>
+  faktori product design-canonical <design.json>
+  faktori product design-change <previous-design.json> <next-design.json>
+  faktori product design-compile <product-definition.json> <canonical-design.json> <handoff-request.json>
+  faktori product design-loop-config <product-definition.json> <canonical-design.json> <handoff-request.json>
+  faktori product observe <baseline-observation-request.json>
+  faktori product native-artifact-seal <native-artifact-request.json>
+  faktori product native-release-prepare <configuration-binding-request.json>
+  faktori product native-release-build <approved-build-request.json>
+  faktori product native-release-upload-prepare <signed-build-receipt-request.json>
+  faktori product native-release-upload <separately-approved-upload-request.json>
+  faktori product native-release-inspect <phase-inspection-request.json>
+  faktori product native-release-reconcile <approved-read-only-recovery-request.json>
+  faktori product observation-scope <baseline-observation-request.json>
+  faktori product adopt <baseline-adoption-request.json>
+  faktori product next-discovery <increment-discovery-request.json>
+  faktori product live-journal <absolute-live-journal.jsonl>
   faktori config resolve <configuration.json>
   faktori context assemble <hierarchy.json> <node-id>
   faktori provision proposal <request.json>
@@ -100,6 +153,13 @@ function record(value: unknown, label: string): InputRecord {
   return value;
 }
 
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const input = value as InputRecord;
+  return `{${Object.keys(input).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(input[key])}`).join(',')}}`;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -113,12 +173,236 @@ async function json(path: string | undefined, label: string): Promise<unknown> {
   }
 }
 
+async function readModelResponse(path: string, expectedKeys = 'questions,status,text', requirePrivate = false): Promise<{ path: string; bytes: Buffer; value: InputRecord }> {
+  if (!isAbsolute(path) || resolve(path) !== path) throw new Error('model response path must be a canonical absolute path');
+  const canonical = await realpath(path);
+  if (canonical !== path) throw new Error('model response path must not contain symlinks or non-canonical components');
+  const before = await lstat(path);
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size > 1_000_000) throw new Error('model response must be an unaliased regular file of at most one megabyte');
+  if (requirePrivate && (before.mode & 0o077) !== 0) throw new Error('definition response must be private (0600)');
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const held = await handle.stat();
+    if (!held.isFile() || held.nlink !== 1 || held.size !== before.size || held.dev !== before.dev || held.ino !== before.ino) throw new Error('model response file changed during open');
+    const bytes = Buffer.alloc(held.size);
+    let position = 0;
+    while (position < bytes.length) {
+      const result = await handle.read(bytes, position, bytes.length - position, position);
+      if (!result.bytesRead) throw new Error('model response file changed during read');
+      position += result.bytesRead;
+    }
+    const after = await handle.stat();
+    const current = await lstat(path);
+    if (after.size !== held.size || after.mtimeMs !== held.mtimeMs || current.dev !== held.dev || current.ino !== held.ino || current.nlink !== 1) throw new Error('model response file changed during read');
+    let value: unknown;
+    try { value = JSON.parse(bytes.toString('utf8')); }
+    catch (error) { throw new Error(`model response is not valid JSON: ${errorMessage(error)}`); }
+    const response = record(value, 'model response');
+    const keys = Object.keys(response).sort();
+    if (keys.join(',') !== expectedKeys) throw new Error(`model response must contain exactly ${expectedKeys}; operator provenance fields are attached during import`);
+    return { path: canonical, bytes, value: response };
+  } finally { await handle.close(); }
+}
+
 function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
 async function run(argv: string[]): Promise<void> {
   const [group, action, source, extra] = argv;
+  if (group === 'product' && ['native-release-prepare', 'native-release-build', 'native-release-upload-prepare', 'native-release-upload', 'native-release-inspect', 'native-release-reconcile'].includes(action ?? '')) {
+    if (!source || argv.length !== 3) throw new Error('native release requires one explicit protected request');
+    const request = await json(source, 'native release request') as Record<string, unknown>;
+    if (action === 'native-release-build' && request.phase !== 'build_sign_export' || action === 'native-release-upload' && request.phase !== 'upload') throw new Error('native release CLI phase differs from exact approval');
+    print(action === 'native-release-prepare' ? await prepareNativeRelease(request) : action === 'native-release-upload-prepare' ? await prepareNativeReleaseUpload(request) : action === 'native-release-inspect' ? await inspectNativeRelease(request) : action === 'native-release-reconcile' ? await reconcileNativeRelease(request) : await executeNativeRelease(request));
+    return;
+  }
+  if (group === 'product' && action === 'native-artifact-seal') {
+    if (!source || argv.length !== 3) throw new Error('native-artifact-seal requires one actual native artifact path/kind request');
+    print(await captureNativeArtifact(await json(source, 'native artifact')));
+    return;
+  }
+  if (group === 'product' && ['observe', 'observation-scope', 'adopt', 'next-discovery', 'live-journal'].includes(action ?? '')) {
+    if (!source || argv.length !== 3) throw new Error(`${action} requires one explicit request or journal path`);
+    if (action === 'live-journal') print(await readProductLiveJournal(source));
+    else if (action === 'observation-scope') print({ scopeDigest: productBaselineObservationScopeDigest(await json(source, 'observation scope request')), executionStarted: false });
+    else {
+      const request = await json(source, 'live product request');
+      const result = action === 'observe' ? await observeProductBaseline(request)
+        : action === 'adopt' ? await adoptProductBaseline(request) : await beginProductIncrement(request);
+      print(result);
+    }
+    return;
+  }
+  if (group === 'product' && action === 'design-prompt') {
+    if (!source || argv.length !== 3) throw new Error('design-prompt requires one accepted product definition');
+    const definition = await json(source, 'product definition');
+    print({ prompt: renderProductDesignDraftPrompt(definition), outputSchema: productDesignDraftOutputSchema(definition) });
+    return;
+  }
+  if (group === 'product' && action === 'import-design') {
+    const expectedDefinitionDigest = argv[4];
+    if (!source || !extra || !expectedDefinitionDigest || argv.length !== 5) throw new Error('import-design requires accepted definition, private response and expected definition digest');
+    const response = await readModelResponse(extra, 'definitionDigest,design', true);
+    print(importProductDesignDraft(await json(source, 'product definition'), { expectedDefinitionDigest, sourceReference: `file:${response.path}`, responseBytes: response.bytes }));
+    return;
+  }
+  if (group === 'product' && action === 'design-propose') {
+    if (!source || argv.length !== 3) throw new Error('design-propose requires one private operator configuration');
+    const result = await runProductDesignDraft(await json(source, 'design provider configuration'));
+    print(result);
+    if (result.status === 'provider_failed' || result.status === 'rejected') process.exitCode = 1;
+    return;
+  }
+  if (group === 'product' && action === 'design-canonical') {
+    if (!source || argv.length !== 3) throw new Error('design-canonical requires one design JSON file');
+    process.stdout.write(serializeProductDesign(await json(source, 'product design')));
+    return;
+  }
+  if (group === 'product' && action === 'design-change') {
+    if (!source || !extra || argv.length !== 4) throw new Error('design-change requires previous and next designs');
+    print(inspectProductDesignChange(await json(source, 'previous design'), await json(extra, 'next design')));
+    return;
+  }
+  if (group === 'product' && action === 'design-inspect') {
+    if (!source || !extra || ![4, 5].includes(argv.length)) throw new Error('design-inspect requires definition, design and optional owner approval');
+    print(inspectProductDesign(await json(source, 'product definition'), await json(extra, 'product design'), argv[4] ? await json(argv[4], 'design approval') : undefined));
+    return;
+  }
+  if (group === 'product' && ['design-compile', 'design-loop-config'].includes(action ?? '')) {
+    const requestPath = argv[4];
+    if (!source || !extra || !requestPath || argv.length !== 5) throw new Error(`${action} requires definition, canonical design and handoff request`);
+    const definitionBytes = await readFile(resolve(source));
+    const designBytes = await readFile(resolve(extra));
+    const requestBytes = await readFile(resolve(requestPath));
+    const definition: unknown = JSON.parse(definitionBytes.toString('utf8'));
+    const design: unknown = JSON.parse(designBytes.toString('utf8'));
+    if (!designBytes.equals(Buffer.from(serializeProductDesign(design)))) throw new Error('design artifact must contain exactly design-canonical output bytes');
+    const request = record(JSON.parse(requestBytes.toString('utf8')), 'design handoff request');
+    const deliveryRequest = { ...record(request.deliveryRequest, 'delivery request') };
+    const bind = (target: InputRecord, key: string, path: string, bytes: Buffer) => {
+      const binding = { path, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` };
+      if (target[key] !== undefined && canonicalJson(target[key]) !== canonicalJson(binding)) throw new Error(`${key} does not match the observed source bytes`);
+      target[key] = binding;
+    };
+    bind(deliveryRequest, 'definitionArtifact', resolve(source), definitionBytes);
+    bind(deliveryRequest, 'requestArtifact', resolve(requestPath), requestBytes);
+    bind(request, 'designArtifact', resolve(extra), designBytes);
+    const result = compileProductDesignHandoff(definition, design, { ...request, deliveryRequest });
+    print(action === 'design-loop-config' ? { status: result.status, requiredBindings: result.requiredBindings, inspection: result.inspection, configuration: result.status === 'ready_for_loop' ? serializeProductDeliveryLoop(result.delivery!) : undefined } : result);
+    return;
+  }
+  if (group === 'discovery' && action === 'draft') {
+    if (!source || argv.length !== 3) throw new Error('discovery draft requires one explicit operator configuration');
+    const result = await runProductDefinitionDraft(await json(source, 'definition provider configuration'));
+    print(result);
+    if (result.status === 'provider_failed' || result.status === 'rejected') process.exitCode = 1;
+    return;
+  }
+  if (group === 'discovery' && action === 'definition-prompt') {
+    if (!source || argv.length !== 3) throw new Error('definition-prompt requires one absolute history path');
+    const session = await loadProductDiscoverySession(source);
+    print({ prompt: renderProductDefinitionDraftPrompt(session), outputSchema: productDefinitionDraftOutputSchema(session) });
+    return;
+  }
+  if (group === 'discovery' && action === 'import-definition') {
+    const expectedSessionDigest = argv[4];
+    if (!source || !extra || !expectedSessionDigest || argv.length !== 5) throw new Error('import-definition requires history, private response and expected session digest');
+    const session = await loadProductDiscoverySession(source);
+    const response = await readModelResponse(extra, 'definition,sessionDigest', true);
+    print(importProductDefinitionDraft(session, { expectedSessionDigest, sourceReference: `file:${response.path}`, responseBytes: response.bytes }));
+    return;
+  }
+  if (group === 'discovery' && action === 'propose') {
+    if (!source || argv.length !== 3) throw new Error('discovery propose requires one explicit operator configuration');
+    const result = await runProductDiscoveryProposal(await json(source, 'discovery provider configuration'));
+    print(result);
+    if (result.status === 'provider_failed' || result.status === 'rejected') process.exitCode = 1;
+    return;
+  }
+  if (group === 'discovery' && action === 'session') {
+    if (!source || argv.length !== 3) throw new Error('discovery session requires one raw idea request');
+    print(prepareProductDiscoverySession(await json(source, 'discovery session request')));
+    return;
+  }
+  if (group === 'discovery' && action === 'save') {
+    if (!source || !extra || argv.length !== 4) throw new Error('discovery save requires a session JSON and absolute history path');
+    print(await saveProductDiscoverySession(extra, await json(source, 'discovery session')));
+    return;
+  }
+  if (group === 'discovery' && action === 'import-proposal') {
+    const proposalId = argv[4];
+    if (!source || !extra || !proposalId || argv.length !== 5) throw new Error('discovery import-proposal requires an absolute history path, model response JSON path and proposal ID');
+    const { path, bytes, value } = await readModelResponse(extra);
+    const session = await loadProductDiscoverySession(source);
+    const proposal = { ...value, id: proposalId, source: { reference: `file:${path}`, revision: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } };
+    const previous = session.modelProposals.find((item) => item.id === proposalId);
+    if (previous) {
+      const comparable = (item: { id: unknown; status: unknown; text: unknown; source: unknown; questions: unknown }) => canonicalJson({ id: item.id, status: item.status, text: item.text, source: item.source, questions: item.questions });
+      if (comparable(previous) !== comparable({ id: proposalId, status: value.status, text: value.text, source: proposal.source, questions: value.questions })) throw new Error(`proposal ID ${proposalId} already exists with different content or source`);
+      print(session);
+      return;
+    }
+    const next = recordProductDiscoveryProposal(session, proposal);
+    await saveProductDiscoverySession(source, next);
+    print(next);
+    return;
+  }
+  if (group === 'discovery' && ['resume', 'answer', 'proposal', 'prompt'].includes(action ?? '')) {
+    const changes = action === 'answer' || action === 'proposal';
+    if (!source || argv.length !== (changes ? 4 : 3)) throw new Error(`discovery ${action} requires an absolute history path${changes ? ' and response JSON' : ''}`);
+    const session = await loadProductDiscoverySession(source);
+    if (!changes) { print(action === 'prompt' ? { prompt: renderProductDiscoveryPrompt(session), outputSchema: productDiscoveryProposalOutputSchema } : session); return; }
+    const response = await json(extra!, 'discovery response');
+    const next = action === 'answer' ? recordProductDiscoveryAnswer(session, response) : recordProductDiscoveryProposal(session, response);
+    await saveProductDiscoverySession(source, next);
+    print(next);
+    return;
+  }
+  if (group === 'spike' && action === 'intervention') {
+    if (!source || !extra || argv.length !== 4) throw new Error('spike intervention requires an absolute ledger path and entry JSON');
+    print(await appendSpikeIntervention(source, await json(extra, 'spike intervention')));
+    return;
+  }
+  if (group === 'spike' && action === 'interventions') {
+    if (!source || argv.length !== 3) throw new Error('spike interventions requires an absolute ledger path');
+    print(await readSpikeInterventions(source));
+    return;
+  }
+  if (group === 'discovery' && ['inspect', 'hierarchy', 'context'].includes(action ?? '')) {
+    if (!source || argv.length !== (action === 'context' ? 4 : 3)) throw new Error(`discovery ${action} requires a product definition${action === 'context' ? ' and node ID' : ''}`);
+    const definition = await json(source, 'product definition');
+    print(action === 'inspect' ? inspectProductDefinition(definition) : action === 'hierarchy' ? compileProductHierarchy(definition) : assembleProductContext(definition, extra!));
+    return;
+  }
+  if (group === 'product' && action === 'operations') {
+    if (!source || argv.length !== 3) throw new Error('product operations requires exactly one request JSON path');
+    print(inspectProductOperations(await json(source, 'product operations')));
+    return;
+  }
+  if (group === 'product' && (action === 'compile' || action === 'loop-config')) {
+    if (!source || !extra || argv.length !== 4) throw new Error(`product ${action} requires a definition and delivery request`);
+    const definitionBytes = await readFile(resolve(source));
+    const requestBytes = await readFile(resolve(extra));
+    const definition: unknown = JSON.parse(definitionBytes.toString('utf8'));
+    const request = record(JSON.parse(requestBytes.toString('utf8')), 'product delivery request');
+    for (const [key, path, bytes] of [['definitionArtifact', resolve(source), definitionBytes], ['requestArtifact', resolve(extra), requestBytes]] as const) {
+      const binding = { path, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` };
+      if (request[key] !== undefined) {
+        const supplied = record(request[key], key);
+        if (supplied.path !== binding.path || supplied.digest !== binding.digest) throw new Error(`${key} does not match the actual input file`);
+      }
+      request[key] = binding;
+    }
+    const compilation = compileProductDelivery(definition, request);
+    print(action === 'compile' ? compilation : serializeProductDeliveryLoop(compilation));
+    return;
+  }
+  if (group === 'spike' && action === 'prepare') {
+    if (!source || argv.length !== 3) throw new Error('spike prepare requires exactly one request JSON path');
+    print(prepareAttendedSpike(await json(source, 'attended spike preparation')));
+    return;
+  }
   if (group === 'verification' && action === 'snapshot') {
     if (!source || argv.length !== 3) throw new Error('verification snapshot requires one approved candidate directory');
     print(await captureCandidateSnapshot(source));

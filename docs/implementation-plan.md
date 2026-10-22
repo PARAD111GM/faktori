@@ -1,5 +1,11 @@
 # Faktori V1 — Product and Implementation Plan
 
+The accepted production application goal and revised release sequencing are
+tracked in the [production roadmap](production/production-roadmap.md). It extends
+this original V1 construction context with requirements discovery, production
+web/native delivery and ongoing development of live products. Consult
+[execution status](production/execution-status.md) for observed completion gates.
+
 ## 1. Product commitment
 
 **Faktori lets an owner point a coding agent at `PARADIIIGM/Faktori`, describe what they want to build, and erect a working software factory fitted to their resources and preferences.**

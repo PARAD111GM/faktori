@@ -1,0 +1,65 @@
+{
+  "format": "faktori.product-definition/v1",
+  "productId": "household-list",
+  "revision": "1",
+  "rawIdea": "Let household members keep a shared shopping list that survives reloads and does not expose another household's items.",
+  "intentRef": { "reference": "example://owner/household-list-idea", "revision": "1" },
+  "sources": [
+    { "id": "owner-brief", "kind": "owner_requirement", "reference": "example://owner/household-list-brief", "revision": "1" },
+    { "id": "research-proposal", "kind": "proposed_assumption", "reference": "example://research/offline-option", "revision": "1" }
+  ],
+  "users": [
+    { "id": "household-member", "text": "A signed-in household member manages their household's shopping list.", "sourceIds": ["owner-brief"], "status": "accepted" }
+  ],
+  "outcomes": [
+    { "id": "durable-list", "text": "An added item is still visible after a browser reload; another household cannot read or mutate it.", "sourceIds": ["owner-brief"], "status": "accepted" }
+  ],
+  "journeys": [
+    { "id": "shopping", "text": "Sign in, open the household list, add an item, reload and verify the item remains.", "sourceIds": ["owner-brief"], "status": "accepted", "requirementIds": ["persist-items", "valid-items", "save-recovery", "household-isolation", "accessible-list"] }
+  ],
+  "requirements": [
+    { "id": "persist-items", "text": "A signed-in member can create and read household items persisted in the backend.", "sourceIds": ["owner-brief"], "status": "accepted", "priority": "must", "category": "functional", "journeyIds": ["shopping"], "platforms": ["web"] },
+    { "id": "valid-items", "text": "An item's name is nonempty after trimming; an empty list shows an explicit empty state.", "sourceIds": ["owner-brief"], "status": "accepted", "priority": "must", "category": "domain", "journeyIds": ["shopping"], "platforms": ["web"] },
+    { "id": "save-recovery", "text": "A failed save retains the entered name and offers a retry without claiming success.", "sourceIds": ["owner-brief"], "status": "accepted", "priority": "must", "category": "error", "journeyIds": ["shopping"], "platforms": ["web"] },
+    { "id": "household-isolation", "text": "Authorization rejects anonymous and cross-household reads and mutations at the API boundary.", "sourceIds": ["owner-brief"], "status": "accepted", "priority": "must", "category": "permission", "journeyIds": ["shopping"], "platforms": ["web"] },
+    { "id": "accessible-list", "text": "List controls work by keyboard, have accessible names and announce save errors; private household data is not submitted to model providers.", "sourceIds": ["owner-brief"], "status": "accepted", "priority": "must", "category": "non_functional", "journeyIds": ["shopping"], "platforms": ["web"] }
+  ],
+  "roles": [
+    { "id": "member-role", "text": "Members can read and add only items belonging to their household; anonymous requests have no list access.", "sourceIds": ["owner-brief"], "status": "accepted" }
+  ],
+  "data": [
+    { "id": "item-data", "text": "An item has an identifier, household owner, creator, trimmed name and creation time; household membership is the authorization boundary.", "sourceIds": ["owner-brief"], "status": "accepted" }
+  ],
+  "integrations": [
+    { "id": "no-third-party", "text": "No third-party integration is needed for this slice.", "sourceIds": ["owner-brief"], "status": "accepted" }
+  ],
+  "resources": [],
+  "constraints": [
+    { "id": "synthetic-data", "text": "Use synthetic household data during local preparation. Runtime, accounts, financial authority and deploy target must be selected separately before execution.", "sourceIds": ["owner-brief"], "status": "accepted" }
+  ],
+  "platforms": { "targets": ["web"], "mobileCodebase": "shared_native", "nativeUi": true, "deviceEnvelope": [], "nativeCapabilities": [], "distribution": [] },
+  "scope": {
+    "includedRequirementIds": ["persist-items", "valid-items", "save-recovery", "household-isolation", "accessible-list"],
+    "exclusions": [
+      { "id": "exclude-offline", "text": "Offline synchronization, invitations, billing and native mobile delivery are excluded from this first web slice.", "sourceIds": ["owner-brief"], "status": "accepted" }
+    ]
+  },
+  "assumptions": [
+    { "id": "offline-candidate", "text": "An offline mode might matter for grocery-store connectivity; this is a research proposal, not an accepted requirement.", "sourceIds": ["research-proposal"], "status": "proposed" }
+  ],
+  "openQuestions": [
+    { "id": "offline-question", "text": "Should a later slice support offline use?", "sourceIds": ["research-proposal"], "blocking": false, "subjectIds": ["offline-candidate"] }
+  ],
+  "ownerDecisions": [
+    { "id": "example-definition-acceptance", "text": "Illustrative owner accepts this first web definition for design only.", "sourceIds": ["owner-brief"], "subjectIds": ["household-list"], "status": "accepted", "ownerId": "example-owner", "reference": "example://owner/definition-acceptance", "revision": "1" }
+  ],
+  "modelProposals": [],
+  "acceptanceScenarios": [
+    { "id": "persist-scenario", "text": "An added item survives reload.", "sourceIds": ["owner-brief"], "status": "accepted", "requirementIds": ["persist-items"], "given": "A signed-in member with an empty household list and a real test backend", "when": "They add milk and reload the browser", "then": "Milk appears once in the same household list and the backend contains the household-owned item", "kind": "positive", "platforms": ["web"] },
+    { "id": "validation-scenario", "text": "Empty and invalid list states are explicit.", "sourceIds": ["owner-brief"], "status": "accepted", "requirementIds": ["valid-items"], "given": "An empty household list", "when": "The member opens it and submits a whitespace-only name", "then": "The empty state remains visible and validation rejects the name without a persisted item", "kind": "negative", "platforms": ["web"] },
+    { "id": "recovery-scenario", "text": "A failed save can recover.", "sourceIds": ["owner-brief"], "status": "accepted", "requirementIds": ["save-recovery"], "given": "A controlled backend save failure", "when": "The member attempts to add bread then retries after recovery", "then": "The first attempt preserves bread and displays failure; the successful retry persists exactly one item", "kind": "recovery", "platforms": ["web"] },
+    { "id": "isolation-scenario", "text": "Unauthorized API access fails.", "sourceIds": ["owner-brief"], "status": "accepted", "requirementIds": ["household-isolation"], "given": "Two households and an anonymous client", "when": "The second household and anonymous client request the first household's list and attempt to mutate it", "then": "Every unauthorized request is rejected and the first household's data remains unchanged", "kind": "negative", "platforms": ["web"] },
+    { "id": "accessibility-scenario", "text": "Keyboard and error announcements work.", "sourceIds": ["owner-brief"], "status": "accepted", "requirementIds": ["accessible-list"], "given": "A member using keyboard navigation and an accessibility inspector", "when": "They navigate list controls and encounter a controlled save failure", "then": "Controls have meaningful accessible names, the journey is operable without a mouse and the error is announced", "kind": "positive", "platforms": ["web"] }
+  ],
+  "definitionDecisionId": "example-definition-acceptance"
+}
